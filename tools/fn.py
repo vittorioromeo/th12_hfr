@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import sys,re
-src=open('/home/claude/proj/decomp.c').read()
+import os
+src=open(os.environ.get('DECOMP','decomp.c')).read()   # prints the decompiled function containing each address given (hex); DECOMP=path to ExportAll output
 parts=re.split(r'(?m)^// ==== FUNCTION ', src)
 funcs={}
 order=[]

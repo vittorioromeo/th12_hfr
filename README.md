@@ -125,9 +125,13 @@ Each version is a separate archive (`th12_hfr_v0.NN.zip`); older versions stay a
 
 ## Building from source
 
-`source/` contains everything: `hfr.c` (the patch DLL), `launcher.c`, `build.sh` (mingw-w64,
-`i686-w64-mingw32-gcc`). The DLL is plain C with a few inline-asm stubs; all game addresses are
-for th12 v1.00b and are verified against the expected original bytes before patching.
+`src/hfr.c` is the patch DLL, `src/launcher.c` the launcher; `./build.sh` builds both with
+mingw-w64 (`i686-w64-mingw32-gcc`) into `build/`, `./package.sh <version>` makes a release zip
+(the release zips also carry a `source/` copy). The DLL is plain C with a few inline-asm stubs;
+all game addresses are for th12 v1.00b and are verified against the expected original bytes
+before patching. `tools/` holds the Ghidra headless scripts and the scan helpers used during the
+reverse engineering. **`DEVNOTES.md` documents the engine internals, the design of the patch and
+how to port it to other Touhou games.**
 
 ## Credits / references
 
