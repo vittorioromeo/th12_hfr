@@ -1,6 +1,6 @@
 # th12_hfr — high refresh rate patch for Touhou 12 ~ Undefined Fantastic Object (v1.00b)
 
-**Test build v0.10** — runs the game's engine at your display's refresh rate (120 / 144 / 165 /
+**Test build v0.11** — runs the game's engine at your display's refresh rate (120 / 144 / 165 /
 240 / 360 Hz …) with the game speed unchanged. Works with `th12.exe` and `th12e.exe` (English
 static patch), and alongside thcrap or vpatch.
 
@@ -37,18 +37,32 @@ move smoothly although their scripts run at 60 Hz. Bullet/laser hits on the play
 every tick. Frame pacing uses vsync (a software limiter otherwise) and is anchored to the wall
 clock, so the game speed stays exact even if vblanks are missed.
 
+**Sub-tick input (new in v0.11):** the keyboard/joystick is polled on every tick, using the game's
+own input routine, and the movement and focus (slow) keys are fed to the player between frames.
+The player therefore reacts to a key at the next tick (1/360 s at 360 Hz) instead of the next
+60 Hz frame. Shot, bomb, pause and menu keys are still sampled once per frame, exactly as before,
+so shot cadence, bomb timing and menus are unchanged.
+
+**Presentation (new in v0.11):** the Direct3D device is created through Direct3D 9Ex and the
+driver's present queue is limited to one frame (`max_frame_latency=1`). This removes up to two
+frames of display latency that the default queue adds; vsync behaviour is unchanged.
+
 Sub-steps are multiples of 1/256 frame chosen so that they sum to exactly one frame (43/256,
 43/256, 42/256, … at 360 Hz); this keeps the engine's float timers exact.
 
-Stage and boss patterns, RNG use and input sampling are unchanged from the original game.
+Stage and boss patterns and RNG use are unchanged from the original game.
 
 ## Replays
 
-Recordings made with the patch store their tick rate in the replay file (an extra `USER` chunk,
-ignored by the game and other tools). Playback uses the recorded rate, so it reproduces the run
-on the same refresh rate. Replays without the chunk (stock recordings) are played with stock
-60 Hz logic. A patched recording played at a different refresh rate, or in an unpatched game, may
-desync — the sub-stepped simulation is not bit-identical to 60 Hz.
+Recordings made with the patch store their tick rate and the per-tick movement/focus inputs in
+the replay file (two extra `USER` chunks, ignored by the game and other tools; the input chunk is
+run-length encoded and typically a few KB). Playback uses the recorded rate and replays the
+per-tick inputs, so it reproduces the run on the same refresh rate. Replays without the chunks
+(stock recordings) are played with stock 60 Hz logic. A patched recording played in an unpatched
+game may desync — the sub-stepped simulation is not bit-identical to 60 Hz.
+
+The sub-step sequence is restarted at the first frame of every stage, so a recording and its
+playback run the same sequence of steps even at ratios such as 144/60 that do not divide evenly.
 
 ## Configuration (`th12_hfr.ini`)
 
@@ -62,6 +76,10 @@ vsync=1              ; 1 = vsync (recommended); 0 = software limiter only
 substep=1            ; 0 = stock 60 Hz logic, only presentation at the display rate (for comparison)
 fullscreen_refresh=0 ; refresh rate requested in exclusive fullscreen (0 = same as fps / automatic)
 enemy_interp=1       ; draw enemy sprites at frame-interpolated positions
+subtick_input=1      ; poll input every tick; movement/focus reach the player between frames
+d3d9ex=1             ; create the device through Direct3D 9Ex (0 = stock Direct3D 9, also disables the next two)
+max_frame_latency=1  ; frames the driver may queue (1 = lowest latency, 0 = driver default)
+flipex=0             ; windowed flip presentation model (experimental)
 log=1                ; write th12_hfr.log
 debug=0              ; 1 = verbose state dumps in the log (only when asked to)
 
@@ -76,7 +94,10 @@ sub_AnmManagerWorld=1 sub_AnmManagerUI=1 sub_Bomb=0 sub_Gui=0
   can no longer "tunnel" through the hitbox between two frames (rare in the original).
 * Player, item, bullet and laser motion is integrated in sub-steps; positions at frame boundaries
   match the original up to float rounding.
+* Movement and focus keys take effect at the next tick; shot, bomb and menu keys at the next frame.
 * Menus, HUD text, score popups, bombs and enemy hit detection stay at 60 Hz.
+* With `d3d9ex=1` the game's textures live in the default pool (Direct3D 9Ex has no managed pool);
+  this is the same approach used by OpenInputLagPatch. Set `d3d9ex=0` if you see rendering problems.
 * The game's own FPS counter shows the presentation rate.
 
 ## Things worth testing
@@ -86,8 +107,21 @@ sub_AnmManagerWorld=1 sub_AnmManagerUI=1 sub_Bomb=0 sub_Gui=0
 * Pause (ESC) and unpause, game over → Continue, game over → title, stage clear, stage transitions.
 * Shooting with all six shot types, bombs, grazing bullets and lasers, item collection, the UFO
   summons, boss death slow-motion.
-* Replays: record a run, play it back on the same display; play a stock replay.
+* Replays: record a run, play it back on the same display (it should reproduce the run exactly —
+  the log reports "per-tick input available" at each stage start); play a stock replay.
+* Input feel: tapping a direction key should move the character for as little as one tick; check
+  the log's `stats:` lines for `subtick polls` (should be about refresh − 60 per second while playing)
+  and the `SetMaximumFrameLatency(1) -> 0x00000000` line.
 * Windowed and fullscreen, Alt+Enter switching, 60 Hz displays (the patch should be a no-op).
+
+## Version history
+
+* v0.11 — sub-tick input (movement/focus polled every tick, stored in replays), Direct3D 9Ex with
+  a one-frame present queue, per-stage restart of the sub-step sequence for deterministic replays.
+* v0.10 — first shared test build: sub-stepped bullets/player/lasers/items/stage/ANM, frame-locked
+  enemies with sprite interpolation, wall-clock frame pacing, replay rate chunk.
+
+Each version is a separate archive (`th12_hfr_v0.NN.zip`); older versions stay available next to the newest one.
 
 ## Building from source
 

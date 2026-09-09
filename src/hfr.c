@@ -40,7 +40,11 @@ static struct {
     int show_stats;
     int enemy_interp;
     int debug;
-} cfg = { 0, 1, 1, 1, 0, 0, 1, 0 };
+    int subtick_input;      /* poll the keyboard/joystick every tick and feed movement/focus to the player */
+    int d3d9ex;             /* create the device through Direct3D9Ex */
+    int max_frame_latency;  /* IDirect3DDevice9Ex::SetMaximumFrameLatency (0 = leave default) */
+    int flipex;             /* windowed: D3DSWAPEFFECT_FLIPEX (experimental) */
+} cfg = { 0, 1, 1, 1, 0, 0, 1, 0, 1, 1, 1, 0 };
 
 /* ------------------------------------------------------------------ patch utils */
 static int patch_bytes(uintptr_t addr, const void* data, size_t n, const void* expect) {
@@ -80,6 +84,7 @@ static int patch_call_n(uintptr_t addr, void* target, size_t n, const void* expe
 #define G_MISC_FLAGS      (*(uint32_t*)0x4cee78)
 #define G_INPUT_CUR       (*(uint32_t*)0x4d48b8)
 #define G_INPUT_PRESSED   (*(uint32_t*)0x4d48c4)
+#define G_REPLAY_MANAGER  (*(uint8_t**)0x4b4518)   /* +0x10: 0 recording, 1 playing; +0x1d0: frame in stage (-1 = none); +0x1d8: stage */
 
 typedef int (__stdcall *FrameFn)(void* ctx);
 static FrameFn orig_frame_vsync = (FrameFn)0x450600;
@@ -147,6 +152,18 @@ static void advance_tick(void) {
     g_units_total += u;
     if (g_units_total >= 60u * UNITS_PER_FRAME) g_units_total -= 60u * UNITS_PER_FRAME; /* every R ticks (1 s) exactly */
     g_tick++;
+}
+/* Restart the sub-step sequence so that the current (frame boundary) tick is the first tick of the canonical
+   sequence for this rate. Used at the first frame of every stage: the sub-step pattern within a frame then only
+   depends on the frame number, which makes a recording and its playback run the same sequence of steps
+   (at non-integer ratios such as 144/60 the pattern otherwise depends on when the game was started). */
+static void schedule_reset_here(void) {
+    if (!cfg.substep || g_logic_rate == 60) return;
+    g_units_acc = 60u * UNITS_PER_FRAME;
+    unsigned u = g_units_acc / (unsigned)g_logic_rate;
+    g_units_acc -= u * (unsigned)g_logic_rate;
+    g_units_total = u; g_last_units = u; g_prev_frame = 0; g_phase = 0;
+    g_dt = (float)u / (float)UNITS_PER_FRAME;
 }
 
 /* ------------------------------------------------------------------ node classification */
@@ -565,6 +582,96 @@ static void enemy_interp(double phase) {
     }
 }
 
+/* ------------------------------------------------------------------ sub-tick input
+ * The game polls the keyboard/joystick once per frame (Supervisor node, priority 1) into the raw input state at
+ * 0x4d48b8 (0x130 bytes: cur, prev, repeat, pressed, released, 32 hold counters, held mask); the replay node
+ * (priority 0xb) copies it into the game input word 0x4d49d0 and records it. Between frame ticks we poll again
+ * with the game's own routine (so key/joystick mapping is unchanged) and feed only the movement and focus bits to
+ * the game input word, which the (sub-stepped) player reads. Menus, shots, bombs and the game's replay record
+ * keep the frame-sampled input. The per-tick bits are stored in memory per stage and written to the replay as an
+ * extra USER chunk, and applied on playback.
+ */
+#define G_INPUT_RAW       ((uint8_t*)0x4d48b8)
+#define G_INPUT_RAW_SIZE  0x130
+#define G_GAME_INPUT      (*(uint32_t*)0x4d49d0)
+#define G_OPTION_FLAGS    (*(uint32_t*)0x4ceae8)
+#define G_AUTOFOCUS_CTR   (*(int*)0x4d49cc)
+#define IN_FOCUS 0x08
+#define IN_MOVE  0xf0
+
+/* joystick: winmm's joyGetPosEx can be slow; between frames return the last polled state */
+typedef MMRESULT (WINAPI *JoyGetPosExFn)(UINT, LPJOYINFOEX);
+static JoyGetPosExFn orig_joyGetPosEx;
+static JOYINFOEX g_joy_cache; static MMRESULT g_joy_cache_res; static int g_joy_cache_valid, g_joy_use_cache;
+static MMRESULT WINAPI hook_joyGetPosEx(UINT id, LPJOYINFOEX ji) {
+    if (!ji) return orig_joyGetPosEx(id, ji);
+    DWORD n = ji->dwSize < sizeof g_joy_cache ? ji->dwSize : (DWORD)sizeof g_joy_cache;
+    if (g_joy_use_cache && id == 0 && g_joy_cache_valid) { memcpy(ji, &g_joy_cache, n); return g_joy_cache_res; }
+    MMRESULT r = orig_joyGetPosEx(id, ji);
+    if (id == 0) { memcpy(&g_joy_cache, ji, n); g_joy_cache_res = r; g_joy_cache_valid = 1; }
+    return r;
+}
+/* run the game's input poll (FUN_462ec0) without disturbing the per-frame raw input state */
+static uint32_t poll_input_raw(void) {
+    uint8_t save[G_INPUT_RAW_SIZE]; memcpy(save, G_INPUT_RAW, sizeof save);
+    g_joy_use_cache = 1;
+    uint32_t v;
+    __asm__ volatile ("call *%1" : "=a"(v) : "r"(0x462ec0) : "ecx", "edx", "memory", "cc");
+    g_joy_use_cache = 0;
+    memcpy(G_INPUT_RAW, save, sizeof save);
+    return v;
+}
+/* movement + focus bits of a polled value, merged into the frame's game input word */
+static uint32_t merge_subtick_bits(uint32_t frame_val, uint32_t polled, int live) {
+    uint32_t v = (frame_val & ~(uint32_t)(IN_MOVE | IN_FOCUS)) | (polled & IN_MOVE);
+    uint32_t focus = polled & IN_FOCUS;
+    if (live && (G_OPTION_FLAGS & 0x200) && G_AUTOFOCUS_CTR >= 8) focus = IN_FOCUS;   /* "hold shot to focus" option: synthesized by the replay node */
+    return v | focus;
+}
+static inline uint8_t  bits_encode(uint32_t v) { return (uint8_t)((v >> 3) & 0x1f); }
+static inline uint32_t bits_decode(uint8_t b)  { return ((uint32_t)b & 0x1f) << 3; }
+
+struct TickBuf { uint8_t* d; uint32_t n, cap; };
+static struct TickBuf g_rec[8];    /* per stage: bits of every tick since the stage's first frame (this session) */
+static struct TickBuf g_play[8];   /* per stage: the same, loaded from the replay being played */
+static int      g_frame_active;    /* the replay node ran on the current frame's boundary tick */
+static int      g_stream_stage = -1;
+static uint32_t g_stream_tick;     /* index of the current tick in the stage stream */
+static unsigned g_stat_subtick_polls, g_stat_subtick_applied;
+static void tickbuf_push(struct TickBuf* b, uint8_t v) {
+    if (b->n == b->cap) { uint32_t nc = b->cap ? b->cap * 2 : 65536; uint8_t* nd = (uint8_t*)realloc(b->d, nc); if (!nd) return; b->d = nd; b->cap = nc; }
+    b->d[b->n++] = v;
+}
+/* called on the frame boundary tick just before the replay record/playback node runs its first frame of a stage */
+static void replay_stage_start(uint8_t* rm) {
+    int stage = *(int*)(rm + 0x1d8); int playing = *(int*)(rm + 0x10) == 1;
+    schedule_reset_here();
+    g_stream_stage = (stage >= 0 && stage < 8) ? stage : -1;
+    g_stream_tick = 0;
+    if (g_stream_stage >= 0 && !playing) g_rec[g_stream_stage].n = 0;
+    LOG("stage %d first frame (%s): sub-step sequence restarted%s", stage, playing ? "playback" : "recording",
+        (playing && g_stream_stage >= 0 && g_play[g_stream_stage].n) ? ", per-tick input available" : "");
+}
+static int subtick_active(uint8_t* rm) { return cfg.subtick_input && cfg.substep && g_logic_rate != 60 && rm && g_frame_active && g_stream_stage >= 0; }
+/* start of a non-boundary tick: feed the player fresh (or recorded) movement/focus bits */
+static void subtick_input_begin(void) {
+    uint8_t* rm = G_REPLAY_MANAGER;
+    if (!subtick_active(rm)) return;
+    if (*(int*)(rm + 0x10) == 1) {
+        struct TickBuf* b = &g_play[g_stream_stage];
+        if (g_stream_tick < b->n) { G_GAME_INPUT = merge_subtick_bits(G_GAME_INPUT, bits_decode(b->d[g_stream_tick]), 0); g_stat_subtick_applied++; }
+    } else {
+        G_GAME_INPUT = merge_subtick_bits(G_GAME_INPUT, poll_input_raw(), 1); g_stat_subtick_polls++;
+    }
+}
+/* end of every tick of an active frame: record the bits the player saw, advance the stream */
+static void subtick_input_end(void) {
+    uint8_t* rm = G_REPLAY_MANAGER;
+    if (!subtick_active(rm)) return;
+    if (*(int*)(rm + 0x10) != 1) tickbuf_push(&g_rec[g_stream_stage], bits_encode(G_GAME_INPUT));
+    g_stream_tick++;
+}
+
 /* ------------------------------------------------------------------ update runner replacement */
 typedef int (__thiscall *NodeFn)(void* arg);
 struct ListNode { struct UpdateFunc* entry; struct ListNode* next; struct ListNode* prev; };
@@ -584,8 +691,12 @@ static unsigned g_stat_sub_calls, g_stat_frame_calls, g_stat_long, g_stat_vlong;
 int __cdecl __attribute__((used)) hfr_runner(uint8_t* runner) {
     int count = 0;
     if (g_skip_update && runner == G_UPDATE_RUNNER) { enemy_interp(g_phase); return 1; }
+    int is_update = runner == G_UPDATE_RUNNER;
+    if (is_update) {
+        if (g_major) { g_stop_node = NULL; g_frame_active = 0; }
+        else subtick_input_begin();
+    }
     crit_enter();
-    if (g_major) g_stop_node = NULL;
     struct ListNode* n = *(struct ListNode**)(runner + 0x18);
 restart:
     while (n) {
@@ -607,10 +718,18 @@ restart:
             count++; continue;
         }
         crit_leave();
+        uint32_t fn = (uint32_t)uf->func;
+        int replay_node = is_update && g_major && (fn == 0x43c510 || fn == 0x43c520);   /* replay record / playback nodes */
+        int frame_before = 0;
+        if (replay_node) {
+            uint8_t* rm = G_REPLAY_MANAGER;
+            if (rm) { frame_before = *(int*)(rm + 0x1d0); if (frame_before == 0) replay_stage_start(rm); }
+        }
         set_factor(mode == MODE_SUB ? g_dt : 1.0f);
         if (mode == MODE_SUB) g_stat_sub_calls++; else g_stat_frame_calls++;
         int r = uf->func(uf->arg);
-        if ((uint32_t)uf->func == 0x437660) { uint8_t* pl = *(uint8_t**)0x4b4514; if (pl) { g_ptf_prev = g_ptf_cur; g_ptf_cur = *(float*)(pl + 0xa38); } }
+        if (fn == 0x437660) { uint8_t* pl = *(uint8_t**)0x4b4514; if (pl) { g_ptf_prev = g_ptf_cur; g_ptf_cur = *(float*)(pl + 0xa38); } }
+        if (replay_node) { uint8_t* rm = G_REPLAY_MANAGER; if (rm && *(int*)(rm + 0x1d0) != frame_before) g_frame_active = 1; }
         crit_enter();
         switch (r) {
         case 0: game_remove_node(uf, runner); count++; break;
@@ -626,7 +745,7 @@ restart:
 done:
     crit_leave();
     set_factor(1.0f);
-    if (runner == G_UPDATE_RUNNER) enemy_interp(g_phase);
+    if (is_update) { subtick_input_end(); enemy_interp(g_phase); }
     return count;
 }
 __asm__(
@@ -674,15 +793,15 @@ static void limiter_stats(double now) {
     }
     if (now - g_stat_last >= 5.0) {
         if (g_stat_last > 0)
-            LOG("stats: %.2f presents/s (target %d), extra ticks %u, skipped ticks %u, sub calls %u, frame calls %u, logical %.3f, long gaps %u/%u, ticks/s %.2f",
+            LOG("stats: %.2f presents/s (target %d), extra ticks %u, skipped ticks %u, sub calls %u, frame calls %u, logical %.3f, long gaps %u/%u, ticks/s %.2f, subtick polls %u applied %u",
                 g_stat_ticks / (now - g_stat_last), g_refresh, g_stat_catchup, g_stat_skipped, g_stat_sub_calls, g_stat_frame_calls, g_logical, g_stat_long, g_stat_vlong,
-                (double)(g_ticks_run - g_stat_ticks_run_last) / (now - g_stat_last));
+                (double)(g_ticks_run - g_stat_ticks_run_last) / (now - g_stat_last), g_stat_subtick_polls, g_stat_subtick_applied);
         g_stat_last = now; g_stat_ticks = 0; g_stat_sub_calls = g_stat_frame_calls = g_stat_long = g_stat_vlong = g_stat_catchup = g_stat_skipped = 0; g_stat_ticks_run_last = g_ticks_run;
+        g_stat_subtick_polls = g_stat_subtick_applied = 0;
     }
 }
 
 /* ------------------------------------------------------------------ replay awareness */
-#define G_REPLAY_MANAGER (*(uint8_t**)0x4b4518)
 static int g_replay_rate = 0;        /* logic rate stored in the replay being played (0 = none: stock 60 Hz logic) */
 static int g_replay_playing = 0;
 static void replay_check(void) {
@@ -704,6 +823,8 @@ static void replay_path(char* out, size_t n, const char* name) {
     char dir[MAX_PATH]; GetModuleFileNameA(NULL, dir, MAX_PATH); char* p = strrchr(dir, '\\'); if (p) *p = 0;
     snprintf(out, n, "%s\\replay\\%s", dir, name);
 }
+#define HFR_INPUT_CHUNK_TYPE 0x49   /* 'I' : per-tick input chunk: "HFRI", u16 version, u16 rate, u8 nstages, pad[3],
+                                       then per stage: u8 stage, pad[3], u32 nticks, u32 npairs, npairs x {u8 bits, u8 run} */
 static void replay_append_chunk(const char* name) {
     if (!cfg.substep || g_logic_rate == 60) return;
     char path[MAX_PATH]; replay_path(path, sizeof path, name);
@@ -713,23 +834,75 @@ static void replay_append_chunk(const char* name) {
     int len = snprintf((char*)buf + 12, sizeof buf - 12, "th12_hfr rate=%d", g_logic_rate) + 1;
     uint32_t size = (12 + len + 3) & ~3u;
     memcpy(buf, "USER", 4); memcpy(buf + 4, &size, 4); buf[8] = HFR_CHUNK_TYPE;
-    DWORD w = 0; WriteFile(h, buf, size, &w, NULL); CloseHandle(h);
+    DWORD w = 0; WriteFile(h, buf, size, &w, NULL);
     LOG("replay chunk written to %s (rate %d)", name, g_logic_rate);
+    /* per-tick input chunk for the stages present in the replay */
+    uint8_t* rm = G_REPLAY_MANAGER;
+    if (cfg.subtick_input && rm) {
+        uint32_t cap = 24, used = 24; uint8_t* out = (uint8_t*)malloc(cap); int nst = 0; uint32_t total_ticks = 0;
+        if (out) {
+            for (int s = 0; s < 8; s++) {
+                if (!*(uint32_t*)(rm + 0x20 + s * 4) || g_rec[s].n == 0) continue;
+                uint32_t need = used + 12 + 2 * g_rec[s].n;
+                if (need > cap) { uint8_t* no = (uint8_t*)realloc(out, need); if (!no) break; out = no; cap = need; }
+                uint8_t* hdr = out + used; used += 12;
+                uint32_t npairs = 0;
+                for (uint32_t i = 0; i < g_rec[s].n;) { uint8_t v = g_rec[s].d[i]; uint32_t j = i; while (j < g_rec[s].n && g_rec[s].d[j] == v && j - i < 255) j++; out[used++] = v; out[used++] = (uint8_t)(j - i); npairs++; i = j; }
+                memset(hdr, 0, 12); hdr[0] = (uint8_t)s; memcpy(hdr + 4, &g_rec[s].n, 4); memcpy(hdr + 8, &npairs, 4);
+                nst++; total_ticks += g_rec[s].n;
+            }
+            uint32_t size2 = (used + 3) & ~3u;
+            if (size2 > cap) { uint8_t* no = (uint8_t*)realloc(out, size2); if (no) { out = no; cap = size2; } else size2 = used & ~3u; }
+            memset(out, 0, 24); memcpy(out, "USER", 4); memcpy(out + 4, &size2, 4); out[8] = HFR_INPUT_CHUNK_TYPE;
+            memcpy(out + 12, "HFRI", 4); uint16_t ver = 1, rate = (uint16_t)g_logic_rate; memcpy(out + 16, &ver, 2); memcpy(out + 18, &rate, 2); out[20] = (uint8_t)nst;
+            if (used < size2) memset(out + used, 0, size2 - used);
+            if (nst) { WriteFile(h, out, size2, &w, NULL); LOG("replay input chunk written: %d stage(s), %u ticks, %u bytes", nst, total_ticks, size2); }
+            free(out);
+        }
+    }
+    CloseHandle(h);
+}
+static void replay_parse_input_chunk(const uint8_t* p, uint32_t size) {
+    for (int s = 0; s < 8; s++) g_play[s].n = 0;
+    if (size < 24 || memcmp(p + 12, "HFRI", 4) != 0) return;
+    uint16_t ver, rate; memcpy(&ver, p + 16, 2); memcpy(&rate, p + 18, 2); int nst = p[20];
+    if (ver != 1) { LOG("replay input chunk: unknown version %u", ver); return; }
+    uint32_t off = 24;
+    for (int k = 0; k < nst; k++) {
+        if (off + 12 > size) break;
+        int s = p[off]; uint32_t nticks, npairs; memcpy(&nticks, p + off + 4, 4); memcpy(&npairs, p + off + 8, 4); off += 12;
+        if (off + 2 * npairs > size) break;
+        if (s >= 0 && s < 8) {
+            struct TickBuf* b = &g_play[s]; b->n = 0;
+            for (uint32_t i = 0; i < npairs; i++) { uint8_t v = p[off + 2 * i], run = p[off + 2 * i + 1]; for (unsigned r = 0; r < run; r++) tickbuf_push(b, v); }
+            LOG("replay input chunk: stage %d, %u ticks (%u recorded), rate %u", s, b->n, nticks, rate);
+        }
+        off += 2 * npairs;
+    }
 }
 static int replay_read_chunk(const char* name) {
+    for (int s = 0; s < 8; s++) g_play[s].n = 0;
     char path[MAX_PATH]; replay_path(path, sizeof path, name);
     HANDLE h = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (h == INVALID_HANDLE_VALUE) return 0;
     DWORD sz = GetFileSize(h, NULL); int rate = 0;
     if (sz > 0 && sz < 64 * 1024 * 1024) {
-        uint8_t* d = (uint8_t*)malloc(sz); DWORD rd = 0;
+        uint8_t* d = (uint8_t*)malloc(sz + 1); DWORD rd = 0;
         if (d && ReadFile(h, d, sz, &rd, NULL) && rd == sz) {
-            for (DWORD i = 0; i + 16 <= sz; i++) {
-                if (memcmp(d + i, "USER", 4) == 0 && d[i + 8] == HFR_CHUNK_TYPE) {
+            d[sz] = 0;
+            DWORD start = 0;
+            if (sz >= 0x24 && memcmp(d, "t12r", 4) == 0) { uint32_t uo; memcpy(&uo, d + 0xc, 4); if (uo >= 0x24 && uo < sz) start = uo; }   /* header +0xc: user data offset */
+            for (DWORD i = start; i + 16 <= sz; i++) {
+                if (memcmp(d + i, "USER", 4) != 0) continue;
+                uint32_t csize; memcpy(&csize, d + i + 4, 4);
+                if (csize < 12 || i + csize > sz) continue;
+                if (d[i + 8] == HFR_CHUNK_TYPE) {
                     const char* t = (const char*)d + i + 12; const char* k = strstr(t, "rate=");
                     if (k) rate = atoi(k + 5);
-                    break;
+                } else if (d[i + 8] == HFR_INPUT_CHUNK_TYPE) {
+                    replay_parse_input_chunk(d + i, csize);
                 }
+                i += csize - 1;
             }
         }
         free(d);
@@ -827,46 +1000,136 @@ static int detect_refresh(IDirect3DDevice9* dev) {
     if (hz <= 1) hz = 60;
     return hz;
 }
+/* Direct3D 9Ex: the device is created through IDirect3D9Ex::CreateDeviceEx so that the present queue depth can be
+   limited (SetMaximumFrameLatency), which removes up to two frames of display latency. 9Ex has no managed pool,
+   so managed resources are turned into default-pool dynamic ones (device CreateTexture/CreateVertexBuffer/
+   CreateIndexBuffer and the D3DX texture loaders the game imports). */
+static int g_using_ex = 0;
+typedef HRESULT (WINAPI *Direct3DCreate9ExFn)(UINT, IDirect3D9Ex**);
+static void patch_vtable(void** vt, int idx, void* hook, void** orig) {
+    if (*orig) return;
+    *orig = vt[idx]; DWORD old; VirtualProtect(&vt[idx], 4, PAGE_EXECUTE_READWRITE, &old); vt[idx] = hook; VirtualProtect(&vt[idx], 4, old, &old);
+}
+typedef HRESULT (__stdcall *CreateTextureFn)(IDirect3DDevice9*, UINT, UINT, UINT, DWORD, D3DFORMAT, D3DPOOL, IDirect3DTexture9**, HANDLE*);
+typedef HRESULT (__stdcall *CreateVertexBufferFn)(IDirect3DDevice9*, UINT, DWORD, DWORD, D3DPOOL, IDirect3DVertexBuffer9**, HANDLE*);
+typedef HRESULT (__stdcall *CreateIndexBufferFn)(IDirect3DDevice9*, UINT, DWORD, D3DFORMAT, D3DPOOL, IDirect3DIndexBuffer9**, HANDLE*);
+static CreateTextureFn orig_CreateTexture; static CreateVertexBufferFn orig_CreateVertexBuffer; static CreateIndexBufferFn orig_CreateIndexBuffer;
+static unsigned g_stat_managed_conv;
+static inline void unmanage(D3DPOOL* pool, DWORD* usage) { if (*pool == D3DPOOL_MANAGED) { *pool = D3DPOOL_DEFAULT; *usage |= D3DUSAGE_DYNAMIC; g_stat_managed_conv++; } }
+static HRESULT __stdcall hook_CreateTexture(IDirect3DDevice9* dev, UINT w, UINT h, UINT levels, DWORD usage, D3DFORMAT fmt, D3DPOOL pool, IDirect3DTexture9** out, HANDLE* sh) {
+    unmanage(&pool, &usage); return orig_CreateTexture(dev, w, h, levels, usage, fmt, pool, out, sh);
+}
+static HRESULT __stdcall hook_CreateVertexBuffer(IDirect3DDevice9* dev, UINT len, DWORD usage, DWORD fvf, D3DPOOL pool, IDirect3DVertexBuffer9** out, HANDLE* sh) {
+    unmanage(&pool, &usage); return orig_CreateVertexBuffer(dev, len, usage, fvf, pool, out, sh);
+}
+static HRESULT __stdcall hook_CreateIndexBuffer(IDirect3DDevice9* dev, UINT len, DWORD usage, D3DFORMAT fmt, D3DPOOL pool, IDirect3DIndexBuffer9** out, HANDLE* sh) {
+    unmanage(&pool, &usage); return orig_CreateIndexBuffer(dev, len, usage, fmt, pool, out, sh);
+}
+typedef HRESULT (__stdcall *D3DXCreateTextureFn)(IDirect3DDevice9*, UINT, UINT, UINT, DWORD, D3DFORMAT, D3DPOOL, IDirect3DTexture9**);
+typedef HRESULT (__stdcall *D3DXCreateTextureFromFileInMemoryExFn)(IDirect3DDevice9*, LPCVOID, UINT, UINT, UINT, UINT, DWORD, D3DFORMAT, D3DPOOL, DWORD, DWORD, D3DCOLOR, void*, PALETTEENTRY*, IDirect3DTexture9**);
+static D3DXCreateTextureFn orig_D3DXCreateTexture; static D3DXCreateTextureFromFileInMemoryExFn orig_D3DXCreateTextureFromFileInMemoryEx;
+static HRESULT __stdcall hook_D3DXCreateTexture(IDirect3DDevice9* dev, UINT w, UINT h, UINT mip, DWORD usage, D3DFORMAT fmt, D3DPOOL pool, IDirect3DTexture9** out) {
+    if (g_using_ex) unmanage(&pool, &usage);
+    return orig_D3DXCreateTexture(dev, w, h, mip, usage, fmt, pool, out);
+}
+static HRESULT __stdcall hook_D3DXCreateTextureFromFileInMemoryEx(IDirect3DDevice9* dev, LPCVOID src, UINT srcsize, UINT w, UINT h, UINT mip, DWORD usage, D3DFORMAT fmt, D3DPOOL pool, DWORD filter, DWORD mipfilter, D3DCOLOR key, void* info, PALETTEENTRY* pal, IDirect3DTexture9** out) {
+    if (g_using_ex) unmanage(&pool, &usage);
+    return orig_D3DXCreateTextureFromFileInMemoryEx(dev, src, srcsize, w, h, mip, usage, fmt, pool, filter, mipfilter, key, info, pal, out);
+}
+static int hook_iat(const char* dll, const char* func, void* hook, void** orig);
+
 static void apply_pp(D3DPRESENT_PARAMETERS* pp) {
     pp->PresentationInterval = cfg.vsync ? D3DPRESENT_INTERVAL_ONE : D3DPRESENT_INTERVAL_IMMEDIATE;
     if (!pp->Windowed) {
         int hz = cfg.fullscreen_refresh ? cfg.fullscreen_refresh : cfg.fps;
         pp->FullScreen_RefreshRateInHz = hz > 0 ? hz : D3DPRESENT_RATE_DEFAULT;
     }
-    LOG("present params: windowed=%d %ux%u refresh=%u interval=0x%x backbuffers=%u", pp->Windowed, pp->BackBufferWidth,
-        pp->BackBufferHeight, pp->FullScreen_RefreshRateInHz, pp->PresentationInterval, pp->BackBufferCount);
+    if (g_using_ex) {
+        if (pp->Windowed && cfg.flipex) { pp->SwapEffect = D3DSWAPEFFECT_FLIPEX; if (pp->BackBufferCount < 2) pp->BackBufferCount = 2; }
+        else if (pp->SwapEffect == D3DSWAPEFFECT_FLIPEX) { pp->SwapEffect = D3DSWAPEFFECT_DISCARD; }
+    }
+    LOG("present params: windowed=%d %ux%u refresh=%u interval=0x%x backbuffers=%u swap=%d", pp->Windowed, pp->BackBufferWidth,
+        pp->BackBufferHeight, pp->FullScreen_RefreshRateInHz, pp->PresentationInterval, pp->BackBufferCount, pp->SwapEffect);
+}
+static void fill_mode_ex(D3DPRESENT_PARAMETERS* pp, D3DDISPLAYMODEEX* m) {
+    memset(m, 0, sizeof *m); m->Size = sizeof *m; m->Width = pp->BackBufferWidth; m->Height = pp->BackBufferHeight;
+    m->RefreshRate = pp->FullScreen_RefreshRateInHz; m->Format = pp->BackBufferFormat; m->ScanLineOrdering = D3DSCANLINEORDERING_PROGRESSIVE;
 }
 static void after_device(IDirect3DDevice9* dev) {
     int hz = detect_refresh(dev);
     LOG("display refresh detected: %d Hz", hz);
     recompute_rate(cfg.fps > 0 ? cfg.fps : hz);
     g_next = 0;
+    if (g_using_ex && cfg.max_frame_latency > 0) {
+        IDirect3DDevice9Ex* ex = (IDirect3DDevice9Ex*)dev;
+        HRESULT hr = ex->lpVtbl->SetMaximumFrameLatency(ex, (UINT)cfg.max_frame_latency);
+        UINT got = 0; ex->lpVtbl->GetMaximumFrameLatency(ex, &got);
+        LOG("SetMaximumFrameLatency(%d) -> 0x%08lx (now %u)", cfg.max_frame_latency, (long)hr, got);
+    }
 }
 static HRESULT __stdcall hook_Reset(IDirect3DDevice9* dev, D3DPRESENT_PARAMETERS* pp) {
     apply_pp(pp);
-    HRESULT hr = orig_Reset(dev, pp);
-    LOG("Reset -> 0x%08lx", (long)hr);
+    HRESULT hr;
+    if (g_using_ex) {
+        IDirect3DDevice9Ex* ex = (IDirect3DDevice9Ex*)dev; D3DDISPLAYMODEEX m; fill_mode_ex(pp, &m);
+        hr = ex->lpVtbl->ResetEx(ex, pp, pp->Windowed ? NULL : &m);
+        LOG("ResetEx -> 0x%08lx", (long)hr);
+    } else {
+        hr = orig_Reset(dev, pp);
+        LOG("Reset -> 0x%08lx", (long)hr);
+    }
     if (SUCCEEDED(hr)) after_device(dev);
     return hr;
 }
 static HRESULT __stdcall hook_CreateDevice(IDirect3D9* d3d, UINT adapter, D3DDEVTYPE type, HWND hwnd, DWORD flags, D3DPRESENT_PARAMETERS* pp, IDirect3DDevice9** out) {
     apply_pp(pp);
-    HRESULT hr = orig_CreateDevice(d3d, adapter, type, hwnd, flags, pp, out);
-    LOG("CreateDevice -> 0x%08lx", (long)hr);
+    HRESULT hr;
+    if (g_using_ex) {
+        IDirect3D9Ex* ex = (IDirect3D9Ex*)d3d; D3DDISPLAYMODEEX m; fill_mode_ex(pp, &m);
+        hr = ex->lpVtbl->CreateDeviceEx(ex, adapter, type, hwnd, flags, pp, pp->Windowed ? NULL : &m, (IDirect3DDevice9Ex**)out);
+        LOG("CreateDeviceEx -> 0x%08lx", (long)hr);
+        if (FAILED(hr)) { hr = orig_CreateDevice(d3d, adapter, type, hwnd, flags, pp, out); LOG("fallback CreateDevice on the 9Ex object -> 0x%08lx", (long)hr); }
+        if (SUCCEEDED(hr) && out && *out) {
+            static const GUID iid_dev9ex = { 0xb18b10ce, 0x2649, 0x405a, { 0x87, 0x0f, 0x95, 0xf7, 0x77, 0xd4, 0x31, 0x3a } };
+            void* q = NULL;
+            if (SUCCEEDED((*out)->lpVtbl->QueryInterface(*out, &iid_dev9ex, &q)) && q) { ((IUnknown*)q)->lpVtbl->Release((IUnknown*)q); }
+            else { LOG("device does not expose IDirect3DDevice9Ex; 9Ex features disabled"); g_using_ex = 0; }
+            if (hwnd) SetWindowPos(hwnd, 0, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW);   /* 9Ex resets the window style */
+        }
+    } else {
+        hr = orig_CreateDevice(d3d, adapter, type, hwnd, flags, pp, out);
+        LOG("CreateDevice -> 0x%08lx", (long)hr);
+    }
     if (SUCCEEDED(hr) && out && *out) {
         IDirect3DDevice9* dev = *out;
         void** vt = *(void***)dev;
-        if (!orig_Reset) { orig_Reset = (ResetFn)vt[16]; DWORD old; VirtualProtect(&vt[16], 4, PAGE_EXECUTE_READWRITE, &old); vt[16] = (void*)hook_Reset; VirtualProtect(&vt[16], 4, old, &old); }
+        patch_vtable(vt, 16, (void*)hook_Reset, (void**)&orig_Reset);
+        if (g_using_ex) {
+            patch_vtable(vt, 23, (void*)hook_CreateTexture, (void**)&orig_CreateTexture);
+            patch_vtable(vt, 26, (void*)hook_CreateVertexBuffer, (void**)&orig_CreateVertexBuffer);
+            patch_vtable(vt, 27, (void*)hook_CreateIndexBuffer, (void**)&orig_CreateIndexBuffer);
+        }
         after_device(dev);
     }
     return hr;
 }
 static IDirect3D9* __stdcall hook_Direct3DCreate9(UINT sdk) {
-    IDirect3D9* d3d = orig_Direct3DCreate9(sdk);
+    IDirect3D9* d3d = NULL;
+    if (cfg.d3d9ex) {
+        /* use the d3d9.dll the game resolved its import from (a wrapper in the game folder stays in the chain) */
+        HMODULE m = GetModuleHandleA("d3d9.dll");
+        Direct3DCreate9ExFn createEx = m ? (Direct3DCreate9ExFn)GetProcAddress(m, "Direct3DCreate9Ex") : NULL;
+        if (createEx) {
+            IDirect3D9Ex* ex = NULL; HRESULT hr = createEx(sdk, &ex);
+            if (SUCCEEDED(hr) && ex) { d3d = (IDirect3D9*)ex; g_using_ex = 1; LOG("Direct3DCreate9Ex ok (%s)", "hooked"); }
+            else LOG("Direct3DCreate9Ex failed (0x%08lx), using Direct3DCreate9", (long)hr);
+        } else LOG("Direct3DCreate9Ex not available, using Direct3DCreate9");
+    }
+    if (!d3d) d3d = orig_Direct3DCreate9(sdk);
     if (d3d) {
         void** vt = *(void***)d3d;
-        if (!orig_CreateDevice) { orig_CreateDevice = (CreateDeviceFn)vt[16]; DWORD old; VirtualProtect(&vt[16], 4, PAGE_EXECUTE_READWRITE, &old); vt[16] = (void*)hook_CreateDevice; VirtualProtect(&vt[16], 4, old, &old); }
-        LOG("Direct3DCreate9 hooked");
+        patch_vtable(vt, 16, (void*)hook_CreateDevice, (void**)&orig_CreateDevice);
+        LOG("Direct3DCreate9 hooked (9Ex=%d)", g_using_ex);
     }
     return d3d;
 }
@@ -903,6 +1166,10 @@ static void read_config(void) {
     cfg.fullscreen_refresh = GetPrivateProfileIntA("hfr", "fullscreen_refresh", 0, ini);
     cfg.enemy_interp = GetPrivateProfileIntA("hfr", "enemy_interp", 1, ini);
     cfg.debug = GetPrivateProfileIntA("hfr", "debug", 0, ini);
+    cfg.subtick_input = GetPrivateProfileIntA("hfr", "subtick_input", 1, ini);
+    cfg.d3d9ex = GetPrivateProfileIntA("hfr", "d3d9ex", 1, ini);
+    cfg.max_frame_latency = GetPrivateProfileIntA("hfr", "max_frame_latency", 1, ini);
+    cfg.flipex = GetPrivateProfileIntA("hfr", "flipex", 0, ini);
     for (size_t i = 0; i < sizeof g_classes / sizeof g_classes[0]; i++) {
         char key[64]; snprintf(key, sizeof key, "sub_%s", g_classes[i].name);
         g_sub_enabled[i] = GetPrivateProfileIntA("systems", key, g_classes[i].mode == MODE_SUB, ini);
@@ -941,6 +1208,12 @@ static int install(void) {
       for (int i = 0; i < 4; i++) { uint8_t ex[5] = { 0xE8 }; int32_t rel = (int32_t)(0x43bc10 - (saves[i] + 5)); memcpy(ex + 1, &rel, 4); patch_call(saves[i], (void*)hfr_replay_save, ex); }
       { uint8_t ex[5] = { 0xE8, 0x79, 0x11, 0x00, 0x00 }; patch_call(0x43b1d2, (void*)hfr_replay_load, ex); } }
     if (!hook_iat("d3d9.dll", "Direct3DCreate9", (void*)hook_Direct3DCreate9, (void**)&orig_Direct3DCreate9)) LOG("IAT hook for Direct3DCreate9 failed");
+    if (cfg.d3d9ex) {
+        int a = hook_iat("d3dx9_40.dll", "D3DXCreateTexture", (void*)hook_D3DXCreateTexture, (void**)&orig_D3DXCreateTexture);
+        int b = hook_iat("d3dx9_40.dll", "D3DXCreateTextureFromFileInMemoryEx", (void*)hook_D3DXCreateTextureFromFileInMemoryEx, (void**)&orig_D3DXCreateTextureFromFileInMemoryEx);
+        if (!a || !b) { LOG("D3DX IAT hooks failed (%d,%d) — Direct3D 9Ex disabled", a, b); cfg.d3d9ex = 0; }
+    }
+    if (cfg.subtick_input && !hook_iat("winmm.dll", "joyGetPosEx", (void*)hook_joyGetPosEx, (void**)&orig_joyGetPosEx)) LOG("IAT hook for joyGetPosEx failed");
     recompute_rate(cfg.fps > 0 ? cfg.fps : detect_refresh(NULL));
     return 1;
 }
@@ -966,7 +1239,8 @@ BOOL WINAPI DllMain(HINSTANCE h, DWORD reason, LPVOID res) {
         if (mtx && GetLastError() == ERROR_ALREADY_EXISTS) return TRUE;
         read_config();
         if (cfg.log) { char path[MAX_PATH]; GetModuleFileNameA(NULL, path, MAX_PATH); char* p = strrchr(path, '\\'); if (p) strcpy(p + 1, "th12_hfr.log"); g_log = fopen(path, "w"); }
-        LOG("th12_hfr loading; fps=%d vsync=%d substep=%d", cfg.fps, cfg.vsync, cfg.substep);
+        LOG("th12_hfr v0.11 loading; fps=%d vsync=%d substep=%d subtick_input=%d d3d9ex=%d max_frame_latency=%d flipex=%d enemy_interp=%d",
+            cfg.fps, cfg.vsync, cfg.substep, cfg.subtick_input, cfg.d3d9ex, cfg.max_frame_latency, cfg.flipex, cfg.enemy_interp);
         install();
     }
     return TRUE;
