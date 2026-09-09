@@ -1,9 +1,9 @@
 #!/bin/sh
-# Builds th12_hfr.dll and th12_hfr.exe into build/ with mingw-w64 (i686-w64-mingw32-gcc).
-set -e
+# Requires an i686 MinGW-w64 cross compiler. Both adapters are always included.
+set -eu
 cd "$(dirname "$0")"
 mkdir -p build
-i686-w64-mingw32-gcc -O2 -Wall -Wno-unused-function -shared -static-libgcc -o build/th12_hfr.dll src/hfr.c -ld3d9 -lwinmm -Wl,--kill-at
-i686-w64-mingw32-gcc -O2 -s -mwindows -static-libgcc -o build/th12_hfr.exe src/launcher.c
-cp build/th12_hfr.dll build/dinput8.dll
-ls -la build/
+i686-w64-mingw32-gcc -std=gnu11 -O2 -Wall -Wextra -Wno-unused-function -Wno-unused-parameter -shared -static-libgcc -o build/touhou_hfr.dll src/hfr.c -ld3d9 -lwinmm -Wl,--kill-at
+i686-w64-mingw32-gcc -std=gnu11 -O2 -s -mwindows -static-libgcc -o build/touhou_hfr.exe src/launcher.c
+cp build/touhou_hfr.dll build/dinput8.dll
+cp touhou_hfr.ini build/touhou_hfr.ini

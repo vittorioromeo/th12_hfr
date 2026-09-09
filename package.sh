@@ -1,10 +1,14 @@
 #!/bin/sh
-# package.sh <version> : builds and creates releases/th12_hfr_v<version>.zip
-set -e
-V=$1; [ -n "$V" ] || { echo "usage: package.sh <version>"; exit 1; }
-cd "$(dirname "$0")"; ./build.sh >/dev/null
-P=build/pkg; rm -rf $P; mkdir -p $P/th12_hfr_v$V/source
-cp build/dinput8.dll build/th12_hfr.dll build/th12_hfr.exe th12_hfr.ini README.md $P/th12_hfr_v$V/
-cp src/hfr.c src/launcher.c build.sh package.sh $P/th12_hfr_v$V/source/
-(cd $P && zip -qr ../../releases/th12_hfr_v$V.zip th12_hfr_v$V)
-ls -la releases/th12_hfr_v$V.zip
+set -eu
+V=${1:-0.2.0-test}
+case "$V" in *[!A-Za-z0-9.-]*|'') echo 'Invalid version'; exit 1;; esac
+cd "$(dirname "$0")"
+./build.sh
+P=$(mktemp -d build/package.XXXXXX)
+mkdir -p "$P/touhou_hfr_v$V/source" releases
+cp build/dinput8.dll build/touhou_hfr.dll build/touhou_hfr.exe touhou_hfr.ini README.md ARCHITECTURE.md DEVNOTES.md TH11_DEVNOTES.md TH11_README.md TH12_README.md install.ps1 "$P/touhou_hfr_v$V/"
+cp -R src tools "$P/touhou_hfr_v$V/source/"
+cp build.sh build.ps1 package.sh package.ps1 test.ps1 test_th11.ps1 install.ps1 touhou_hfr.ini README.md ARCHITECTURE.md DEVNOTES.md TH11_DEVNOTES.md TH11_README.md TH12_README.md "$P/touhou_hfr_v$V/source/"
+# Exclude local Python caches; never include build/test images or game files.
+(cd "$P" && zip -qr "../../releases/touhou_hfr_v$V.zip" "touhou_hfr_v$V" -x '*/__pycache__/*' '*.pyc')
+echo "releases/touhou_hfr_v$V.zip"
