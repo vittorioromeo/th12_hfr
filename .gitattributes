@@ -1,0 +1,15 @@
+# Everything in this repository is text and is stored and checked out with LF endings.
+#
+# Without this the repository drifts: the v0.2.0 import brought in 32 files with CRLF, a
+# Windows checkout then rewrote the rest of the working tree to CRLF, and `git status` showed
+# 54 modified files that differed from their committed versions by nothing but line endings.
+# That is not merely untidy -- it hides real changes in the noise, and it makes patches
+# generated on one machine fail to apply on the other.
+#
+# `eol=lf` applies on checkout regardless of a user's core.autocrlf, so this file is the fix
+# rather than a per-clone setting that each person has to remember.
+* text=auto eol=lf
+
+# The shader sources are compiled at run time by the game's d3dx9; keep them LF too so the
+# line numbers in a compiler error match the file as it is on disk.
+*.hlsl text eol=lf
