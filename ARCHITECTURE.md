@@ -24,7 +24,7 @@ The core is compiled once, regardless of the number of registered games.
 `hfr11.c` and `launcher11.c` are compatibility includes, not separate implementations.
 
 The shared core uses profile fields and callbacks rather than checking the game
-number. Game IDs occur in executable registration and replay metadata. The two
+number. Game IDs occur in executable registration and replay metadata. The twoE
 backends currently describe the engine family shared by TH11 and TH12; they are
 not assumptions that every Touhou title uses this ABI or renderer.
 
