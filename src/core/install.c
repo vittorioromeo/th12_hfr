@@ -46,6 +46,12 @@ static void install_speed_sites(void) {
 }
 static int install(void) {
     if (!g_game) return 0;
+    if (g_game->provisional) {
+        LOG("%s is recognised but support for it is not finished, so nothing has been patched.",
+            g_game->identity->name);
+        LOG("  The game runs exactly as it would without this patch. See src/games for what is known.");
+        return 0;
+    }
     if (conflict_found(0)) return 0;   /* another patch already owns the frame loop */
     g_p=stub_begin();
     if (!g_stub_mem) { LOG("Cannot allocate hook stubs; no hooks applied");return 0; }

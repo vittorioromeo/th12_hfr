@@ -35,4 +35,6 @@ static const struct GameProfile th10_profile = {
         .screenshot_fn = 0x420670, .screenshot_call = 0x4392c1,
     },
     .d3dx = "d3dx9_31.dll",
+    /* Until the fault described above is understood, TH10 is identified and then left alone. */
+    .provisional = 1,
 };

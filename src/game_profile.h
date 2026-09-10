@@ -67,6 +67,10 @@ struct GameProfile {
     } speed_sites;
     const struct node_class* classes;
     size_t class_count;
+    /* Set while a game is still being worked out. The patch identifies it, logs what it knows,
+       and then leaves it completely alone -- no hooks at all -- because a game that installs
+       and then faults is worse than one the patch does not claim to support. */
+    int provisional;
     int mask_minor_player_edges;
     const char* d3dx;
     void (*install_sites)(void);

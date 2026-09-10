@@ -28,6 +28,21 @@ the module-name check still covers it. See `src/core/conflict.c` for what this i
 - one row in `game_identities[]` there
 - one entry in `game_profiles[]` at the top of `src/core/install.c`
 
+## Three states a game can be in
+
+`provisional = 1` in the profile: identified, and then left completely alone. Nothing is
+hooked. Use this while a game is still being worked out -- a game that installs and then
+faults is worse than one the patch does not claim to support, because the second is obvious
+and the first is a bug report.
+
+No simulation addresses (`runner_fn` and `frame_calls` left zero): the whole video path
+installs and the simulation is untouched, so the game runs at its stock 60 Hz with every
+scaling, filter and menu feature working. `install()` says so in the log, the menu disables
+the timing controls with the reason, and the harness skips the tests that drive game
+structures.
+
+Fully described: everything.
+
 ## What comes for free, and what does not
 
 Free, because none of it is game-specific: the whole video path (arbitrary window resizing,

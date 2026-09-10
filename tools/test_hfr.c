@@ -129,6 +129,12 @@ int main(int argc,char**argv) {
     assert(!patch_bytes(addr+1,changed,5,NULL));
     assert(!patch_commit());assert(!memcmp((void*)addr,id->signatures[0].bytes,5));
     cfg.subtick_input=1;cfg.d3d9ex=1;
+    if (g_game->provisional) {
+        assert(!install());          /* a provisional game must be left completely alone */
+        puts("SKIP: hook installation (this game is provisional; the patch does not touch it)");
+        printf("PASS: %u executable signatures verified; nothing patched\n", (unsigned)id->signature_count);
+        free(file); return 0;
+    }
     assert(install() && !g_patch_failed);
     assert(g_frame_hook_installed == sim);   /* the frame hook exists exactly when the profile describes one */
     assert(orig_Direct3DCreate9 && orig_D3DXCreateTexture && orig_D3DXCreateTextureFromFileInMemoryEx);
