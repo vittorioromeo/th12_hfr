@@ -6,6 +6,28 @@ static int select_game(const uint8_t* image, size_t size) {
         if (game_profiles[i]->identity==id && game_profiles[i]->class_count<=MAX_NODE_CLASSES) { g_game=game_profiles[i];return 1; }
     return 0;
 }
+/* First-chance report of a fatal exception, naming the module it came from. A crash inside
+   a windowed process is otherwise silent, and the patch's log is the only thing a tester
+   can send back. Purely diagnostic: the exception is always passed on unchanged. */
+static LONG CALLBACK hfr_exception_report(EXCEPTION_POINTERS* ep) {
+    static int reported;
+    DWORD code = ep && ep->ExceptionRecord ? ep->ExceptionRecord->ExceptionCode : 0;
+    int fatal = code == EXCEPTION_ACCESS_VIOLATION || code == EXCEPTION_ILLEGAL_INSTRUCTION ||
+                code == EXCEPTION_PRIV_INSTRUCTION || code == EXCEPTION_INT_DIVIDE_BY_ZERO ||
+                code == EXCEPTION_STACK_OVERFLOW || code == EXCEPTION_IN_PAGE_ERROR;
+    if (fatal && reported < 4) {
+        ++reported;
+        void* addr = ep->ExceptionRecord->ExceptionAddress;
+        char name[MAX_PATH] = "?";
+        HMODULE mod = NULL;
+        GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                           (LPCSTR)addr, &mod);
+        if (mod) GetModuleFileNameA(mod, name, MAX_PATH);
+        LOG("EXCEPTION %08lx at %p  (%s + 0x%x)", (unsigned long)code, addr, name,
+            (unsigned)((uintptr_t)addr - (uintptr_t)mod));
+    }
+    return EXCEPTION_CONTINUE_SEARCH;
+}
 static int install(void) {
     if (!g_game) return 0;
     g_p=stub_begin();
@@ -30,6 +52,7 @@ static int install(void) {
     if (cfg.subtick_input) hook_iat("winmm.dll","joyGetPosEx",hook_joyGetPosEx,(void**)&orig_joyGetPosEx);
     FlushInstructionCache(GetCurrentProcess(),g_stub_mem,g_stub_used);
     if (!patch_commit()) { LOG("Patch transaction failed; no code/import hooks applied");return 0; }
+    AddVectoredExceptionHandler(1, hfr_exception_report);
     QueryPerformanceFrequency(&g_qpf);timeBeginPeriod(1);
     recompute_rate(cfg.fps>0?cfg.fps:detect_refresh(NULL));
     LOG("Installed %s: %u verified signatures, %u code/import patches",g_game->identity->name,

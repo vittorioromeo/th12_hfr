@@ -16,6 +16,16 @@
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
+/* Set when ImGui reports misuse; the menu stops drawing rather than the game stopping. */
+static bool g_menu_failed = false;
+extern "C" void hfr_imgui_failed(const char* expr, const char* file, int line) {
+    if (g_menu_failed) return;
+    g_menu_failed = true;
+    const char* base = file;
+    for (const char* p = file; *p; ++p) if (*p == '/' || *p == '\\') base = p + 1;
+    hfr_ui_report("menu: disabled after an internal check failed (%s at %s:%d)", expr, base, line);
+}
+
 namespace {
 bool g_ready = false;
 bool g_visible = false;
@@ -73,8 +83,10 @@ extern "C" int  hfr_menu_visible(void) { return g_ready && g_visible; }
 
 extern "C" int hfr_menu_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, LRESULT* result) {
     if (!g_ready) return 0;
-    if (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN) {
-        if ((int)wp == hfr_ui_menu_key()) { hfr_menu_toggle(); if (result) *result = 0; return 1; }
+    /* The key is acted on by the runtime's poll, which works whichever way the game took
+       the keyboard; swallow it here so it does not also reach the game. */
+    if (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN || msg == WM_KEYUP || msg == WM_SYSKEYUP) {
+        if ((int)wp == hfr_ui_menu_key()) { if (result) *result = 0; return 1; }
     }
     if (!g_visible) return 0;
     /* While the menu is up the cursor must be visible even though the game hides it. */
@@ -161,8 +173,10 @@ void draw_window(void) {
         draw_video_section();
         ImGui::Separator();
         int latency = hfr_ui_get(UI_MAX_FRAME_LATENCY);
-        if (ImGui::SliderInt("Frame queue", &latency, 0, 3, latency == 0 ? "driver default" : "%d frame(s)"))
+        if (ImGui::SliderInt("Frame queue", &latency, 0, 3, "%d"))
             hfr_ui_set(UI_MAX_FRAME_LATENCY, latency);
+        ImGui::SameLine();
+        ImGui::TextDisabled("%s", latency == 0 ? "(driver default)" : "frame(s)");
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("How many frames the driver may queue. 1 is the lowest display latency.");
         ImGui::Separator();
         if (ImGui::Button("Save to touhou_hfr.ini")) hfr_ui_save();
@@ -174,7 +188,7 @@ void draw_window(void) {
 } // namespace
 
 extern "C" void hfr_menu_render(IDirect3DDevice9* dev, int width, int height) {
-    if (!g_ready || (!g_visible && g_hint_frames <= 0)) return;
+    if (!g_ready || g_menu_failed || (!g_visible && g_hint_frames <= 0)) return;
     if (!g_objects) { if (!ImGui_ImplDX9_CreateDeviceObjects()) return; g_objects = true; }
     static int last_height = 0;
     if (height != last_height) { last_height = height; style_for((float)height); }
@@ -187,6 +201,6 @@ extern "C" void hfr_menu_render(IDirect3DDevice9* dev, int width, int height) {
     else if (g_hint_frames > 0) { draw_hint(); --g_hint_frames; }
     ImGui::EndFrame();
     ImGui::Render();
-    ImGui_ImplDX9_RenderDrawData(ImGui::GetDrawData());
+    if (!g_menu_failed) ImGui_ImplDX9_RenderDrawData(ImGui::GetDrawData());
     (void)dev;
 }

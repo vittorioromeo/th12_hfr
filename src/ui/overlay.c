@@ -46,6 +46,11 @@ int         hfr_ui_filter_count(void) { return filter_count(); }
 const char* hfr_ui_filter_name(int index) { struct Filter* f = filter_at(index); return f ? f->name : ""; }
 int         hfr_ui_filter_is_fixed_scale(int index) { struct Filter* f = filter_at(index); return f && f->scale > 0; }
 int         hfr_ui_menu_key(void) { return cfg.menu_key; }
+void hfr_ui_report(const char* fmt, ...) {
+    if (!g_log) return;
+    va_list ap; va_start(ap, fmt); vfprintf(g_log, fmt, ap); va_end(ap);
+    fputc('\n', g_log); fflush(g_log);
+}
 
 static void ini_put_int(const char* section, const char* key, int value) {
     char buf[32]; snprintf(buf, sizeof buf, "%d", value);

@@ -29,6 +29,7 @@ void        hfr_ui_save(void);
 void        hfr_ui_status(char* buf, int len);
 void        hfr_ui_scale_info(char* buf, int len);
 int         hfr_ui_menu_key(void);
+void        hfr_ui_report(const char* fmt, ...);   /* into the patch's log */
 
 /* Implemented by the menu (C++); all are safe to call when the menu failed to start.
    A build without the menu (the test harness) defines HFR_NO_UI and gets local no-ops. */
