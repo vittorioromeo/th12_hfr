@@ -2,6 +2,7 @@
 
 static int __stdcall hfr_frame(void* ctx) {
     double now = now_s();
+    conflict_check_late();
     hfr_ui_apply_pending(g_dev);                     /* menu changes that touch D3D or the schedule */
     if (window_pump(g_dev)) { Sleep(1); return 0; }   /* minimised, or resizing the swap chain */
     replay_check();

@@ -1,5 +1,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <tlhelp32.h>
+#include <ctype.h>
 #include <d3d9.h>
 #include <mmsystem.h>
 #include <stdio.h>

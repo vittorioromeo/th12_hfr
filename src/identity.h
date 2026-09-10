@@ -6,18 +6,30 @@
 #include <string.h>
 #include <stdlib.h>
 struct GameSignature { uintptr_t addr; size_t size; uint8_t bytes[32]; };
+/* A place another patch is known to take over, and what the stock executable has there.
+   Deliberately not part of identification: the game is identified first, from signatures
+   that no known patch touches, and only then are these checked -- so a mismatch means
+   "something else has patched this game", never "this is the wrong game". Conflating the
+   two would report a modified executable to someone whose executable is fine. */
+struct ConflictSite { uintptr_t addr; size_t size; uint8_t bytes[8]; const char* what; };
 #include "games/th11_signatures.h"
 #include "games/th12_signatures.h"
+#include "games/th12_conflicts.h"
 struct GameIdentity {
     unsigned id, image_size;
     const char *name, *legacy_ini, *replay_magic;
     const char* executables[2]; /* English first, then Japanese. */
     const struct GameSignature* signatures;
     size_t signature_count;
+    const struct ConflictSite* conflicts;    /* may be NULL: no sites known for that game yet */
+    size_t conflict_count;
 };
 static const struct GameIdentity game_identities[] = {
-    {11,0xcd000,"TH11 v1.00a","th11_hfr.ini","t11r",{"th11e.exe","th11.exe"},th11_signatures,sizeof th11_signatures/sizeof *th11_signatures},
-    {12,0xd9000,"TH12 v1.00b","th12_hfr.ini","t12r",{"th12e.exe","th12.exe"},th12_signatures,sizeof th12_signatures/sizeof *th12_signatures},
+    /* No conflict sites for TH11: the equivalent addresses have not been read out of a
+       vpatch build for it, and guessing them would either miss or accuse the innocent.
+       The check for a loaded patch DLL is not per-game and still covers it. */
+    {11,0xcd000,"TH11 v1.00a","th11_hfr.ini","t11r",{"th11e.exe","th11.exe"},th11_signatures,sizeof th11_signatures/sizeof *th11_signatures,NULL,0},
+    {12,0xd9000,"TH12 v1.00b","th12_hfr.ini","t12r",{"th12e.exe","th12.exe"},th12_signatures,sizeof th12_signatures/sizeof *th12_signatures,th12_conflicts,sizeof th12_conflicts/sizeof *th12_conflicts},
 };
 #define GAME_COUNT (sizeof game_identities / sizeof *game_identities)
 static const IMAGE_NT_HEADERS32* image_header(const uint8_t* image, size_t size) {
@@ -48,6 +60,19 @@ static const struct GameIdentity* identify_image(const uint8_t* image, size_t si
     }
     return NULL;
 }
+/* Which of the game's frame-loop sites no longer holds its stock bytes, or -1 if all do.
+   Call only on an image that has already been identified. */
+static int conflict_scan(const struct GameIdentity* game, const uint8_t* image, size_t size) {
+    if (!game || !game->conflicts) return -1;
+    for (size_t i = 0; i < game->conflict_count; ++i) {
+        const struct ConflictSite* c = &game->conflicts[i];
+        size_t off = c->addr - 0x400000;
+        if (off > size || c->size > size - off) continue;
+        if (memcmp(image + off, c->bytes, c->size)) return (int)i;
+    }
+    return -1;
+}
+
 /* Map an on-disk PE as inert bytes; never LoadLibrary an executable here. */
 static uint8_t* map_game_file(const uint8_t* file, size_t size, size_t* image_size) {
     const IMAGE_NT_HEADERS32* nt=image_header(file,size);

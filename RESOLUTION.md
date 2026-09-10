@@ -304,6 +304,65 @@ log is the only thing a tester can send back:
   This is what identified the screenshot crash in 2.5.0, after two rounds of guessing had
   failed to.
 
+## 2.8 When another patch is in the same game
+
+vpatch (VsyncPatch, by swmpLV/75E) replaces the game's frame limiter and calls Present on its
+own schedule. So does this patch. Their sites do not overlap ours -- I checked all 60 frozen
+signatures against all 16 of vpatch's th12 patch addresses -- so nothing in the identity check
+notices, both installs report success, and the game ends up running at whichever scheduler got
+the last word, with no clue anywhere as to why.
+
+The timing is the whole difficulty, and it is worth recording because it is the opposite of
+what it looks like. vpatch launches the game suspended and injects itself with
+CreateRemoteThread + LoadLibrary, so it seems obvious that it must get there first. It does
+not: the injected thread runs loader initialisation before its LoadLibrary call, and loader
+initialisation is what loads this DLL, because the game imports it. Traced under Wine with
+`WINEDEBUG=+loaddll`, the game process loads DINPUT8.dll and only then vpatch_th12.dll. So at
+the moment this patch installs, the game is still clean and there is nothing to detect. The
+first version of this guard checked only at install time and reported nothing at all when
+launched through vpatch.exe, which is how the ordering came to light.
+
+So there are two checks, in `src/core/conflict.c`:
+
+- **At install**, which catches an executable already modified on disk and anything that did
+  get in earlier: refuse outright, log, and say so in a dialog.
+- **On the first frame**, by which point everything that is going to load has loaded: far too
+  late to refuse, so say plainly what is happening rather than leave someone wondering why a
+  patch they installed appears to do nothing.
+
+Detection is two independent tests. A module whose name contains `vpatch`, and the game's own
+frame-loop code no longer being the code it shipped with -- four sites recorded in
+`src/games/th12_conflicts.h` with the bytes a clean executable has there, read from JP and
+English builds, which agree at all four. The byte test is the more general of the two: it does
+not care whose patch it is, only that something has taken the frame loop.
+
+These sites are deliberately **not** part of identification. Identity is settled first, from
+signatures no known patch touches, and only then are they checked, so a mismatch always means
+"something else patched this game" and never "this is the wrong game" -- the test asserts that
+a game with vpatch's jump written over each site is still identified as the game. TH11 has no
+sites recorded, because the equivalent addresses have not been read out of a vpatch build for
+it and guessing would either miss or accuse the innocent; the module test still covers it.
+
+The dialog runs on a thread of its own. A message box called from `DllMain` would hold the
+loader lock while it waited for the user; the thread cannot start until that lock is released,
+which is exactly when showing one becomes safe.
+
+Verified end to end under Wine: launching through `vpatch.exe` names `vpatch_th12.dll` and the
+frame limiter at `0x4503f8`; launching normally with the vpatch files sitting in the same
+folder reports nothing.
+
+### 2.8.1 Is vpatch still needed?
+
+No, for TH12. Its live features there are a frame limiter, its own Present scheduling, window
+geometry, and an input fix; the first three are exactly this patch's territory and it does them
+with a whole-number frame cap and a stretched 640x480 window. It does not change the render
+resolution, whatever the guides say. Three things it does that this patch does not, recorded so
+they are not lost: `BugFixGetDeviceState` (a foreground check on the DirectInput path, the fix
+for input running away after alt-tab -- this patch calls ZUN's poll routine rather than
+replacing it, so it inherits stock behaviour); `BugFixTh12Shadow`, a rev6-only one-line render
+state change fixing UFO's Palanquin Ship shadow on Radeon and Intel; and `ReplaySlowFPS`,
+slow-motion replay on Shift.
+
 ## 3. What is not done
 
 * **The 3D stage still renders at 640x480.** The stage background is real 3D and would look

@@ -30,6 +30,7 @@ static LONG CALLBACK hfr_exception_report(EXCEPTION_POINTERS* ep) {
 }
 static int install(void) {
     if (!g_game) return 0;
+    if (conflict_found(0)) return 0;   /* another patch already owns the frame loop */
     g_p=stub_begin();
     if (!g_stub_mem) { LOG("Cannot allocate hook stubs; no hooks applied");return 0; }
     patch_begin();

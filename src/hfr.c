@@ -9,6 +9,7 @@
 #include "core/speed.c"
 #include "core/x86.c"
 #include "core/sites.c"
+#include "core/conflict.c"
 #include "core/site_helpers.c"
 #include "core/interpolation.c"
 #include "core/input.c"

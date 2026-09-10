@@ -80,6 +80,38 @@ int main(int argc,char**argv) {
     }
     assert(!identify_image(base,64));
     puts("PASS: executable detection rejects every individually modified signature and truncated headers");
+
+    /* The guard against another patch owning the frame loop. The clean executable that was
+       just identified must not trip it -- a false positive here would refuse to install for
+       someone whose game is fine -- and every guarded site must be noticed on its own. */
+    assert(conflict_scan(id,base,nt->OptionalHeader.SizeOfImage)==-1);
+    for (size_t i=0;i<id->conflict_count;++i) {
+        uint8_t* p=(uint8_t*)id->conflicts[i].addr;
+        for (size_t b=0;b<id->conflicts[i].size;++b) {
+            p[b]^=0xff;
+            assert(conflict_scan(id,base,nt->OptionalHeader.SizeOfImage)>=0);
+            p[b]^=0xff;
+        }
+        /* vpatch writes a jump over the site; that is what this must catch in practice. */
+        uint8_t saved[8];memcpy(saved,p,id->conflicts[i].size);
+        p[0]=0xe9;assert(conflict_scan(id,base,nt->OptionalHeader.SizeOfImage)==(int)i);
+        memcpy(p,saved,id->conflicts[i].size);
+    }
+    assert(conflict_scan(id,base,nt->OptionalHeader.SizeOfImage)==-1);
+    /* Identification must not depend on these sites: a game patched by vpatch is still the
+       game, and must be reported as a conflict rather than as an unsupported executable. */
+    for (size_t i=0;i<id->conflict_count;++i) {
+        uint8_t* p=(uint8_t*)id->conflicts[i].addr;
+        uint8_t saved=*p;*p=0xe9;
+        assert(identify_image(base,nt->OptionalHeader.SizeOfImage)==id);
+        *p=saved;
+    }
+    /* A game with no conflict sites recorded yet must pass, not fail. */
+    for (size_t g=0;g<GAME_COUNT;++g)
+        if (!game_identities[g].conflicts)
+            assert(conflict_scan(&game_identities[g],base,nt->OptionalHeader.SizeOfImage)==-1);
+    printf("PASS: %u frame-loop sites guarded against another patch, and a clean executable trips none\n",
+        (unsigned)id->conflict_count);
     test_schedule();test_replay_parser();test_replay_roundtrip();test_runner();test_scale_rect();test_snap_client();test_menu_key();
     /* A failed patch transaction must leave all game code unchanged. */
     patch_begin();uint8_t changed[6]={0};
