@@ -171,10 +171,20 @@ locked, so returning our render target made that routine write through an uninit
 pointer -- an access violation inside the game, at a site with no obvious connection to
 anything the patch does.
 
-The hook therefore returns a `D3DPOOL_SYSTEMMEM` copy, refreshed with `GetRenderTargetData`
-on each call. That is lockable, and is equally valid as a `D3DXLoadSurfaceFromSurface` source
-for the engine's other caller, the capture-screen-to-sprite path. It costs a readback, but
-only on the rare frames where the game asks for the back buffer at all.
+The hook therefore returns a **lockable render target**, refreshed with `StretchRect`.
+
+The first attempt at this used a `D3DPOOL_SYSTEMMEM` copy refreshed with
+`GetRenderTargetData`, on the assumption that the game asks for its back buffer rarely. It
+does not. `FUN_0044f4b0` runs once per frame and services up to four pending screen captures,
+each of which asks for the back buffer -- so every one of those became a GPU-to-CPU readback
+with a full pipeline stall, and the game stopped rendering. `CreateRenderTarget` with
+`Lockable` set gives a surface that is both lockable and refreshable with a graphics-side
+blit, which costs nothing on the capture path and is only slow when the screenshot path
+actually locks it. System memory remains the fallback if the driver refuses.
+
+The lesson generalises: **before putting work on a hooked engine call, find out how often the
+engine makes it.** Two callers of `GetBackBuffer` in the disassembly looked like "screenshots
+and pause backgrounds, so hardly ever"; one of them is per frame.
 
 This is the sort of failure the vectored exception handler (2.7) exists for: the log named the
 faulting address, and the address named the screenshot routine.

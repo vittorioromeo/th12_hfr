@@ -58,7 +58,9 @@ static IDirect3DDevice9*     g_dev;
 static IDirect3DTexture9*    g_src_tex;      /* the game's render target, native size */
 static IDirect3DSurface9*    g_src_surf;
 static IDirect3DSurface9*    g_src_ds;       /* our own depth stencil, native size */
-static IDirect3DSurface9*    g_readback;     /* lockable system-memory copy of the above */
+static IDirect3DSurface9*    g_lockable;     /* lockable copy handed to the game as its back buffer */
+static int                   g_lockable_sysmem;
+static unsigned              g_stat_backbuffer;
 static IDirect3DSwapChain9*  g_swap;         /* our presentation chain, sized to the window */
 static IDirect3DSurface9*    g_real_bb;      /* its back buffer */
 static int                   g_own_present;  /* we present; the device's own chain is unused */
@@ -102,7 +104,7 @@ static void scaler_release(void) {
     g_pass_w = g_pass_h = 0;
     scaler_release_output();
     SAFE_RELEASE(g_state); scaler_release_pass();
-    SAFE_RELEASE(g_readback);
+    SAFE_RELEASE(g_lockable); g_lockable_sysmem = 0;
     SAFE_RELEASE(g_src_ds); SAFE_RELEASE(g_src_surf); SAFE_RELEASE(g_src_tex);
 }
 
@@ -410,20 +412,41 @@ static HRESULT __stdcall hook_Present(IDirect3DDevice9* dev, const RECT* src, co
  * made that path write through an uninitialised pointer. Hand over a system-memory copy
  * instead, which is lockable and is equally valid as a D3DX blit source. The copy costs a
  * readback, but only on the rare frames where the game asks for the back buffer at all. */
+/* A lockable render target: a graphics-side copy, so refreshing it is a blit rather than a
+   readback. The engine asks for the back buffer every frame it has a pending screen capture,
+   so this must not stall the pipeline; only the screenshot path actually locks it, and that
+   one is welcome to be slow. Falls back to system memory, then to handing over the render
+   target itself, which is correct for the capture path even though it cannot be locked. */
+static IDirect3DSurface9* lockable_copy(IDirect3DDevice9* dev) {
+    if (!g_lockable) {
+        if (SUCCEEDED(dev->lpVtbl->CreateRenderTarget(dev, (UINT)g_native_w, (UINT)g_native_h, g_bb_format,
+                                                      D3DMULTISAMPLE_NONE, 0, TRUE, &g_lockable, NULL)))
+            LOG("scaler: lockable render target for the game's back buffer");
+        else if (SUCCEEDED(dev->lpVtbl->CreateOffscreenPlainSurface(dev, (UINT)g_native_w, (UINT)g_native_h,
+                                                                    g_bb_format, D3DPOOL_SYSTEMMEM, &g_lockable, NULL))) {
+            g_lockable_sysmem = 1;
+            LOG("scaler: no lockable render target; using a system-memory copy (slower)");
+        } else {
+            LOG("scaler: no lockable copy of the game surface available");
+            return NULL;
+        }
+    }
+    HRESULT hr = g_lockable_sysmem ? dev->lpVtbl->GetRenderTargetData(dev, g_src_surf, g_lockable)
+                                   : dev->lpVtbl->StretchRect(dev, g_src_surf, NULL, g_lockable, NULL, D3DTEXF_NONE);
+    return SUCCEEDED(hr) ? g_lockable : NULL;
+}
 static HRESULT __stdcall hook_GetBackBuffer(IDirect3DDevice9* dev, UINT chain, UINT index, D3DBACKBUFFER_TYPE type, IDirect3DSurface9** out) {
     if (g_scaler_ok && g_src_surf && chain == 0 && index == 0 && type == D3DBACKBUFFER_TYPE_MONO && out) {
-        if (!g_readback)
-            dev->lpVtbl->CreateOffscreenPlainSurface(dev, (UINT)g_native_w, (UINT)g_native_h,
-                                                     g_bb_format, D3DPOOL_SYSTEMMEM, &g_readback, NULL);
-        if (g_readback && SUCCEEDED(dev->lpVtbl->GetRenderTargetData(dev, g_src_surf, g_readback))) {
-            g_readback->lpVtbl->AddRef(g_readback);
-            *out = g_readback;
-            return D3D_OK;
-        }
-        static int warned;
-        if (!warned) { warned = 1; LOG("scaler: no lockable copy of the game surface; screenshots may be wrong"); }
-        g_src_surf->lpVtbl->AddRef(g_src_surf);
-        *out = g_src_surf;
+        IDirect3DSurface9* give = lockable_copy(dev);
+        if (!give) give = g_src_surf;
+        /* Logged sparsely: the engine asks once per frame while a capture is pending, so the
+           running count is what shows whether this path is hot. */
+        ++g_stat_backbuffer;
+        if (g_stat_backbuffer <= 3 || g_stat_backbuffer % 600 == 0)
+            LOG("scaler: back buffer handed to the game (%u so far; %s)", g_stat_backbuffer,
+                give == g_src_surf ? "render target" : (g_lockable_sysmem ? "system memory" : "lockable target"));
+        give->lpVtbl->AddRef(give);
+        *out = give;
         return D3D_OK;
     }
     return orig_GetBackBuffer(dev, chain, index, type, out);
