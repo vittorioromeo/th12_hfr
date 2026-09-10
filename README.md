@@ -157,7 +157,7 @@ The build outputs one `touhou_hfr.dll`, one launcher and a byte-identical proxy
 alias. The archive includes the complete source and no game files.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the source map, replay format, validation
-scope and adding another game. Reverse-engineering history is preserved in
-[TH12 DEVNOTES](DEVNOTES.md) and [TH11 DEVNOTES](TH11_DEVNOTES.md); the original
+scope and adding another game. Per-game reverse-engineering records: [TH10](TH10_DEVNOTES.md),
+[TH11](TH11_DEVNOTES.md), [TH12](DEVNOTES.md) and [TH13](TH13_DEVNOTES.md); the original
 release instructions are in [TH12_README.md](TH12_README.md) and
 [TH11_README.md](TH11_README.md).

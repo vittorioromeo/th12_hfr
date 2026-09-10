@@ -309,6 +309,9 @@ sites: identity is settled first from bytes no known patch touches, so a mismatc
 
 ## 7. TH10, and how its speed model differs
 
+(The complete TH10 record — addresses, layouts, every hook and its reason — is
+[TH10_DEVNOTES.md](TH10_DEVNOTES.md); this section keeps what the runtime learned.)
+
 TH10 is supported. It is worth writing down what made it a different job from adding a second
 game that shares TH11's engine, because TH13 and beyond will be one or the other.
 
@@ -350,6 +353,9 @@ data-load cleanup, not in any of our stubs.
 ---
 
 ## 7a. TH13, and what porting TH12's hooks taught
+
+(The complete TH13 record is [TH13_DEVNOTES.md](TH13_DEVNOTES.md), including the object
+layouts and the porting tools; this section keeps what the runtime learned.)
 
 TH13 is supported. It confirmed the prediction in the old §9: one game-speed float
 (`0x4c0a28`) written at 16 sites, so the whole `SpeedSite` design applied unchanged, and the

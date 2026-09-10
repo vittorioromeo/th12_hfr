@@ -1,8 +1,8 @@
 /* Frozen TH10 v1.00a signatures, verified byte-identical in the Japanese (th10j.exe) and
-   English (th10.exe) executables. TH10's simulation is not described by this patch yet, so
-   apart from the screenshot call site below none of these is a place the patch writes to --
-   they exist to identify the executable, and are spread across the code section so that a
-   different build fails to match. */
+   English (th10.exe) executables: every site the simulation writes (speed sites, gated blocks,
+   the hit-test guard, replay and frame call sites, the frame limiter waits) plus function
+   entries spread across the code section so that a different build fails to match. See
+   TH10_DEVNOTES.md for what each site is. */
 static const struct GameSignature th10_signatures[] = {
     {0x4392c1, 5, {0xe8,0xaa,0x73,0xfe,0xff}},   /* the screenshot call, the one site the patch does write */
     {0x401040, 12, {0x9a,0x28,0x02,0x00,0x00,0x21,0x9a,0x78,0x03,0x00,0x00,0x33}},

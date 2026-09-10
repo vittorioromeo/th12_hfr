@@ -10,7 +10,7 @@ New-Item -ItemType Directory -Path $source -Force | Out-Null
 foreach($file in @('dinput8.dll','touhou_hfr.dll','touhou_hfr.exe','touhou_hfr.ini')) {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot "build/$file") -Destination $package
 }
-foreach($file in @('README.md','ARCHITECTURE.md','DEVNOTES.md','TH11_DEVNOTES.md','TH11_README.md','TH12_README.md','install.ps1')){Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination $package}
+foreach($file in @('README.md','ARCHITECTURE.md','DEVNOTES.md','DEVNOTES_RUNTIME.md','TH10_DEVNOTES.md','TH11_DEVNOTES.md','TH13_DEVNOTES.md','ADDING_A_GAME.md','TH11_README.md','TH12_README.md','install.ps1')){Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination $package}
 foreach($dir in @('src','tools')) {
     $base=Join-Path $PSScriptRoot $dir
     foreach($file in Get-ChildItem -LiteralPath $base -Recurse -File) {
@@ -21,7 +21,7 @@ foreach($dir in @('src','tools')) {
         Copy-Item -LiteralPath $file.FullName -Destination $dest
     }
 }
-foreach($file in @('build.ps1','build.sh','package.ps1','package.sh','test.ps1','test_th11.ps1','install.ps1','README.md','ARCHITECTURE.md','DEVNOTES.md','TH11_DEVNOTES.md','TH11_README.md','TH12_README.md','touhou_hfr.ini')) {
+foreach($file in @('build.ps1','build.sh','package.ps1','package.sh','test.ps1','test_th11.ps1','install.ps1','README.md','ARCHITECTURE.md','DEVNOTES.md','DEVNOTES_RUNTIME.md','TH10_DEVNOTES.md','TH11_DEVNOTES.md','TH13_DEVNOTES.md','ADDING_A_GAME.md','TH11_README.md','TH12_README.md','touhou_hfr.ini')) {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination $source
 }
 New-Item -ItemType Directory -Force (Join-Path $PSScriptRoot 'releases') | Out-Null
