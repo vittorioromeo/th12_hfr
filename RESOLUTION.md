@@ -108,6 +108,56 @@ Two details that are easy to get wrong:
   built-in filters keep using pre-transformed `D3DFVF_XYZRHW` ones. The half-pixel shift is
   applied before the clip-space conversion so both paths rasterise identically.
 
+### 2.3.1 Passes
+
+The published upscalers worth having are not single shaders. Super-xBR is three passes,
+ScaleFX is five, and a pass generally needs to read more than the one before it: Super-xBR's
+second pass reads the game's own image alongside its first pass, and ScaleFX's last pass
+reaches back five passes to the original. So a filter file is now a shared header followed by
+`//! pass` blocks, each with its own `//! scale` and, if it writes values outside 0..1, its
+own `//! float`. Every pass sees `Source` (the pass before it), `Original`, and `Pass0`..
+`Pass5`. A file with no directives is still one free-scale pass, so nothing written before
+this changed.
+
+The rules live in `src/core/shader_parse.h`, which both the runtime and `tools/shader_check.c`
+include. They used to be written out twice, and the copy in the tool had already drifted from
+the runtime -- it was still checking shaders against a two-sampler prologue that no longer
+existed. One definition means the tool cannot be wrong about what the game accepts.
+
+Two things had to be got right before the ported filters looked like themselves:
+
+**Intermediates always carry alpha.** They used to be created in the back buffer's format,
+which for this game windowed is `X8R8G8B8` -- no alpha channel at all. ScaleFX's first pass
+writes an edge distance in each of four components, so a quarter of its data was being
+dropped, and the later passes then chose the wrong neighbour along every edge. On screen that
+is a dotted outline tracing every sprite, which reads as "the filter is broken" rather than
+"the target has three channels". Intermediates are now `A8R8G8B8` whatever the back buffer is;
+the extra channel costs nothing.
+
+**A chain that overshoots the window is averaged down, not sampled.** A fixed-scale filter
+magnifies by a whole number, usually more than the window asks for -- ScaleFX's 3x image in a
+1.5x window. One bilinear tap per destination pixel keeps two source pixels out of every
+three, which also produces a dotted edge, from the resample rather than the filter. Four
+bilinear taps at the quarter points of the destination pixel's footprint average it instead.
+This applies to every fixed-scale filter, not just the new ones.
+
+The lesson from both: a filter that is subtly wrong looks broken in the same way a filter that
+is completely wrong does, so "it renders something" is not evidence the port is right. What
+settled each of these was changing one thing and comparing the same frame.
+
+### 2.3.2 What is not bundled, and why
+
+Of the six upscalers asked for, three can be shipped and three cannot. `shaders/README.md`
+carries the detail, with the reasoning for each; the short version is that hqx is LGPL-2.1 in
+every implementation whose provenance can be traced (including two forks that ship permissive
+licence files while documenting derivation from copyleft sources), NNEDI3 is GPL/LGPL down to
+its trained weights, and FSRCNNX is LGPL-3.0. Anime4K is genuinely MIT but its cheapest useful
+preset is around 25 passes and it is trained to repair compression-damaged anime video, which
+is close to the opposite of what a 640x480 sprite needs.
+
+Because a filter can be dropped into `shaders/` at run time, none of this stops anyone using
+those algorithms -- it only stops this project distributing them.
+
 ### 2.4 Window management
 
 The window gets `WS_THICKFRAME`, a minimum size, and aspect snapping while dragging (the edge

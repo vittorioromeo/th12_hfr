@@ -11,21 +11,28 @@
  * identifies the sub-pixel. Fixed-scale filters such as MMPX depend on that.
  */
 #include "shader_sources.h"
+#include "shader_parse.h"
 
-static const char SHADER_PROLOGUE[] =
-    "sampler2D Source : register(s0);\n"
-    "float4 SourceSize : register(c0);\n"   /* w, h, 1/w, 1/h of the image being read    */
-    "float4 TargetSize : register(c1);\n"   /* w, h, 1/w, 1/h of the surface being drawn */
-    "#define SourceSampler Source\n"
-    "#line 1\n";
+enum { MAX_FILTERS = 32, FILTER_NAME_MAX = 32, MAX_PASSES = HFR_MAX_PASSES };
 
-enum { MAX_FILTERS = 32, FILTER_NAME_MAX = 32 };
+/* A filter is one or more pixel shader passes. Everything before the first "//! pass" is a
+   shared header compiled into every pass, which is what lets the passes of an algorithm
+   share their helper functions instead of repeating them. A file with no "//! pass" at all
+   is a single pass, so every shader written before this existed still works unchanged. */
+struct FilterPass {
+    struct ShaderPass s;            /* body, length, scale and float flag, from shader_parse.h */
+    IDirect3DPixelShader9* ps;
+};
 struct Filter {
     char  name[FILTER_NAME_MAX];
-    int   scale;                    /* fixed magnification; 0 = straight to the destination */
+    int   scale;                    /* total magnification; 0 = drawn straight to the destination */
+    int   pass_count;
+    struct FilterPass pass[MAX_PASSES];
     const char* embedded;           /* built-in source, or NULL for a file */
     char  path[MAX_PATH];           /* file source, when not embedded */
-    IDirect3DPixelShader9* ps;
+    char* text;                     /* the source, kept while the passes point into it */
+    const char* header;             /* shared header, into text */
+    size_t header_len;
     int   state;                    /* 0 not tried, 1 ready, -1 failed */
 };
 /* Direct3D 9 does not allow a ps_3_0 pixel shader with the fixed-function vertex pipeline,
@@ -36,6 +43,24 @@ static const char PASSTHROUGH_VS[] =
     "          out float4 op : POSITION, out float2 ot : TEXCOORD0) { op = p; ot = t; }\n";
 static IDirect3DVertexShader9* g_quad_vs;
 static int g_quad_vs_state;
+
+/* A fixed-scale filter magnifies by a whole number, which is usually more than the window
+   asks for: ScaleFX produces a 3x image, and a 1.5x window then has to throw half of it
+   away. Taking one bilinear sample per destination pixel does that by picking two source
+   pixels out of every three, which turns every filtered edge into a dotted line -- the
+   filter looks broken when the resample is what is wrong. Four bilinear taps at the quarter
+   points of the destination pixel's footprint average that footprint instead. */
+static const char DOWNSAMPLE_PS[] =
+    "float4 main(float2 uv : TEXCOORD0) : COLOR0 {\n"
+    "    float2 o = 0.25 * (SourceSize.xy * TargetSize.zw) * SourceSize.zw;\n"
+    "    float4 c  = tex2D(Source, uv + float2(-o.x, -o.y));\n"
+    "    c += tex2D(Source, uv + float2( o.x, -o.y));\n"
+    "    c += tex2D(Source, uv + float2(-o.x,  o.y));\n"
+    "    c += tex2D(Source, uv + float2( o.x,  o.y));\n"
+    "    return c * 0.25;\n"
+    "}\n";
+static IDirect3DPixelShader9* g_downsample_ps;
+static int g_downsample_state;
 
 static struct Filter g_filters[MAX_FILTERS];
 static int g_filter_count;
@@ -98,21 +123,22 @@ static int filter_add(const char* name, int scale, const char* embedded, const c
     if (path) snprintf(f->path, sizeof f->path, "%s", path);
     return 1;
 }
-/* "//! scale N" anywhere in a shader marks it as a fixed-magnification filter. */
-static int parse_scale(const char* text) {
-    const char* p = text;
-    while ((p = strstr(p, "//!")) != NULL) {
-        const char* q = p + 3;
-        while (*q == ' ' || *q == '\t') ++q;
-        if (!strncmp(q, "scale", 5)) {
-            q += 5;
-            while (*q == ' ' || *q == '\t') ++q;
-            int n = atoi(q);
-            if (n >= 1 && n <= 8) return n;
-        }
-        p += 3;
-    }
-    return 0;
+/* Fills in the filter's header and passes. Returns 0 when the shader is malformed. */
+static int parse_passes(struct Filter* f, const char* text) {
+    struct ShaderPass passes[MAX_PASSES];
+    const char* err = NULL;
+    int n = shader_split(text, &f->header, &f->header_len, passes, &f->scale, &err);
+    if (!n) { LOG("shaders: %s %s", f->name, err ? err : "could not be parsed"); return 0; }
+    f->pass_count = n;
+    for (int i = 0; i < n; ++i) { f->pass[i].s = passes[i]; f->pass[i].ps = NULL; }
+    return 1;
+}
+/* The scan only needs to know how much a filter magnifies, so it parses and throws away. */
+static int parse_total_scale(const char* name, const char* text) {
+    struct Filter tmp;
+    memset(&tmp, 0, sizeof tmp);
+    snprintf(tmp.name, sizeof tmp.name, "%s", name);
+    return parse_passes(&tmp, text) ? tmp.scale : 0;
 }
 static char* read_text_file(const char* path, size_t* len) {
     HANDLE h = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
@@ -151,7 +177,7 @@ static void shaders_scan(void) {
         char* dot = strrchr(name, '.'); if (dot) *dot = 0;
         size_t len = 0; char* text = read_text_file(full, &len);
         if (!text) { LOG("shaders: cannot read %s", fd.cFileName); continue; }
-        filter_add(name, parse_scale(text), NULL, full);
+        filter_add(name, parse_total_scale(name, text), NULL, full);
         free(text);
         ++added;
     } while (FindNextFileA(h, &fd));
@@ -176,38 +202,89 @@ static IDirect3DVertexShader9* quad_vertex_shader(IDirect3DDevice9* dev) {
     buffer_free(code); buffer_free(errors);
     return g_quad_vs;
 }
+/* Compiled on demand, and only used when a chain overshoots the window. */
+static IDirect3DPixelShader9* downsample_shader(IDirect3DDevice9* dev) {
+    if (g_downsample_state) return g_downsample_ps;
+    g_downsample_state = -1;
+    if (!dev || !g_ps_profile || !shaders_load_compiler()) return NULL;
+    size_t plen = sizeof SHADER_PROLOGUE - 1, blen = sizeof DOWNSAMPLE_PS - 1;
+    char* src = (char*)malloc(plen + blen + 1);
+    if (!src) return NULL;
+    memcpy(src, SHADER_PROLOGUE, plen);
+    memcpy(src + plen, DOWNSAMPLE_PS, blen + 1);
+    void *code = NULL, *errors = NULL;
+    HRESULT hr = d3dx_compile(src, (UINT)(plen + blen), NULL, NULL, "main", g_ps_profile, 0, &code, &errors, NULL);
+    if (SUCCEEDED(hr) && code &&
+        SUCCEEDED(dev->lpVtbl->CreatePixelShader(dev, (const DWORD*)buffer_ptr(code), &g_downsample_ps))) {
+        g_downsample_state = 1;
+        LOG("shaders: box downsample ready (%s)", g_ps_profile);
+    } else {
+        LOG("shaders: box downsample unavailable (0x%08lx): %.*s", (long)hr,
+            errors ? (int)buffer_len(errors) : 0, errors ? (char*)buffer_ptr(errors) : "");
+    }
+    buffer_free(code); buffer_free(errors); free(src);
+    return g_downsample_state == 1 ? g_downsample_ps : NULL;
+}
 static void filters_release(void) {
     if (g_quad_vs) { g_quad_vs->lpVtbl->Release(g_quad_vs); g_quad_vs = NULL; }
     g_quad_vs_state = 0;
-    for (int i = 0; i < g_filter_count; ++i)
-        if (g_filters[i].ps) { g_filters[i].ps->lpVtbl->Release(g_filters[i].ps); g_filters[i].ps = NULL; g_filters[i].state = 0; }
+    if (g_downsample_ps) { g_downsample_ps->lpVtbl->Release(g_downsample_ps); g_downsample_ps = NULL; }
+    g_downsample_state = 0;
+    for (int i = 0; i < g_filter_count; ++i) {
+        struct Filter* f = &g_filters[i];
+        for (int j = 0; j < f->pass_count; ++j)
+            if (f->pass[j].ps) { f->pass[j].ps->lpVtbl->Release(f->pass[j].ps); f->pass[j].ps = NULL; }
+        free(f->text); f->text = NULL;
+        f->pass_count = 0; f->state = 0;
+    }
 }
-/* Compile on first use, and remember failure so a broken shader is reported once. */
-static IDirect3DPixelShader9* filter_shader(IDirect3DDevice9* dev, struct Filter* f) {
-    if (f->state == 1) return f->ps;
-    if (f->state == -1 || !dev) return NULL;
-    f->state = -1;
-    if (!g_ps_profile || !shaders_load_compiler()) return NULL;
-    char* file_text = NULL;
-    const char* body = f->embedded;
-    if (!body) { file_text = read_text_file(f->path, NULL); body = file_text; }
-    if (!body) { LOG("shaders: %s unreadable", f->name); return NULL; }
-    size_t plen = sizeof SHADER_PROLOGUE - 1, blen = strlen(body);
-    char* src = (char*)malloc(plen + blen + 1);
-    if (!src) { free(file_text); return NULL; }
-    memcpy(src, SHADER_PROLOGUE, plen); memcpy(src + plen, body, blen + 1);
+/* Compile on first use, and remember failure so a broken shader is reported once. Every
+   pass sees the same shared header, so an algorithm's passes share their helper functions. */
+static int compile_pass(IDirect3DDevice9* dev, struct Filter* f, int index) {
+    struct FilterPass* pass = &f->pass[index];
+    size_t plen = sizeof SHADER_PROLOGUE - 1;
+    size_t total = plen + f->header_len + pass->s.len + 1;
+    char* src = (char*)malloc(total);
+    if (!src) return 0;
+    memcpy(src, SHADER_PROLOGUE, plen);
+    memcpy(src + plen, f->header, f->header_len);
+    memcpy(src + plen + f->header_len, pass->s.body, pass->s.len);
+    src[plen + f->header_len + pass->s.len] = 0;
+
     void *code = NULL, *errors = NULL;
-    HRESULT hr = d3dx_compile(src, (UINT)(plen + blen), NULL, NULL, "main", g_ps_profile, 0, &code, &errors, NULL);
+    HRESULT hr = d3dx_compile(src, (UINT)(total - 1), NULL, NULL, "main", g_ps_profile, 0, &code, &errors, NULL);
+    int ok = 0;
     if (FAILED(hr) || !code) {
-        LOG("shaders: %s failed to compile as %s (0x%08lx): %.*s", f->name, g_ps_profile, (long)hr,
+        LOG("shaders: %s pass %d failed to compile as %s (0x%08lx): %.*s", f->name, index, g_ps_profile, (long)hr,
             errors ? (int)buffer_len(errors) : 0, errors ? (char*)buffer_ptr(errors) : "");
     } else {
-        hr = dev->lpVtbl->CreatePixelShader(dev, (const DWORD*)buffer_ptr(code), &f->ps);
-        if (FAILED(hr)) LOG("shaders: %s compiled but the device refused it (0x%08lx)", f->name, (long)hr);
-        else { f->state = 1; LOG("shaders: %s ready (%s, %lu bytes, scale %d)", f->name, g_ps_profile, (unsigned long)buffer_len(code), f->scale); }
+        hr = dev->lpVtbl->CreatePixelShader(dev, (const DWORD*)buffer_ptr(code), &pass->ps);
+        if (FAILED(hr)) LOG("shaders: %s pass %d compiled but the device refused it (0x%08lx)", f->name, index, (long)hr);
+        else { ok = 1; LOG("shaders: %s pass %d ready (%s, %lu bytes, scale %d%s)", f->name, index, g_ps_profile,
+                           (unsigned long)buffer_len(code), pass->s.scale, pass->s.want_float ? ", float target" : ""); }
     }
-    buffer_free(code); buffer_free(errors); free(src); free(file_text);
-    return f->state == 1 ? f->ps : NULL;
+    buffer_free(code); buffer_free(errors); free(src);
+    return ok;
+}
+static int filter_prepare(IDirect3DDevice9* dev, struct Filter* f) {
+    if (f->state) return f->state == 1;
+    f->state = -1;
+    if (!g_ps_profile || !shaders_load_compiler() || !dev) return 0;
+
+    /* The passes point into this text, so the filter owns it for as long as it is compiled. */
+    f->text = f->embedded ? _strdup(f->embedded) : read_text_file(f->path, NULL);
+    if (!f->text) { LOG("shaders: %s unreadable", f->name); return 0; }
+    if (!parse_passes(f, f->text)) { free(f->text); f->text = NULL; return 0; }
+
+    for (int i = 0; i < f->pass_count; ++i)
+        if (!compile_pass(dev, f, i)) {
+            for (int j = 0; j < i; ++j) { f->pass[j].ps->lpVtbl->Release(f->pass[j].ps); f->pass[j].ps = NULL; }
+            free(f->text); f->text = NULL; f->pass_count = 0;
+            return 0;
+        }
+    f->state = 1;
+    if (f->pass_count > 1) LOG("shaders: %s ready (%d passes, %dx overall)", f->name, f->pass_count, f->scale);
+    return 1;
 }
 static struct Filter* filter_at(int index) {
     shaders_scan();

@@ -65,9 +65,27 @@ static IDirect3DSwapChain9*  g_swap;         /* our presentation chain, sized to
 static IDirect3DSurface9*    g_real_bb;      /* its back buffer */
 static int                   g_own_present;  /* we present; the device's own chain is unused */
 static int                   g_want_own_present = 1;  /* cleared when a d3d9 wrapper is in the way */
-static IDirect3DTexture9*    g_pass_tex;     /* intermediate for a prepass (sharp or shader) */
-static IDirect3DSurface9*    g_pass_surf;
-static int                   g_pass_w, g_pass_h;
+/* Intermediates for prepasses. A single-pass filter and the sharp-bilinear prepass use
+   target 0; a multi-pass filter walks along the array, so each pass can still read what
+   any earlier pass wrote. */
+struct PassTarget {
+    IDirect3DTexture9* tex;
+    IDirect3DSurface9* surf;
+    int w, h;
+    D3DFORMAT fmt;
+};
+static struct PassTarget g_pass[MAX_PASSES];
+#define g_pass_tex  (g_pass[0].tex)
+#define g_pass_surf (g_pass[0].surf)
+#define g_pass_w    (g_pass[0].w)
+#define g_pass_h    (g_pass[0].h)
+static int g_float_rt_state;      /* 0 unknown, 1 available, -1 not supported by this device */
+
+/* Intermediates always carry alpha, whatever the back buffer is. The game's windowed back
+   buffer is X8R8G8B8, which has no alpha channel at all, and a filter that packs data into
+   four components -- ScaleFX puts an edge distance in each -- silently loses a quarter of it
+   and picks the wrong pixels along every edge. The cost of the extra channel is nothing. */
+#define PASS_FORMAT D3DFMT_A8R8G8B8
 static IDirect3DStateBlock9* g_state;
 static int g_native_w, g_native_h;           /* the size the game believes it renders at */
 static int g_out_w, g_out_h;                 /* the real swap chain size */
@@ -79,20 +97,29 @@ static unsigned g_stat_blits;
 
 #define SAFE_RELEASE(p) do { if (p) { IUnknown* u_ = (IUnknown*)(p); u_->lpVtbl->Release(u_); (p) = NULL; } } while (0)
 
-static void scaler_release_pass(void) { SAFE_RELEASE(g_pass_surf); SAFE_RELEASE(g_pass_tex); g_pass_w = g_pass_h = 0; }
-/* One intermediate serves whichever prepass is in use; only one runs per frame. */
-static int ensure_pass_target(IDirect3DDevice9* dev, int w, int h) {
-    if (w < 1 || h < 1 || w > 8192 || h > 8192) return 0;
-    if (g_pass_tex && g_pass_w == w && g_pass_h == h) return 1;
-    scaler_release_pass();
-    if (FAILED(dev->lpVtbl->CreateTexture(dev, (UINT)w, (UINT)h, 1, D3DUSAGE_RENDERTARGET, g_bb_format, D3DPOOL_DEFAULT, &g_pass_tex, NULL)) ||
-        FAILED(g_pass_tex->lpVtbl->GetSurfaceLevel(g_pass_tex, 0, &g_pass_surf))) {
-        scaler_release_pass();
-        LOG("scaler: intermediate %dx%d unavailable", w, h);
+static void release_pass_target(int i) {
+    SAFE_RELEASE(g_pass[i].surf); SAFE_RELEASE(g_pass[i].tex);
+    g_pass[i].w = g_pass[i].h = 0; g_pass[i].fmt = D3DFMT_UNKNOWN;
+}
+static void scaler_release_pass(void) { for (int i = 0; i < MAX_PASSES; ++i) release_pass_target(i); }
+
+/* Kept at the size and format the pass asks for, and reused between frames: a chain that
+   does not change its shape allocates nothing after its first frame. */
+static int ensure_pass_target_fmt(IDirect3DDevice9* dev, int i, int w, int h, D3DFORMAT fmt) {
+    if (i < 0 || i >= MAX_PASSES || w < 1 || h < 1 || w > 8192 || h > 8192) return 0;
+    if (g_pass[i].tex && g_pass[i].w == w && g_pass[i].h == h && g_pass[i].fmt == fmt) return 1;
+    release_pass_target(i);
+    if (FAILED(dev->lpVtbl->CreateTexture(dev, (UINT)w, (UINT)h, 1, D3DUSAGE_RENDERTARGET, fmt, D3DPOOL_DEFAULT, &g_pass[i].tex, NULL)) ||
+        FAILED(g_pass[i].tex->lpVtbl->GetSurfaceLevel(g_pass[i].tex, 0, &g_pass[i].surf))) {
+        release_pass_target(i);
+        LOG("scaler: intermediate %d (%dx%d, format %u) unavailable", i, w, h, (unsigned)fmt);
         return 0;
     }
-    g_pass_w = w; g_pass_h = h;
+    g_pass[i].w = w; g_pass[i].h = h; g_pass[i].fmt = fmt;
     return 1;
+}
+static int ensure_pass_target(IDirect3DDevice9* dev, int w, int h) {
+    return ensure_pass_target_fmt(dev, 0, w, h, PASS_FORMAT);
 }
 static void client_size(HWND h, int* w, int* t) {
     RECT c;
@@ -237,6 +264,9 @@ static void scaler_rebind(IDirect3DDevice9* dev) {
     dev->lpVtbl->SetDepthStencilSurface(dev, g_src_ds);
 }
 
+/* Source, Original, and Pass0..Pass5 -- see the prologue in shaders.c. */
+#define CHAIN_SAMPLERS 8
+
 struct QuadVtx { float x, y, z, rhw, u, v; };
 #define QUAD_FVF (D3DFVF_XYZRHW | D3DFVF_TEX1)
 struct QuadVtxVS { float x, y, z, u, v; };
@@ -262,12 +292,17 @@ static void quad_states(IDirect3DDevice9* dev, int filter) {
     dev->lpVtbl->SetTextureStageState(dev, 0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
     dev->lpVtbl->SetTextureStageState(dev, 1, D3DTSS_COLOROP, D3DTOP_DISABLE);
     dev->lpVtbl->SetTextureStageState(dev, 1, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
-    dev->lpVtbl->SetSamplerState(dev, 0, D3DSAMP_MINFILTER, (DWORD)filter);
-    dev->lpVtbl->SetSamplerState(dev, 0, D3DSAMP_MAGFILTER, (DWORD)filter);
-    dev->lpVtbl->SetSamplerState(dev, 0, D3DSAMP_MIPFILTER, D3DTEXF_NONE);
-    dev->lpVtbl->SetSamplerState(dev, 0, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
-    dev->lpVtbl->SetSamplerState(dev, 0, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
-    dev->lpVtbl->SetSamplerState(dev, 0, D3DSAMP_SRGBTEXTURE, FALSE);
+    /* Sampler 0 is the one the fixed-function path uses; the rest matter only to a
+       multi-pass filter, which always wants its earlier passes read exactly as written. */
+    for (int i = 0; i < CHAIN_SAMPLERS; ++i) {
+        DWORD f = (DWORD)(i == 0 ? filter : D3DTEXF_POINT);
+        dev->lpVtbl->SetSamplerState(dev, (DWORD)i, D3DSAMP_MINFILTER, f);
+        dev->lpVtbl->SetSamplerState(dev, (DWORD)i, D3DSAMP_MAGFILTER, f);
+        dev->lpVtbl->SetSamplerState(dev, (DWORD)i, D3DSAMP_MIPFILTER, D3DTEXF_NONE);
+        dev->lpVtbl->SetSamplerState(dev, (DWORD)i, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
+        dev->lpVtbl->SetSamplerState(dev, (DWORD)i, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
+        dev->lpVtbl->SetSamplerState(dev, (DWORD)i, D3DSAMP_SRGBTEXTURE, FALSE);
+    }
 }
 /* One textured quad. The half-texel shift is what maps texel centres onto pixel centres. */
 static void draw_quad(IDirect3DDevice9* dev, IDirect3DTexture9* tex, const struct ScaleRect* r) {
@@ -305,8 +340,11 @@ static void draw_quad_vs(IDirect3DDevice9* dev, IDirect3DTexture9* tex, const st
 static void shader_constants(IDirect3DDevice9* dev, int sw, int sh, int tw, int th) {
     float c0[4] = { (float)sw, (float)sh, sw ? 1.0f / sw : 0.0f, sh ? 1.0f / sh : 0.0f };
     float c1[4] = { (float)tw, (float)th, tw ? 1.0f / tw : 0.0f, th ? 1.0f / th : 0.0f };
+    float c2[4] = { (float)g_native_w, (float)g_native_h,
+                    g_native_w ? 1.0f / g_native_w : 0.0f, g_native_h ? 1.0f / g_native_h : 0.0f };
     dev->lpVtbl->SetPixelShaderConstantF(dev, 0, c0, 1);
     dev->lpVtbl->SetPixelShaderConstantF(dev, 1, c1, 1);
+    dev->lpVtbl->SetPixelShaderConstantF(dev, 2, c2, 1);
 }
 static int run_prepass(IDirect3DDevice9* dev, int w, int h, int sampler, IDirect3DPixelShader9* ps) {
     if (!ensure_pass_target(dev, w, h)) return 0;
@@ -328,27 +366,82 @@ static int run_prepass(IDirect3DDevice9* dev, int w, int h, int sampler, IDirect
     } else draw_quad(dev, g_src_tex, &full);
     return 1;
 }
+/* Run every pass of a filter, each into its own intermediate, and hand back the last one.
+   A pass reads the one before it as Source and can reach further back through Original and
+   Pass0..PassN: that is what the published multi-pass algorithms actually need -- Super-xBR's
+   second pass reads the game's image alongside its first pass, and ScaleFX's last pass reads
+   the game's image five passes later. */
+static IDirect3DTexture9* run_chain(IDirect3DDevice9* dev, struct Filter* f) {
+    IDirect3DVertexShader9* vs = quad_vertex_shader(dev);
+    if (!vs) return NULL;
+
+    int sw = g_native_w, sh = g_native_h;
+    IDirect3DTexture9* src = g_src_tex;
+
+    for (int i = 0; i < f->pass_count; ++i) {
+        struct FilterPass* pass = &f->pass[i];
+        int w = sw * pass->s.scale, h = sh * pass->s.scale;
+        D3DFORMAT fmt = PASS_FORMAT;
+        if (pass->s.want_float) {
+            if (g_float_rt_state < 0) return NULL;
+            fmt = D3DFMT_A16B16G16R16F;
+        }
+        if (!ensure_pass_target_fmt(dev, i, w, h, fmt)) {
+            if (pass->s.want_float && g_float_rt_state == 0) {
+                g_float_rt_state = -1;
+                LOG("scaler: this device has no float render targets, so %s cannot run", f->name);
+            }
+            return NULL;
+        }
+        if (pass->s.want_float) g_float_rt_state = 1;
+
+        dev->lpVtbl->SetRenderTarget(dev, 0, g_pass[i].surf);
+        dev->lpVtbl->SetDepthStencilSurface(dev, NULL);
+        D3DVIEWPORT9 vp = { 0, 0, (DWORD)w, (DWORD)h, 0.0f, 1.0f };
+        dev->lpVtbl->SetViewport(dev, &vp);
+        quad_states(dev, D3DTEXF_POINT);
+        dev->lpVtbl->SetVertexShader(dev, vs);
+        dev->lpVtbl->SetPixelShader(dev, pass->ps);
+        shader_constants(dev, sw, sh, w, h);
+        dev->lpVtbl->SetTexture(dev, 1, (IDirect3DBaseTexture9*)g_src_tex);
+        for (int j = 0; j < i && j < CHAIN_SAMPLERS - 2; ++j)
+            dev->lpVtbl->SetTexture(dev, (DWORD)(2 + j), (IDirect3DBaseTexture9*)g_pass[j].tex);
+
+        struct ScaleRect full = { 0, 0, w, h };
+        draw_quad_vs(dev, src, &full, w, h);       /* binds sampler 0 to this pass's input */
+
+        dev->lpVtbl->SetPixelShader(dev, NULL);
+        dev->lpVtbl->SetVertexShader(dev, NULL);
+        src = g_pass[i].tex; sw = w; sh = h;
+    }
+    /* Leave nothing bound: the next pass, and the game, get a clean set of samplers. */
+    for (int i = 1; i < CHAIN_SAMPLERS; ++i) dev->lpVtbl->SetTexture(dev, (DWORD)i, NULL);
+    return src;
+}
+
 /* Decide what the final draw reads and how. A filter may run as a prepass into the
    intermediate target (fixed magnification), or as the shader of the final draw itself
    (free scale), or be a plain sampler state. */
 static void select_filter(IDirect3DDevice9* dev, const struct ScaleRect* dst,
-                          IDirect3DTexture9** src, int* sampler, IDirect3DPixelShader9** final_ps) {
+                          IDirect3DTexture9** src, int* sampler, IDirect3DPixelShader9** final_ps,
+                          int* src_w, int* src_h) {
     *src = g_src_tex; *sampler = D3DTEXF_POINT; *final_ps = NULL;
+    *src_w = g_native_w; *src_h = g_native_h;
     struct Filter* f = filter_at(cfg.filter);
     int kind = f ? cfg.filter : FILTER_SHARP;
     if (kind >= FILTER_BUILTIN_COUNT) {
-        IDirect3DPixelShader9* ps = filter_shader(dev, f);
-        if (!ps) kind = FILTER_SHARP;                       /* unavailable: quietly degrade */
+        if (!filter_prepare(dev, f)) kind = FILTER_SHARP;   /* unavailable: quietly degrade */
         else if (f->scale > 0) {
-            int w = g_native_w * f->scale, h = g_native_h * f->scale;
-            if (run_prepass(dev, w, h, D3DTEXF_POINT, ps)) {
-                *src = g_pass_tex;
+            IDirect3DTexture9* out = run_chain(dev, f);
+            if (out) {
+                int w = g_native_w * f->scale, h = g_native_h * f->scale;
+                *src = out; *src_w = w; *src_h = h;
                 /* an exact multiple can stay point-sampled and keep every edge crisp */
                 *sampler = (dst->w % w == 0 && dst->h % h == 0) ? D3DTEXF_POINT : D3DTEXF_LINEAR;
                 return;
             }
             kind = FILTER_SHARP;
-        } else if (quad_vertex_shader(dev)) { *final_ps = ps; *sampler = D3DTEXF_POINT; return; }
+        } else if (quad_vertex_shader(dev)) { *final_ps = f->pass[0].ps; *sampler = D3DTEXF_POINT; return; }
         else kind = FILTER_SHARP;
     }
     if (kind == FILTER_BILINEAR) { *sampler = D3DTEXF_LINEAR; return; }
@@ -358,7 +451,7 @@ static void select_filter(IDirect3DDevice9* dev, const struct ScaleRect* dst,
     int factor = sharp_factor(g_native_w, g_native_h, dst->w, dst->h);
     if (factor <= 1) { *sampler = (dst->w == g_native_w && dst->h == g_native_h) ? D3DTEXF_POINT : D3DTEXF_LINEAR; return; }
     if (run_prepass(dev, g_native_w * factor, g_native_h * factor, D3DTEXF_POINT, NULL)) {
-        *src = g_pass_tex;
+        *src = g_pass_tex; *src_w = g_pass_w; *src_h = g_pass_h;
         *sampler = (dst->w == g_pass_w && dst->h == g_pass_h) ? D3DTEXF_POINT : D3DTEXF_LINEAR;
     } else *sampler = D3DTEXF_LINEAR;
 }
@@ -372,8 +465,15 @@ static void scaler_blit(IDirect3DDevice9* dev) {
     if (g_state) g_state->lpVtbl->Capture(g_state);
     struct ScaleRect dst = scale_rect(g_native_w, g_native_h, g_out_w, g_out_h, cfg.scaling);
     if (FAILED(dev->lpVtbl->BeginScene(dev))) { if (g_state) g_state->lpVtbl->Apply(g_state); return; }
-    IDirect3DTexture9* src; int filter; IDirect3DPixelShader9* final_ps;
-    select_filter(dev, &dst, &src, &filter, &final_ps);
+    IDirect3DTexture9* src; int filter; IDirect3DPixelShader9* final_ps; int src_w, src_h;
+    select_filter(dev, &dst, &src, &filter, &final_ps, &src_w, &src_h);
+    /* Whatever produced it, an image larger than the window has to be averaged down rather
+       than sampled at one point per destination pixel. */
+    int shrinking = final_ps == NULL && (src_w > dst.w || src_h > dst.h);
+    if (shrinking) {
+        IDirect3DPixelShader9* box = downsample_shader(dev);
+        if (box) { final_ps = box; filter = D3DTEXF_LINEAR; }
+    }
     dev->lpVtbl->SetRenderTarget(dev, 0, g_real_bb);
     dev->lpVtbl->SetDepthStencilSurface(dev, NULL);
     D3DVIEWPORT9 vp = { 0, 0, (DWORD)g_out_w, (DWORD)g_out_h, 0.0f, 1.0f };
@@ -384,7 +484,7 @@ static void scaler_blit(IDirect3DDevice9* dev) {
     if (final_ps) {
         dev->lpVtbl->SetVertexShader(dev, quad_vertex_shader(dev));
         dev->lpVtbl->SetPixelShader(dev, final_ps);
-        shader_constants(dev, g_native_w, g_native_h, dst.w, dst.h);
+        shader_constants(dev, src_w, src_h, dst.w, dst.h);
         draw_quad_vs(dev, src, &dst, g_out_w, g_out_h);
         dev->lpVtbl->SetPixelShader(dev, NULL);
         dev->lpVtbl->SetVertexShader(dev, NULL);
