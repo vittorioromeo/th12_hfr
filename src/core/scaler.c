@@ -58,6 +58,7 @@ static IDirect3DDevice9*     g_dev;
 static IDirect3DTexture9*    g_src_tex;      /* the game's render target, native size */
 static IDirect3DSurface9*    g_src_surf;
 static IDirect3DSurface9*    g_src_ds;       /* our own depth stencil, native size */
+static IDirect3DSurface9*    g_readback;     /* lockable system-memory copy of the above */
 static IDirect3DSwapChain9*  g_swap;         /* our presentation chain, sized to the window */
 static IDirect3DSurface9*    g_real_bb;      /* its back buffer */
 static int                   g_own_present;  /* we present; the device's own chain is unused */
@@ -101,6 +102,7 @@ static void scaler_release(void) {
     g_pass_w = g_pass_h = 0;
     scaler_release_output();
     SAFE_RELEASE(g_state); scaler_release_pass();
+    SAFE_RELEASE(g_readback);
     SAFE_RELEASE(g_src_ds); SAFE_RELEASE(g_src_surf); SAFE_RELEASE(g_src_tex);
 }
 
@@ -400,9 +402,26 @@ static HRESULT __stdcall hook_Present(IDirect3DDevice9* dev, const RECT* src, co
     return orig_Present(dev, src, dst, wnd, dirty);
 }
 /* The game asks for the back buffer to save screenshots and to capture the screen into a
-   sprite; both must see the surface it actually drew on, at the size it expects. */
+   sprite; both must see what it actually drew on, at the size it expects.
+ *
+ * It must also be able to *lock* what it gets: the screenshot path locks the surface and
+ * writes a 640x480x3 BMP straight out of it, without checking whether the lock succeeded.
+ * A render target in the default pool cannot be locked, so handing over our render target
+ * made that path write through an uninitialised pointer. Hand over a system-memory copy
+ * instead, which is lockable and is equally valid as a D3DX blit source. The copy costs a
+ * readback, but only on the rare frames where the game asks for the back buffer at all. */
 static HRESULT __stdcall hook_GetBackBuffer(IDirect3DDevice9* dev, UINT chain, UINT index, D3DBACKBUFFER_TYPE type, IDirect3DSurface9** out) {
     if (g_scaler_ok && g_src_surf && chain == 0 && index == 0 && type == D3DBACKBUFFER_TYPE_MONO && out) {
+        if (!g_readback)
+            dev->lpVtbl->CreateOffscreenPlainSurface(dev, (UINT)g_native_w, (UINT)g_native_h,
+                                                     g_bb_format, D3DPOOL_SYSTEMMEM, &g_readback, NULL);
+        if (g_readback && SUCCEEDED(dev->lpVtbl->GetRenderTargetData(dev, g_src_surf, g_readback))) {
+            g_readback->lpVtbl->AddRef(g_readback);
+            *out = g_readback;
+            return D3D_OK;
+        }
+        static int warned;
+        if (!warned) { warned = 1; LOG("scaler: no lockable copy of the game surface; screenshots may be wrong"); }
         g_src_surf->lpVtbl->AddRef(g_src_surf);
         *out = g_src_surf;
         return D3D_OK;

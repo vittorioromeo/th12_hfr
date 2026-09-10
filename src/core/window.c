@@ -165,15 +165,36 @@ static void window_enforce(void) {
         }
     }
 }
-/* The game reads the keyboard through DirectInput or GetKeyboardState rather than the message
-   queue, and DirectInput can stop key messages reaching the window at all. Poll the menu key
-   as well, so opening the menu does not depend on how the game took the keyboard. */
+/* Opening the menu must not depend on how the game took the keyboard: it reads through
+   DirectInput or GetKeyboardState rather than the message queue, and DirectInput can stop key
+   messages reaching the window at all. Both routes therefore raise a request, and the frame
+   hook acts on it once -- previously both toggled, so a press that arrived by both routes
+   cancelled itself out. */
+static int g_menu_request;
+void hfr_menu_requested(void) { g_menu_request = 1; }
+
+static int app_has_focus(void) {
+    HWND fg = GetForegroundWindow();
+    if (!fg) return 0;
+    if (fg == g_wnd) return 1;
+    DWORD pid = 0;                     /* a wrapper may own a different top-level window */
+    GetWindowThreadProcessId(fg, &pid);
+    return pid == GetCurrentProcessId();
+}
 static void poll_menu_key(void) {
-    static int was_down;
-    if (!cfg.menu_key || !g_wnd) return;
-    int down = (GetAsyncKeyState(cfg.menu_key) & 0x8000) != 0 && GetForegroundWindow() == g_wnd;
-    if (down && !was_down) { hfr_menu_toggle(); LOG("menu: %s", hfr_menu_visible() ? "opened" : "closed"); }
-    was_down = down;
+    static int was_down, told;
+    if (cfg.menu_key) {
+        int held = (GetAsyncKeyState(cfg.menu_key) & 0x8000) != 0;
+        int down = held && app_has_focus();
+        if (held && !down && !told) { told = 1; LOG("menu: key seen but the game does not have focus"); }
+        if (down && !was_down) hfr_menu_requested();
+        was_down = down;
+    }
+    if (g_menu_request) {
+        g_menu_request = 0;
+        hfr_menu_toggle();
+        LOG("menu: %s", hfr_menu_visible() ? "opened" : "closed");
+    }
 }
 /* Called from the frame hook. Returns non-zero when the frame should be skipped. */
 static int window_pump(IDirect3DDevice9* dev) {

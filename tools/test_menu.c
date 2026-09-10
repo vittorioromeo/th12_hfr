@@ -20,7 +20,8 @@ int         hfr_ui_filter_is_fixed_scale(int i) { return i == 3; }
 void        hfr_ui_save(void) { printf("  (save called)\n"); }
 void        hfr_ui_status(char* b, int n) { snprintf(b, (size_t)n, "TH12 v1.00b   1280 x 960 window   360 Hz logic / 360 Hz present"); }
 void        hfr_ui_scale_info(char* b, int n) { snprintf(b, (size_t)n, "640x480 game image at 2x, 0 x 0 of black bars"); }
-int         hfr_ui_menu_key(void) { return VK_INSERT; }
+int         hfr_ui_menu_key(void) { return VK_F11; }
+void        hfr_menu_requested(void) { hfr_menu_toggle(); }   /* the runtime acts on this per frame */
 void        hfr_ui_report(const char* fmt, ...) {
     va_list ap; va_start(ap, fmt); printf("REPORT: "); vprintf(fmt, ap); printf("\n"); va_end(ap); g_failed = 1;
 }

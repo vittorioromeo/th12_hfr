@@ -83,10 +83,14 @@ extern "C" int  hfr_menu_visible(void) { return g_ready && g_visible; }
 
 extern "C" int hfr_menu_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, LRESULT* result) {
     if (!g_ready) return 0;
-    /* The key is acted on by the runtime's poll, which works whichever way the game took
-       the keyboard; swallow it here so it does not also reach the game. */
+    /* Raise a request rather than toggling here; the frame hook acts on it once, whether it
+       came from this message or from the runtime's poll. Swallow the key either way. */
     if (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN || msg == WM_KEYUP || msg == WM_SYSKEYUP) {
-        if ((int)wp == hfr_ui_menu_key()) { if (result) *result = 0; return 1; }
+        if ((int)wp == hfr_ui_menu_key()) {
+            if ((msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN) && !(lp & (1 << 30))) hfr_menu_requested();
+            if (result) *result = 0;
+            return 1;
+        }
     }
     if (!g_visible) return 0;
     /* While the menu is up the cursor must be visible even though the game hides it. */
@@ -155,7 +159,7 @@ void draw_hint(void) {
                      ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav |
                      ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoInputs)) {
         int key = hfr_ui_menu_key();
-        const char* name = key == VK_INSERT ? "Insert" : (key == VK_F10 ? "F10" : "the menu key");
+        const char* name = key == VK_F11 ? "F11" : (key == VK_INSERT ? "Insert" : "the menu key");
         ImGui::TextColored(ImVec4(1, 1, 1, a), "Press %s for scaling and filter settings", name);
     }
     ImGui::End();

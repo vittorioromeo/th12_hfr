@@ -161,6 +161,24 @@ because an exclusive-fullscreen device cannot carry the windowed chain we presen
 between "borderless over the monitor" and "leave the window where the game puts it", not
 between borderless and a real mode change.
 
+### 2.5.0 Anything handed to the game as its back buffer must be lockable
+
+`GetBackBuffer` is hooked so the game sees its own 640x480 surface rather than the real one
+(2.5), but *which* surface matters more than its size. The screenshot routine `FUN_0042fca0`
+locks what it is given and writes a 640x480x3 BMP straight out of the locked rectangle,
+**without checking whether the lock succeeded**. A render target in the default pool cannot be
+locked, so returning our render target made that routine write through an uninitialised
+pointer -- an access violation inside the game, at a site with no obvious connection to
+anything the patch does.
+
+The hook therefore returns a `D3DPOOL_SYSTEMMEM` copy, refreshed with `GetRenderTargetData`
+on each call. That is lockable, and is equally valid as a `D3DXLoadSurfaceFromSurface` source
+for the engine's other caller, the capture-screen-to-sprite path. It costs a readback, but
+only on the rare frames where the game asks for the back buffer at all.
+
+This is the sort of failure the vectored exception handler (2.7) exists for: the log named the
+faulting address, and the address named the screenshot routine.
+
 ### 2.5.1 When a d3d9 wrapper is in the way
 
 A `d3d9.dll` dropped in the game folder — PivotDX9, dgVoodoo, a d3d8-to-9 shim — replaces the
@@ -185,6 +203,18 @@ chain still has, so the game is never left drawing into a surface we have releas
 
 ### 2.6 The menu
 
+The menu key is deliberately **F11**. The engine reads F10, Insert and Home for its own
+purposes -- Insert reaches the snapshot path on at least some configurations -- and a menu key
+that also triggers a screenshot is a poor default.
+
+Opening the menu must not depend on how the game took the keyboard. It reads through
+DirectInput or `GetKeyboardState` rather than the message queue, and DirectInput can stop key
+messages reaching the window at all. Both the window procedure and a `GetAsyncKeyState` poll
+therefore raise a *request*, and the frame hook acts on it once per frame; when both toggled
+directly, a press arriving by both routes cancelled itself out and the menu never opened.
+
+### 2.6.1 Layout
+
 Dear ImGui, drawn into the real back buffer after the game's image has been placed in it, so
 the menu renders at the display's resolution instead of being magnified with the game.
 
@@ -197,6 +227,17 @@ are swallowed, plus `WM_SETCURSOR` while the menu is open, since the game hides 
 `src/ui/ui_api.h` is the entire interface between the C runtime and the C++ menu. The menu
 never sees the runtime's globals, and a build can leave it out — the test harness defines
 `HFR_NO_UI` and gets no-ops.
+
+## 2.7 Making failures speak
+
+Two mechanisms exist purely so that a fault in a windowed process is not silent, because the
+log is the only thing a tester can send back:
+
+* `IM_ASSERT` is routed to the log and switches the menu off rather than calling `assert()`,
+  which aborts with nothing written anywhere.
+* A vectored exception handler reports the first fatal exception with its module and offset.
+  This is what identified the screenshot crash in 2.5.0, after two rounds of guessing had
+  failed to.
 
 ## 3. What is not done
 

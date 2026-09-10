@@ -44,4 +44,4 @@ static struct {
     int menu_key;           /* virtual-key code that opens the in-game menu */
     int own_present;        /* -1 auto, 0 present through the game's chain, 1 through ours */
 } cfg = { 0, 1, 1, 1, 0, 0, 1, 0, 1, 1, 1, 0,
-          1, FILTER_SHARP, "", 1, 0, 1, VK_INSERT, -1 };
+          1, FILTER_SHARP, "", 1, 0, 1, VK_F11, -1 };
