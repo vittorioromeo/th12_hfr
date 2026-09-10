@@ -1,3 +1,5 @@
+> Historical notes for the original per-game build. The current unified runtime and source locations are documented in [ARCHITECTURE.md](ARCHITECTURE.md); installation instructions are in [README.md](README.md).
+
 # th12_hfr developer notes
 
 These notes document how the high-refresh-rate patch for Touhou 12 ~ Undefined Fantastic Object

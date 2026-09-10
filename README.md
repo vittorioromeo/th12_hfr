@@ -1,139 +1,132 @@
-# th12_hfr — high refresh rate patch for Touhou 12 ~ Undefined Fantastic Object (v1.00b)
+# Touhou HFR
 
-**Test build v0.11** — runs the game's engine at your display's refresh rate (120 / 144 / 165 /
-240 / 360 Hz …) with the game speed unchanged. Works with `th12.exe` and `th12e.exe` (English
-static patch), and alongside thcrap or vpatch.
+High refresh rate gameplay and presentation for Touhou. One DLL detects the game
+and selects its adapter; the scheduler, input, replay and Direct3D code are shared.
+
+**Current build: v0.2.0-test.** Supported executable layouts:
+
+| Game | Version | Executables |
+| --- | --- | --- |
+| Touhou 11 — Subterranean Animism | v1.00a | `th11.exe`, static English `th11e.exe` |
+| Touhou 12 — Undefined Fantastic Object | v1.00b | `th12.exe`, static English `th12e.exe` |
+
+Movement, bullets, shots and other suitable systems update at the display rate,
+with sub-steps whose durations add up exactly to 60 game frames per second.
+Enemy scripts and frame-sensitive decisions retain their 60 Hz timing; enemy
+sprites are interpolated for smoother presentation. D3D9Ex can limit the driver's
+presentation queue to reduce display latency.
+
+The pre-refactor TH11 and TH12 builds have been tested in game. The unified build
+passes automated tests against all four executable layouts; it still needs manual
+gameplay and full-run replay testing before a stable release. Other Touhou games
+are not supported yet. See [architecture and porting guide](ARCHITECTURE.md).
 
 ## Install
 
-Copy into the game folder (next to `th12.exe`):
+Download/extract `touhou_hfr_v0.2.0-test.zip` and close the game.
 
-* `dinput8.dll` — the patch. It loads automatically however you start the game (`th12.exe`,
-  `th12e.exe`, thcrap, vpatch). If you already have another `dinput8.dll` proxy, use the launcher
-  below instead and skip this file.
-* `th12_hfr.ini` — configuration (defaults are fine: vsync at the display rate, everything on).
-* `th12_hfr.exe` + `th12_hfr.dll` — optional launcher that injects the same patch (needed only if
-  you can't use the `dinput8.dll` route). It starts `th12e.exe` if present, else `th12.exe`
-  (override with `[launcher] exe=`).
+For a fresh installation, copy these four files next to the game executable:
 
-A log is written to `th12_hfr.log` next to the game — please attach it to bug reports.
+- `dinput8.dll`
+- `touhou_hfr.dll`
+- `touhou_hfr.exe`
+- `touhou_hfr.ini`
 
-Requirements: a display running above 60 Hz (windowed or fullscreen). In exclusive fullscreen
-the patch requests your `fps`/`fullscreen_refresh` rate; windowed mode uses the desktop rate.
+Start the game normally to use the `dinput8.dll` proxy, or run `touhou_hfr.exe`.
+The launcher detects supported game code and prefers the English executable when
+both languages of one game are present. Use `[launcher] exe=th12.exe` (for example)
+to select another executable. If multiple supported games are present, set an
+explicit target. An executable name can also be passed as the launcher's argument.
 
-## What it does (short version)
+The same four files work for either game. No game executable or data file is edited.
+The DLL forwards DirectInput calls to Windows' original library. Unknown or changed
+hook sites cause installation to be declined, leaving proxy forwarding available.
 
-The engine keeps its 60 Hz frame as the unit of game logic, but the update loop now runs at the
-display rate. Each engine system is either
+### Upgrade from th11_hfr / th12_hfr
 
-* **sub-stepped** — runs every tick with the game-speed multiplier set to the sub-step (bullets,
-  the player and player shots, lasers, items, the 3D stage, all ANM sprites), or
-* **frame-locked** — runs only on frame-boundary ticks with the stock game speed, i.e.
-  bit-identical to the original 60 Hz behaviour (enemies / ECL scripts, HUD, menus, bombs, game
-  flow, input sampling, replay recording).
+Use the included installer from PowerShell:
 
-Enemy and boss sprites are drawn at positions interpolated between the last two frames, so they
-move smoothly although their scripts run at 60 Hz. Bullet/laser hits on the player are evaluated
-every tick. Frame pacing uses vsync (a software limiter otherwise) and is anchored to the wall
-clock, so the game speed stays exact even if vblanks are missed.
+```powershell
+.\install.ps1 -GameDirectory 'G:\Touhou\TH11 ~ Subterranean Animism'
+```
 
-**Sub-tick input (new in v0.11):** the keyboard/joystick is polled on every tick, using the game's
-own input routine, and the movement and focus (slow) keys are fed to the player between frames.
-The player therefore reacts to a key at the next tick (1/360 s at 360 Hz) instead of the next
-60 Hz frame. Shot, bomb, pause and menu keys are still sampled once per frame, exactly as before,
-so shot cadence, bomb timing and menus are unchanged.
+It verifies the target, creates `hfr-backups/<timestamp>/`, installs the common
+files and updates existing legacy DLL/launcher aliases. This lets existing
+shortcuts keep working and avoids loading an old patch alongside the new proxy.
+An existing `touhou_hfr.ini` is retained; otherwise the game's legacy INI is copied.
+Without a common INI, the runtime also understands `th11_hfr.ini` / `th12_hfr.ini`.
 
-**Presentation (new in v0.11):** the Direct3D device is created through Direct3D 9Ex and the
-driver's present queue is limited to one frame (`max_frame_latency=1`). This removes up to two
-frames of display latency that the default queue adds; vsync behaviour is unchanged.
+If upgrading manually, back up the old patch files and replace any existing
+`th11_hfr.dll` / `th12_hfr.dll` with a copy of the new `touhou_hfr.dll` too. Replace
+old launcher EXEs with the new launcher or use `touhou_hfr.exe` directly. Preserve
+your settings in the common INI. An existing unrelated `dinput8.dll` proxy needs
+separate compatibility handling; do not assume two proxies can be combined.
 
-Sub-steps are multiples of 1/256 frame chosen so that they sum to exactly one frame (43/256,
-43/256, 42/256, … at 360 Hz); this keeps the engine's float timers exact.
+To undo a scripted upgrade, close the game, restore the files in the timestamped
+backup, and remove newly created files listed with `existed: false` in its
+`manifest.json`. To remove a fresh installation, delete the four patch files above.
+Older releases remain available separately for comparison and old replays.
 
-Stage and boss patterns and RNG use are unchanged from the original game.
+## Configuration
+
+Edit `touhou_hfr.ini` beside the game and restart. Defaults detect the display
+refresh and enable sub-stepping, sub-tick movement/focus input and D3D9Ex.
+
+| `[hfr]` setting | Default | Meaning |
+| --- | --- | --- |
+| `fps` | `0` | Automatic display rate; explicit supported logic rates are 60–1000 |
+| `vsync` | `1` | Vsync pacing; `0` uses the software presentation limiter |
+| `substep` | `1` | Smooth gameplay updates; `0` keeps logic at 60 Hz with HFR presentation |
+| `subtick_input` | `1` | Sample movement/focus between stock frame inputs |
+| `enemy_interp` | `1` | Interpolate enemy sprites between 60 Hz positions |
+| `d3d9ex` | `1` | Use D3D9Ex when available |
+| `max_frame_latency` | `1` | D3D9Ex queued-frame limit; `0` leaves the driver default |
+| `fullscreen_refresh` | `0` | Exclusive fullscreen rate; `0` follows automatic/explicit fps |
+| `flipex` | `0` | Experimental windowed flip presentation |
+| `log` | `1` | Write `touhou_hfr.log` beside the game |
+| `debug` | `0` | Include periodic state diagnostics |
+
+`[systems]` contains per-system switches for troubleshooting. Their defaults
+follow the adapter's audited classification. Turning a switch on does not make
+a system classified as frame-only run at sub-tick rate.
 
 ## Replays
 
-Recordings made with the patch store their tick rate and the per-tick movement/focus inputs in
-the replay file (two extra `USER` chunks, ignored by the game and other tools; the input chunk is
-run-length encoded and typically a few KB). Playback uses the recorded rate and replays the
-per-tick inputs, so it reproduces the run on the same refresh rate. Replays without the chunks
-(stock recordings) are played with stock 60 Hz logic. A patched recording played in an unpatched
-game may desync — the sub-stepped simulation is not bit-identical to 60 Hz.
+New recordings include the logic rate, per-tick movement/focus stream, game ID,
+simulation revision and gameplay settings. Compatible playback uses the recorded
+logic rate/settings while presenting at the current display rate. Your settings
+are restored when playback ends. Replays without HFR rate metadata use 60 Hz logic.
 
-The sub-step sequence is restarted at the first frame of every stage, so a recording and its
-playback run the same sequence of steps even at ratios such as 144/60 that do not divide evenly.
+Legacy HFR replays retain their rate/input chunks, but their exact simulation
+version is unknown. Unsupported new metadata produces a compatibility warning;
+playback may desynchronize. Keep the build that recorded a replay when exact
+playback matters. The native compressed payload is unchanged, but an HFR recording
+is not guaranteed to play accurately with the unmodified game or another build.
 
-## Configuration (`th12_hfr.ini`)
+## Build and test
 
-```
-[launcher]
-exe=                 ; executable started by th12_hfr.exe (empty = th12e.exe if present, else th12.exe)
+Windows requires a **32-bit MinGW-w64 GCC** compiler. The default script path is
+`C:\msys64\mingw32\bin\gcc.exe`; pass `-Compiler` to override it.
 
-[hfr]
-fps=0                ; 0 = use the display's refresh rate; otherwise ticks per second
-vsync=1              ; 1 = vsync (recommended); 0 = software limiter only
-substep=1            ; 0 = stock 60 Hz logic, only presentation at the display rate (for comparison)
-fullscreen_refresh=0 ; refresh rate requested in exclusive fullscreen (0 = same as fps / automatic)
-enemy_interp=1       ; draw enemy sprites at frame-interpolated positions
-subtick_input=1      ; poll input every tick; movement/focus reach the player between frames
-d3d9ex=1             ; create the device through Direct3D 9Ex (0 = stock Direct3D 9, also disables the next two)
-max_frame_latency=1  ; frames the driver may queue (1 = lowest latency, 0 = driver default)
-flipex=0             ; windowed flip presentation model (experimental)
-log=1                ; write th12_hfr.log
-debug=0              ; 1 = verbose state dumps in the log (only when asked to)
-
-[systems]            ; per-system sub-stepping switches, for troubleshooting only
-sub_BulletManager=1 sub_Player=1 sub_LaserManager=1 sub_ItemManager=1 sub_Stage=1
-sub_AnmManagerWorld=1 sub_AnmManagerUI=1 sub_Bomb=0 sub_Gui=0
+```powershell
+.\build.ps1
+.\test.ps1 -GameExe 'G:\Touhou\TH11 ~ Subterranean Animism\th11.exe','G:\Touhou\TH12 ~ Undefined Fantastic Object\th12.exe' -Python 'C:\Python313\python.exe'
+.\package.ps1
 ```
 
-## Known differences from the original
+The Python tests need `unicorn` (`python -m pip install unicorn`). The native
+harness runs on Windows and uses your local executables as inert fixtures. It
+tests the shared scheduler, installer, replay codec, input/pauses and the actual
+emitted x86 stubs. Test artifacts remain under ignored `build/tests/` and are
+excluded from release archives. Include both Japanese and English files when
+validating a release.
 
-* Bullet/laser hits on the player are checked every tick instead of once per frame, so a bullet
-  can no longer "tunnel" through the hitbox between two frames (rare in the original).
-* Player, item, bullet and laser motion is integrated in sub-steps; positions at frame boundaries
-  match the original up to float rounding.
-* Movement and focus keys take effect at the next tick; shot, bomb and menu keys at the next frame.
-* Menus, HUD text, score popups, bombs and enemy hit detection stay at 60 Hz.
-* With `d3d9ex=1` the game's textures live in the default pool (Direct3D 9Ex has no managed pool);
-  this is the same approach used by OpenInputLagPatch. Set `d3d9ex=0` if you see rendering problems.
-* The game's own FPS counter shows the presentation rate.
+`build.sh` / `package.sh` support a shell with `i686-w64-mingw32-gcc` and `zip`.
+The build outputs one `touhou_hfr.dll`, one launcher and a byte-identical proxy
+alias. The archive includes the complete source and no game files.
 
-## Things worth testing
-
-* Game speed: a full stage should take exactly as long as in the original (stage timers, boss
-  spell timers).
-* Pause (ESC) and unpause, game over → Continue, game over → title, stage clear, stage transitions.
-* Shooting with all six shot types, bombs, grazing bullets and lasers, item collection, the UFO
-  summons, boss death slow-motion.
-* Replays: record a run, play it back on the same display (it should reproduce the run exactly —
-  the log reports "per-tick input available" at each stage start); play a stock replay.
-* Input feel: tapping a direction key should move the character for as little as one tick; check
-  the log's `stats:` lines for `subtick polls` (should be about refresh − 60 per second while playing)
-  and the `SetMaximumFrameLatency(1) -> 0x00000000` line.
-* Windowed and fullscreen, Alt+Enter switching, 60 Hz displays (the patch should be a no-op).
-
-## Version history
-
-* v0.11 — sub-tick input (movement/focus polled every tick, stored in replays), Direct3D 9Ex with
-  a one-frame present queue, per-stage restart of the sub-step sequence for deterministic replays.
-* v0.10 — first shared test build: sub-stepped bullets/player/lasers/items/stage/ANM, frame-locked
-  enemies with sprite interpolation, wall-clock frame pacing, replay rate chunk.
-
-Each version is a separate archive (`th12_hfr_v0.NN.zip`); older versions stay available next to the newest one.
-
-## Building from source
-
-`src/hfr.c` is the patch DLL, `src/launcher.c` the launcher; `./build.sh` builds both with
-mingw-w64 (`i686-w64-mingw32-gcc`) into `build/`, `./package.sh <version>` makes a release zip
-(the release zips also carry a `source/` copy). The DLL is plain C with a few inline-asm stubs;
-all game addresses are for th12 v1.00b and are verified against the expected original bytes
-before patching. `tools/` holds the Ghidra headless scripts and the scan helpers used during the
-reverse engineering. **`DEVNOTES.md` documents the engine internals, the design of the patch and
-how to port it to other Touhou games.**
-
-## Credits / references
-
-Engine layout notes from thprac (touhouworldcup), OpenInputLagPatch (khang06) and the thtk /
-truth toolchains were used as a starting point; the rest was reverse-engineered from the binary.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the source map, replay format, validation
+scope and adding another game. Reverse-engineering history is preserved in
+[TH12 DEVNOTES](DEVNOTES.md) and [TH11 DEVNOTES](TH11_DEVNOTES.md); the original
+release instructions are in [TH12_README.md](TH12_README.md) and
+[TH11_README.md](TH11_README.md).
