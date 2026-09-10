@@ -1,7 +1,9 @@
 # Touhou HFR
 
 Developer notes for the current shared runtime — what was learned building the video path
-and taking the patch to three games — are in [DEVNOTES_RUNTIME.md](DEVNOTES_RUNTIME.md).
+and taking the patch to four games — are in [DEVNOTES_RUNTIME.md](DEVNOTES_RUNTIME.md); the
+per-game records are [TH10_DEVNOTES.md](TH10_DEVNOTES.md), [TH11_DEVNOTES.md](TH11_DEVNOTES.md),
+[DEVNOTES.md](DEVNOTES.md) (TH12) and [TH13_DEVNOTES.md](TH13_DEVNOTES.md).
 
 High refresh rate gameplay and presentation for Touhou. One DLL detects the game
 and selects its adapter; the scheduler, input, replay and Direct3D code are shared.
@@ -117,6 +119,19 @@ refresh and enable sub-stepping, sub-tick movement/focus input and D3D9Ex.
 | `log` | `1` | Write `touhou_hfr.log` beside the game |
 | `debug` | `0` | Include periodic state diagnostics |
 
+| `[video]` setting | Default | Meaning |
+| --- | --- | --- |
+| `scaling` | `1` | `0` stretch to fill, `1` fit with letterboxing, `2` whole-number scale only |
+| `filter` | `sharp-bilinear` | Upscaling filter by name: `nearest`, `bilinear`, `sharp-bilinear`, `mmpx`, `xbr-lv2`, `super-xbr`, `scalefx`, or any `.hlsl` in `shaders/` |
+| `resizable` | `1` | Resize border on the window |
+| `window_scale` | `0` | Startup window size as a percentage of 640x480 (`200` = 1280x960); `-1` = largest whole multiple that fits the screen; `0` = as the game made it. TH10's own dialog only offers 640x480, so set this there |
+| `snap_aspect` | `0` | Hold the window at 4:3 while dragging |
+| `fullscreen_mode` | `1` | `1` the game's fullscreen becomes a borderless window covering the monitor; `0` leave it |
+| `menu_key` | `122` | Virtual-key code of the in-game menu (F11); `0` disables the menu |
+| `size_cycle_key` | `121` | Key that steps 640x480 → 960x720 → 1280x960 → borderless fullscreen on games without their own (TH10); `0` = off |
+| `warn_wrapper` | `1` | Say at startup when a d3d9 wrapper is presenting the game |
+| `own_present` | `-1` | Which swap chain reaches the screen; `-1` decides automatically |
+
 `[systems]` contains per-system switches for troubleshooting. Their defaults
 follow the adapter's audited classification. Turning a switch on does not make
 a system classified as frame-only run at sub-tick rate.
@@ -127,6 +142,9 @@ New recordings include the logic rate, per-tick movement/focus stream, game ID,
 simulation revision and gameplay settings. Compatible playback uses the recorded
 logic rate/settings while presenting at the current display rate. Your settings
 are restored when playback ends. Replays without HFR rate metadata use 60 Hz logic.
+
+TH13 keeps its replays in `%APPDATA%\ShanghaiAlice\th13\replay\` (the game's own
+location); the HFR metadata is appended there. The other games keep them beside the executable.
 
 Legacy HFR replays retain their rate/input chunks, but their exact simulation
 version is unknown. Unsupported new metadata produces a compatibility warning;
