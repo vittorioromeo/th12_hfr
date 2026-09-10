@@ -13,3 +13,7 @@
 # The shader sources are compiled at run time by the game's d3dx9; keep them LF too so the
 # line numbers in a compiler error match the file as it is on disk.
 *.hlsl text eol=lf
+
+# Release archives are binary. `text=auto` already detects that, but saying so
+# explicitly means no tool -- or careless one-liner -- can be talked into rewriting them.
+*.zip binary

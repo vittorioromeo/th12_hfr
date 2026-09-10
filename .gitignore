@@ -1,5 +1,4 @@
 build/
-releases/
 *.log
 __pycache__/
 *.pyc
