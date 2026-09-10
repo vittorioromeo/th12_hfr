@@ -33,7 +33,7 @@ static void read_config(void) {
     GetPrivateProfileStringA("video", "filter", "sharp-bilinear", cfg.filter_name, sizeof cfg.filter_name, ini);
     ini_trim(cfg.filter_name);
     cfg.resizable = GetPrivateProfileIntA("video", "resizable", 1, ini);
-    cfg.snap_aspect = GetPrivateProfileIntA("video", "snap_aspect", 1, ini);
+    cfg.snap_aspect = GetPrivateProfileIntA("video", "snap_aspect", 0, ini);
     cfg.fullscreen_mode = GetPrivateProfileIntA("video", "fullscreen_mode", 1, ini);
     cfg.menu_key = GetPrivateProfileIntA("video", "menu_key", VK_INSERT, ini);
     cfg.own_present = GetPrivateProfileIntA("video", "own_present", -1, ini);

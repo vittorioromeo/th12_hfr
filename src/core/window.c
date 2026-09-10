@@ -165,9 +165,20 @@ static void window_enforce(void) {
         }
     }
 }
+/* The game reads the keyboard through DirectInput or GetKeyboardState rather than the message
+   queue, and DirectInput can stop key messages reaching the window at all. Poll the menu key
+   as well, so opening the menu does not depend on how the game took the keyboard. */
+static void poll_menu_key(void) {
+    static int was_down;
+    if (!cfg.menu_key || !g_wnd) return;
+    int down = (GetAsyncKeyState(cfg.menu_key) & 0x8000) != 0 && GetForegroundWindow() == g_wnd;
+    if (down && !was_down) { hfr_menu_toggle(); LOG("menu: %s", hfr_menu_visible() ? "opened" : "closed"); }
+    was_down = down;
+}
 /* Called from the frame hook. Returns non-zero when the frame should be skipped. */
 static int window_pump(IDirect3DDevice9* dev) {
     if (!g_win_ready) return 0;
+    poll_menu_key();
     window_enforce();
     if (g_minimized) return 1;
     if (!g_resize_pending || g_in_sizemove || !dev || !g_scaler_ok) return 0;

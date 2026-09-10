@@ -21,6 +21,7 @@ bool g_ready = false;
 bool g_visible = false;
 bool g_objects = false;
 ImGuiContext* g_ctx = nullptr;
+int  g_hint_frames = 0;      /* a short "press this for settings" note after startup */
 
 void style_for(float height) {
     ImGuiStyle& s = ImGui::GetStyle();
@@ -54,6 +55,7 @@ extern "C" int hfr_menu_init(IDirect3DDevice9* dev, HWND hwnd) {
     }
     style_for(720.0f);
     g_ready = true; g_objects = true;
+    g_hint_frames = 600;     /* the features are invisible until someone opens the menu */
     return 1;
 }
 extern "C" void hfr_menu_shutdown(void) {
@@ -66,13 +68,13 @@ extern "C" void hfr_menu_shutdown(void) {
 extern "C" void hfr_menu_invalidate(void) {
     if (g_ready && g_objects) { ImGui_ImplDX9_InvalidateDeviceObjects(); g_objects = false; }
 }
-extern "C" void hfr_menu_toggle(void) { if (g_ready) g_visible = !g_visible; }
+extern "C" void hfr_menu_toggle(void) { if (g_ready) { g_visible = !g_visible; g_hint_frames = 0; } }
 extern "C" int  hfr_menu_visible(void) { return g_ready && g_visible; }
 
 extern "C" int hfr_menu_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, LRESULT* result) {
     if (!g_ready) return 0;
     if (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN) {
-        if ((int)wp == hfr_ui_menu_key()) { g_visible = !g_visible; if (result) *result = 0; return 1; }
+        if ((int)wp == hfr_ui_menu_key()) { hfr_menu_toggle(); if (result) *result = 0; return 1; }
     }
     if (!g_visible) return 0;
     /* While the menu is up the cursor must be visible even though the game hides it. */
@@ -130,6 +132,22 @@ void draw_video_section(void) {
         ImGui::SetTooltip("On: the game's fullscreen becomes a borderless window at the desktop\n"
                           "resolution. Off: its original exclusive 640x480 mode switch.");
 }
+void draw_hint(void) {
+    ImGuiIO& io = ImGui::GetIO();
+    float a = g_hint_frames > 90 ? 1.0f : (float)g_hint_frames / 90.0f;
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y - 24.0f * io.FontGlobalScale),
+                            ImGuiCond_Always, ImVec2(0.5f, 1.0f));
+    ImGui::SetNextWindowBgAlpha(0.65f * a);
+    if (ImGui::Begin("##hfr_hint", nullptr,
+                     ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
+                     ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav |
+                     ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoInputs)) {
+        int key = hfr_ui_menu_key();
+        const char* name = key == VK_INSERT ? "Insert" : (key == VK_F10 ? "F10" : "the menu key");
+        ImGui::TextColored(ImVec4(1, 1, 1, a), "Press %s for scaling and filter settings", name);
+    }
+    ImGui::End();
+}
 void draw_window(void) {
     ImGui::SetNextWindowSize(ImVec2(0, 0), ImGuiCond_Always);
     ImGui::SetNextWindowPos(ImVec2(20, 20), ImGuiCond_FirstUseEver);
@@ -156,7 +174,7 @@ void draw_window(void) {
 } // namespace
 
 extern "C" void hfr_menu_render(IDirect3DDevice9* dev, int width, int height) {
-    if (!g_ready || !g_visible) return;
+    if (!g_ready || (!g_visible && g_hint_frames <= 0)) return;
     if (!g_objects) { if (!ImGui_ImplDX9_CreateDeviceObjects()) return; g_objects = true; }
     static int last_height = 0;
     if (height != last_height) { last_height = height; style_for((float)height); }
@@ -165,7 +183,8 @@ extern "C" void hfr_menu_render(IDirect3DDevice9* dev, int width, int height) {
     ImGuiIO& io = ImGui::GetIO();
     io.DisplaySize = ImVec2((float)width, (float)height);   /* the swap chain, not the game */
     ImGui::NewFrame();
-    draw_window();
+    if (g_visible) draw_window();
+    else if (g_hint_frames > 0) { draw_hint(); --g_hint_frames; }
     ImGui::EndFrame();
     ImGui::Render();
     ImGui_ImplDX9_RenderDrawData(ImGui::GetDrawData());
