@@ -346,26 +346,29 @@ static void shader_constants(IDirect3DDevice9* dev, int sw, int sh, int tw, int 
     dev->lpVtbl->SetPixelShaderConstantF(dev, 1, c1, 1);
     dev->lpVtbl->SetPixelShaderConstantF(dev, 2, c2, 1);
 }
-static int run_prepass(IDirect3DDevice9* dev, int w, int h, int sampler, IDirect3DPixelShader9* ps) {
-    if (!ensure_pass_target(dev, w, h)) return 0;
-    dev->lpVtbl->SetRenderTarget(dev, 0, g_pass_surf);
+/* Bind an intermediate as the render target and get the pipeline ready to draw one quad over
+   all of it. Shared by the sharp-bilinear prepass and by every pass of a filter chain: this
+   sequence used to exist twice, and the copy in run_prepass still carried a shader branch
+   that nothing had called since chains were added -- two versions of the same setup, one of
+   them dead and free to drift from the one that runs. */
+static int begin_pass(IDirect3DDevice9* dev, int index, int w, int h, D3DFORMAT fmt) {
+    if (!ensure_pass_target_fmt(dev, index, w, h, fmt)) return 0;
+    dev->lpVtbl->SetRenderTarget(dev, 0, g_pass[index].surf);
     dev->lpVtbl->SetDepthStencilSurface(dev, NULL);
     D3DVIEWPORT9 vp = { 0, 0, (DWORD)w, (DWORD)h, 0.0f, 1.0f };
     dev->lpVtbl->SetViewport(dev, &vp);
-    quad_states(dev, sampler);
-    struct ScaleRect full = { 0, 0, w, h };
-    if (ps) {
-        IDirect3DVertexShader9* vs = quad_vertex_shader(dev);
-        if (!vs) return 0;
-        dev->lpVtbl->SetVertexShader(dev, vs);
-        dev->lpVtbl->SetPixelShader(dev, ps);
-        shader_constants(dev, g_native_w, g_native_h, w, h);
-        draw_quad_vs(dev, g_src_tex, &full, w, h);
-        dev->lpVtbl->SetPixelShader(dev, NULL);
-        dev->lpVtbl->SetVertexShader(dev, NULL);
-    } else draw_quad(dev, g_src_tex, &full);
+    quad_states(dev, D3DTEXF_POINT);
     return 1;
 }
+/* The sharp-bilinear prepass: point-magnify the game's image to a whole multiple, so the
+   final bilinear draw only has to soften the sub-pixel remainder. No shader involved. */
+static int run_prepass(IDirect3DDevice9* dev, int w, int h) {
+    if (!begin_pass(dev, 0, w, h, PASS_FORMAT)) return 0;
+    struct ScaleRect full = { 0, 0, w, h };
+    draw_quad(dev, g_src_tex, &full);
+    return 1;
+}
+
 /* Run every pass of a filter, each into its own intermediate, and hand back the last one.
    A pass reads the one before it as Source and can reach further back through Original and
    Pass0..PassN: that is what the published multi-pass algorithms actually need -- Super-xBR's
@@ -386,7 +389,7 @@ static IDirect3DTexture9* run_chain(IDirect3DDevice9* dev, struct Filter* f) {
             if (g_float_rt_state < 0) return NULL;
             fmt = D3DFMT_A16B16G16R16F;
         }
-        if (!ensure_pass_target_fmt(dev, i, w, h, fmt)) {
+        if (!begin_pass(dev, i, w, h, fmt)) {
             if (pass->s.want_float && g_float_rt_state == 0) {
                 g_float_rt_state = -1;
                 LOG("scaler: this device has no float render targets, so %s cannot run", f->name);
@@ -394,12 +397,6 @@ static IDirect3DTexture9* run_chain(IDirect3DDevice9* dev, struct Filter* f) {
             return NULL;
         }
         if (pass->s.want_float) g_float_rt_state = 1;
-
-        dev->lpVtbl->SetRenderTarget(dev, 0, g_pass[i].surf);
-        dev->lpVtbl->SetDepthStencilSurface(dev, NULL);
-        D3DVIEWPORT9 vp = { 0, 0, (DWORD)w, (DWORD)h, 0.0f, 1.0f };
-        dev->lpVtbl->SetViewport(dev, &vp);
-        quad_states(dev, D3DTEXF_POINT);
         dev->lpVtbl->SetVertexShader(dev, vs);
         dev->lpVtbl->SetPixelShader(dev, pass->ps);
         shader_constants(dev, sw, sh, w, h);
@@ -450,7 +447,7 @@ static void select_filter(IDirect3DDevice9* dev, const struct ScaleRect* dst,
        destination, so bilinear only has to soften the sub-pixel remainder. */
     int factor = sharp_factor(g_native_w, g_native_h, dst->w, dst->h);
     if (factor <= 1) { *sampler = (dst->w == g_native_w && dst->h == g_native_h) ? D3DTEXF_POINT : D3DTEXF_LINEAR; return; }
-    if (run_prepass(dev, g_native_w * factor, g_native_h * factor, D3DTEXF_POINT, NULL)) {
+    if (run_prepass(dev, g_native_w * factor, g_native_h * factor)) {
         *src = g_pass_tex; *src_w = g_pass_w; *src_h = g_pass_h;
         *sampler = (dst->w == g_pass_w && dst->h == g_pass_h) ? D3DTEXF_POINT : D3DTEXF_LINEAR;
     } else *sampler = D3DTEXF_LINEAR;
