@@ -49,11 +49,6 @@ static void monitor_rect(HWND h, RECT* r) {
     if (m && GetMonitorInfoA(m, &mi)) { *r = mi.rcMonitor; return; }
     r->left = 0; r->top = 0; r->right = GetSystemMetrics(SM_CXSCREEN); r->bottom = GetSystemMetrics(SM_CYSCREEN);
 }
-static void client_size(HWND h, int* w, int* t) {
-    RECT c;
-    if (h && GetClientRect(h, &c)) { *w = c.right - c.left; *t = c.bottom - c.top; }
-    else { *w = 0; *t = 0; }
-}
 /* Resize the window so its client area becomes exactly cw x ch under the given style. */
 static void set_client_size(HWND h, LONG style, int cw, int ch) {
     RECT r = { 0, 0, cw, ch };
@@ -107,6 +102,13 @@ static LRESULT CALLBACK hfr_wndproc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             else pr->bottom = pr->top + wh;
             return TRUE;
         }
+        break;
+    case WM_SETCURSOR:
+        /* The game forces the arrow cursor and claims every WM_SETCURSOR while windowed,
+           which stops the frame from ever showing a resize cursor. Let the default
+           handler have the non-client area back. */
+        if (LOWORD(lp) != HTCLIENT && !g_borderless_active)
+            return DefWindowProcA(h, msg, wp, lp);
         break;
     case WM_GETMINMAXINFO:
         if (g_native_w > 0) {
@@ -173,9 +175,8 @@ static int window_pump(IDirect3DDevice9* dev) {
     if (cw < 1 || ch < 1) return 1;
     if (cw == g_out_w && ch == g_out_h) { g_resize_pending = 0; return 0; }
     g_resize_pending = 0;
-    LOG("window: client %dx%d, resizing swap chain from %dx%d", cw, ch, g_out_w, g_out_h);
-    /* Reset through the device's own vtable so our Reset hook does the work. The game's
-       present parameters are passed exactly as the game itself would pass them. */
+    LOG("window: client %dx%d, rebuilding the presentation chain from %dx%d", cw, ch, g_out_w, g_out_h);
+    if (g_own_present) return !scaler_set_output(dev, g_wnd, cw, ch);
     D3DPRESENT_PARAMETERS pp = *G_PP;
     HRESULT hr = dev->lpVtbl->Reset(dev, &pp);
     if (FAILED(hr)) LOG("window: reset for resize failed (0x%08lx)", (long)hr);

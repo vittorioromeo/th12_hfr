@@ -1,4 +1,16 @@
 /* ------------------------------------------------------------------ init */
+/* Windows only strips ";" comments at the start of a line, so a value written as
+   "filter=mmpx   ; a comment" arrives with the comment attached. Integer keys survive it;
+   string keys have to be trimmed. */
+static void ini_trim(char* s) {
+    char* cut = s;
+    for (char* p = s; *p; ++p) if (*p == ';' || *p == '#') { cut = p; break; } else cut = p + 1;
+    while (cut > s && (cut[-1] == ' ' || cut[-1] == '\t')) --cut;
+    *cut = 0;
+    char* start = s;
+    while (*start == ' ' || *start == '\t') ++start;
+    if (start != s) memmove(s, start, strlen(start) + 1);
+}
 static void read_config(void) {
     char ini[MAX_PATH]; GetModuleFileNameA(NULL, ini, MAX_PATH);
     char* p = strrchr(ini, '\\'); if (p) strcpy(p + 1, "touhou_hfr.ini"); else strcpy(ini, "touhou_hfr.ini");
@@ -19,6 +31,7 @@ static void read_config(void) {
     cfg.flipex = GetPrivateProfileIntA("hfr", "flipex", 0, ini);
     cfg.scaling = GetPrivateProfileIntA("video", "scaling", 1, ini);
     GetPrivateProfileStringA("video", "filter", "sharp-bilinear", cfg.filter_name, sizeof cfg.filter_name, ini);
+    ini_trim(cfg.filter_name);
     cfg.resizable = GetPrivateProfileIntA("video", "resizable", 1, ini);
     cfg.snap_aspect = GetPrivateProfileIntA("video", "snap_aspect", 1, ini);
     cfg.fullscreen_mode = GetPrivateProfileIntA("video", "fullscreen_mode", 1, ini);

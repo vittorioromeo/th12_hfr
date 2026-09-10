@@ -86,11 +86,23 @@ static void after_device(IDirect3DDevice9* dev) {
         LOG("SetMaximumFrameLatency(%d) -> 0x%08lx (now %u)", cfg.max_frame_latency, (long)hr, got);
     }
 }
+/* The game resets the device to change mode or window size. Both are ours now, and an
+   actual reset would destroy every texture it owns (see scaler_set_output), so when we are
+   presenting through our own chain the reset is answered without touching the device: the
+   window work the game does around it still happens, and the new client size arrives as a
+   WM_SIZE, which rebuilds our chain. */
 static HRESULT __stdcall hook_Reset(IDirect3DDevice9* dev, D3DPRESENT_PARAMETERS* pp) {
     apply_pp(pp);
+    if (g_own_present) {
+        HWND hwnd = device_window(pp);
+        int cw, ch; client_size(hwnd, &cw, &ch);
+        LOG("Reset answered without resetting the device (client %dx%d)", cw, ch);
+        if (cw > 0 && ch > 0 && (cw != g_out_w || ch != g_out_h)) scaler_set_output(dev, hwnd, cw, ch);
+        return D3D_OK;
+    }
     D3DPRESENT_PARAMETERS use; scaler_adjust_pp(&use, pp, device_window(pp), 0, 0);
     hfr_menu_invalidate();
-    scaler_release();   /* our render target and back buffer reference belong to the old chain */
+    scaler_release();
     HRESULT hr;
     if (g_using_ex) {
         IDirect3DDevice9Ex* ex = (IDirect3DDevice9Ex*)dev; D3DDISPLAYMODEEX m; fill_mode_ex(&use, &m);
@@ -100,7 +112,7 @@ static HRESULT __stdcall hook_Reset(IDirect3DDevice9* dev, D3DPRESENT_PARAMETERS
         hr = orig_Reset(dev, &use);
         LOG("Reset %ux%u -> 0x%08lx", use.BackBufferWidth, use.BackBufferHeight, (long)hr);
     }
-    if (SUCCEEDED(hr)) { scaler_create(dev, &use); after_device(dev); }
+    if (SUCCEEDED(hr)) { scaler_create(dev, &use, device_window(pp)); after_device(dev); }
     return hr;
 }
 static HRESULT __stdcall hook_CreateDevice(IDirect3D9* d3d, UINT adapter, D3DDEVTYPE type, HWND hwnd, DWORD flags, D3DPRESENT_PARAMETERS* pp, IDirect3DDevice9** out) {
@@ -135,8 +147,8 @@ static HRESULT __stdcall hook_CreateDevice(IDirect3D9* d3d, UINT adapter, D3DDEV
             patch_vtable(vt, 26, (void*)hook_CreateVertexBuffer, (void**)&orig_CreateVertexBuffer);
             patch_vtable(vt, 27, (void*)hook_CreateIndexBuffer, (void**)&orig_CreateIndexBuffer);
         }
-        scaler_create(dev, &use);
         window_attach(g_device_window);
+        scaler_create(dev, &use, g_device_window);
         if (!hfr_menu_init(dev, g_device_window)) LOG("menu: unavailable");
         else LOG("menu: ready (open with virtual key 0x%02x)", cfg.menu_key);
         after_device(dev);

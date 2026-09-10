@@ -58,7 +58,9 @@ static IDirect3DDevice9*     g_dev;
 static IDirect3DTexture9*    g_src_tex;      /* the game's render target, native size */
 static IDirect3DSurface9*    g_src_surf;
 static IDirect3DSurface9*    g_src_ds;       /* our own depth stencil, native size */
-static IDirect3DSurface9*    g_real_bb;      /* the actual swap chain back buffer */
+static IDirect3DSwapChain9*  g_swap;         /* our presentation chain, sized to the window */
+static IDirect3DSurface9*    g_real_bb;      /* its back buffer */
+static int                   g_own_present;  /* we present; the device's own chain is unused */
 static IDirect3DTexture9*    g_pass_tex;     /* intermediate for a prepass (sharp or shader) */
 static IDirect3DSurface9*    g_pass_surf;
 static int                   g_pass_w, g_pass_h;
@@ -87,13 +89,55 @@ static int ensure_pass_target(IDirect3DDevice9* dev, int w, int h) {
     g_pass_w = w; g_pass_h = h;
     return 1;
 }
-/* Release everything tied to the current swap chain. ResetEx keeps our textures alive, but the
-   back buffer surface is recreated, so it is re-acquired after every reset regardless. */
+static void client_size(HWND h, int* w, int* t) {
+    RECT c;
+    if (h && GetClientRect(h, &c)) { *w = c.right - c.left; *t = c.bottom - c.top; }
+    else { *w = 0; *t = 0; }
+}
+static void scaler_release_output(void) { SAFE_RELEASE(g_real_bb); SAFE_RELEASE(g_swap); g_out_w = g_out_h = 0; g_own_present = 0; }
 static void scaler_release(void) {
     g_scaler_ok = 0;
     g_pass_w = g_pass_h = 0;
-    SAFE_RELEASE(g_state); SAFE_RELEASE(g_real_bb); scaler_release_pass();
+    scaler_release_output();
+    SAFE_RELEASE(g_state); scaler_release_pass();
     SAFE_RELEASE(g_src_ds); SAFE_RELEASE(g_src_surf); SAFE_RELEASE(g_src_tex);
+}
+
+/* Presentation goes through a swap chain of our own rather than the device's.
+ *
+ * The alternative is to resize the device's own chain, which means Reset. The game cannot
+ * survive that: with Direct3D 9Ex every texture it owns has been moved to the default pool
+ * (9Ex has no managed pool), default-pool contents are undefined after a reset, and the
+ * game has no code to reload them -- its pre-reset "release" routine only touches three
+ * pointers that are never assigned in this build. Its own Alt+Enter reset has the same
+ * problem. Creating an additional swap chain sidesteps all of it: the device is never
+ * reset, so nothing it owns is ever lost, and resizing is just a new chain.
+ */
+static int scaler_set_output(IDirect3DDevice9* dev, HWND hwnd, int w, int h) {
+    if (!dev || !hwnd || w < 1 || h < 1) return 0;
+    scaler_release_output();
+    D3DPRESENT_PARAMETERS pp;
+    memset(&pp, 0, sizeof pp);
+    pp.BackBufferWidth = (UINT)w;
+    pp.BackBufferHeight = (UINT)h;
+    pp.BackBufferFormat = g_bb_format;
+    pp.BackBufferCount = 1;
+    pp.MultiSampleType = D3DMULTISAMPLE_NONE;
+    pp.SwapEffect = D3DSWAPEFFECT_DISCARD;
+    pp.hDeviceWindow = hwnd;
+    pp.Windowed = TRUE;
+    pp.EnableAutoDepthStencil = FALSE;
+    pp.PresentationInterval = cfg.vsync ? D3DPRESENT_INTERVAL_ONE : D3DPRESENT_INTERVAL_IMMEDIATE;
+    HRESULT hr = dev->lpVtbl->CreateAdditionalSwapChain(dev, &pp, &g_swap);
+    if (SUCCEEDED(hr)) hr = g_swap->lpVtbl->GetBackBuffer(g_swap, 0, D3DBACKBUFFER_TYPE_MONO, &g_real_bb);
+    if (FAILED(hr)) {
+        scaler_release_output();
+        LOG("scaler: presentation chain %dx%d failed (0x%08lx)", w, h, (long)hr);
+        return 0;
+    }
+    g_out_w = w; g_out_h = h; g_own_present = 1;
+    LOG("scaler: presenting through a %dx%d chain of our own", w, h);
+    return 1;
 }
 
 /* Defined by the window module: may turn the game's exclusive fullscreen request into a
@@ -106,32 +150,43 @@ static void scaler_adjust_pp(D3DPRESENT_PARAMETERS* out, const D3DPRESENT_PARAME
     *out = *game;
     if (!g_scaler_enabled) return;
     if (g_native_w <= 0) { g_native_w = (int)game->BackBufferWidth; g_native_h = (int)game->BackBufferHeight; }
-    if (window_override_pp(out, hwnd)) { want_w = (int)out->BackBufferWidth; want_h = (int)out->BackBufferHeight; }
-    if (want_w <= 0 || want_h <= 0) {
-        RECT c;
-        if (out->Windowed && hwnd && GetClientRect(hwnd, &c) && c.right > 0 && c.bottom > 0) { want_w = c.right; want_h = c.bottom; }
-        else { want_w = (int)game->BackBufferWidth; want_h = (int)game->BackBufferHeight; }
+    /* The device's own chain is never presented, so it keeps the game's size. It must stay
+       windowed: an exclusive-fullscreen device cannot carry the windowed chain we present
+       through, and taking an exclusive mode is what we are replacing in the first place. */
+    window_override_pp(out, hwnd);
+    if (!out->Windowed) {
+        LOG("scaler: keeping the device windowed instead of taking an exclusive %ux%u mode",
+            out->BackBufferWidth, out->BackBufferHeight);
+        out->Windowed = TRUE;
+        out->FullScreen_RefreshRateInHz = 0;
     }
-    if (want_w < 1) want_w = 1;
-    if (want_h < 1) want_h = 1;
-    out->BackBufferWidth = (UINT)want_w;
-    out->BackBufferHeight = (UINT)want_h;
+    out->BackBufferWidth = (UINT)g_native_w;
+    out->BackBufferHeight = (UINT)g_native_h;
+    if (want_w > 0 && want_h > 0) { out->BackBufferWidth = (UINT)want_w; out->BackBufferHeight = (UINT)want_h; }
     out->MultiSampleType = D3DMULTISAMPLE_NONE;
     out->MultiSampleQuality = 0;
 }
 
 /* Create the render target the game draws into, plus its depth stencil, and take hold of the
    real back buffer. Any failure leaves the patch in stock behaviour rather than half applied. */
-static int scaler_create(IDirect3DDevice9* dev, const D3DPRESENT_PARAMETERS* used) {
+static int scaler_create(IDirect3DDevice9* dev, const D3DPRESENT_PARAMETERS* used, HWND hwnd) {
     scaler_release();
-    if (g_dev != dev) filters_release();   /* shaders survive a reset, not a new device */
+    if (g_dev != dev) filters_release();   /* shaders belong to the device, not the chain */
     g_dev = dev;
     shaders_pick_profile(dev);
     resolve_filter();
-    g_out_w = (int)used->BackBufferWidth; g_out_h = (int)used->BackBufferHeight;
     g_bb_format = used->BackBufferFormat;
     g_ds_format = used->EnableAutoDepthStencil ? used->AutoDepthStencilFormat : D3DFMT_D24S8;
     if (!g_scaler_enabled || g_native_w <= 0 || g_native_h <= 0) return 0;
+    int cw = 0, ch = 0;
+    RECT c;
+    if (hwnd && GetClientRect(hwnd, &c)) { cw = c.right; ch = c.bottom; }
+    if (cw < 1 || ch < 1) { cw = g_native_w; ch = g_native_h; }
+    if (!scaler_set_output(dev, hwnd, cw, ch)) {
+        LOG("scaler: no presentation chain available; leaving the game to present as it always did");
+        g_scaler_enabled = 0;
+        return 0;
+    }
     HRESULT hr = dev->lpVtbl->CreateTexture(dev, (UINT)g_native_w, (UINT)g_native_h, 1,
                                             D3DUSAGE_RENDERTARGET, g_bb_format, D3DPOOL_DEFAULT, &g_src_tex, NULL);
     if (FAILED(hr)) { LOG("scaler: render target %dx%d failed (0x%08lx); scaling disabled", g_native_w, g_native_h, (long)hr); goto fail; }
@@ -140,8 +195,6 @@ static int scaler_create(IDirect3DDevice9* dev, const D3DPRESENT_PARAMETERS* use
     hr = dev->lpVtbl->CreateDepthStencilSurface(dev, (UINT)g_native_w, (UINT)g_native_h, g_ds_format,
                                                 D3DMULTISAMPLE_NONE, 0, TRUE, &g_src_ds, NULL);
     if (FAILED(hr)) { LOG("scaler: depth stencil %dx%d fmt=%d failed (0x%08lx)", g_native_w, g_native_h, (int)g_ds_format, (long)hr); goto fail; }
-    hr = orig_GetBackBuffer(dev, 0, 0, D3DBACKBUFFER_TYPE_MONO, &g_real_bb);
-    if (FAILED(hr)) { LOG("scaler: GetBackBuffer failed (0x%08lx)", (long)hr); goto fail; }
     if (FAILED(dev->lpVtbl->CreateStateBlock(dev, D3DSBT_ALL, &g_state))) {
         g_state = NULL;   /* not fatal: the game sets the state it needs on every draw */
         LOG("scaler: no state block; relying on the game to set its own render state");
@@ -326,6 +379,8 @@ static void scaler_blit(IDirect3DDevice9* dev) {
 
 static HRESULT __stdcall hook_Present(IDirect3DDevice9* dev, const RECT* src, const RECT* dst, HWND wnd, const RGNDATA* dirty) {
     scaler_blit(dev);
+    /* Our chain carries the picture; the device's own chain is never shown. */
+    if (g_own_present && g_swap) return g_swap->lpVtbl->Present(g_swap, NULL, NULL, wnd, NULL, 0);
     return orig_Present(dev, src, dst, wnd, dirty);
 }
 /* The game asks for the back buffer to save screenshots and to capture the screen into a

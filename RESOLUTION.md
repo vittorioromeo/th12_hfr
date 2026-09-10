@@ -128,17 +128,41 @@ away.
 The maximise message is swallowed rather than forwarded, because the game's own handler turns
 it into a request for exclusive fullscreen; maximising now fills the monitor and letterboxes.
 
-### 2.5 Resizing without losing the game's resources
+### 2.5 Presentation, and why the device is never reset
 
-Resizing means `Reset`, and `Reset` normally requires every `D3DPOOL_DEFAULT` resource to be
-released first — which we cannot do for the game's resources. `IDirect3DDevice9Ex::ResetEx`
-does not: surfaces, textures and shaders survive it. Since the patch already creates the
-device through Direct3D 9Ex by default for the frame-queue control, resizing is free.
+The obvious way to change the output size is to resize the device's own swap chain, which
+means `Reset`. **The game cannot survive a reset**, and the reason is worth spelling out
+because it is not obvious and it bites in more than one place:
 
-With `d3d9ex=0` the plain `Reset` path still runs and still works, because the only extra
-default-pool resources are ours and we release them around the reset — but the game's own
-textures are managed in that configuration, so they survive too. It has had far less testing
-than the 9Ex path.
+* Direct3D 9Ex has no managed pool, so the patch converts every `D3DPOOL_MANAGED` texture the
+  game creates into `D3DPOOL_DEFAULT`. That conversion is required for 9Ex, and 9Ex is what
+  gives us `SetMaximumFrameLatency`.
+* Default-pool contents are undefined after a reset. Managed ones would have been restored
+  from their system-memory copy automatically, which is what the game was written for.
+* The game has no code to reload them. Its pre-reset release routine, `FUN_00431700`, only
+  releases `0x4cea94`, `0x4cea98` and `0x4cea9c` — three pointers that are **never assigned
+  anywhere in this build**, left over from an earlier game. Its post-reset routine
+  `FUN_00431630` re-acquires surface levels from textures it assumes still hold their pixels.
+
+The symptom is a white screen: every sprite samples undefined texture memory. It applies to
+the game's own resets too, so Alt+Enter and the resolution-cycle key were already broken by
+the 9Ex conversion before any of this work.
+
+So the device is never reset. Presentation goes through an **additional swap chain** created
+with `CreateAdditionalSwapChain`, sized to the client area, on the game's window. The device's
+own chain stays at 640x480 and is simply never presented. Resizing releases and recreates our
+chain, which touches nothing the game owns. `Reset` calls from the game are answered without
+resetting anything: the window work it does around them still happens, and the resulting
+`WM_SIZE` rebuilds our chain.
+
+One consequence: the device is kept windowed even when the game asks for exclusive fullscreen,
+because an exclusive-fullscreen device cannot carry the windowed chain we present through. The
+640x480 mode switch is what this work replaces anyway, so `fullscreen_mode` now chooses
+between "borderless over the monitor" and "leave the window where the game puts it", not
+between borderless and a real mode change.
+
+If `CreateAdditionalSwapChain` fails, the scaler disables itself and the game presents exactly
+as it always did — no filters and no resizing, but nothing broken.
 
 ### 2.6 The menu
 
@@ -167,6 +191,13 @@ never sees the runtime's globals, and a build can leave it out — the test harn
 * **No CRT or scanline filters** are bundled. They fit the existing shader interface; there
   are permissively licensed ones that could be ported.
 * **`snap_aspect` assumes the game's aspect**, which is 4:3 for both supported games.
+* **Exclusive fullscreen is gone**, for the reason in 2.5. Restoring it would mean teaching
+  the patch to reload the game's textures itself, or keeping them in the managed pool by
+  giving up Direct3D 9Ex and the frame-queue control with it.
+* **Sharp bilinear costs fill rate at high refresh rates.** Its prepass renders the game at
+  the next whole multiple every frame — at 1548x1161 that is a 1920x1440 intermediate, and at
+  360 Hz that measurably eats into the frame budget. A single-pass shader that shapes the
+  bilinear weights instead would do the same job for much less.
 
 ## 4. Verification
 
