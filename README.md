@@ -1,29 +1,54 @@
 # Touhou HFR
 
+Developer notes for the current shared runtime — what was learned building the video path
+and taking the patch to three games — are in [DEVNOTES_RUNTIME.md](DEVNOTES_RUNTIME.md).
+
 High refresh rate gameplay and presentation for Touhou. One DLL detects the game
 and selects its adapter; the scheduler, input, replay and Direct3D code are shared.
 
-**Current build: v0.2.0-test.** Supported executable layouts:
+**Current build: v0.3.0-test.** Supported executable layouts:
 
-| Game | Version | Executables |
-| --- | --- | --- |
-| Touhou 11 — Subterranean Animism | v1.00a | `th11.exe`, static English `th11e.exe` |
-| Touhou 12 — Undefined Fantastic Object | v1.00b | `th12.exe`, static English `th12e.exe` |
+| Game | Version | Executables | State |
+| --- | --- | --- | --- |
+| Touhou 10 — Mountain of Faith | v1.00a | English `th10.exe`, Japanese `th10j.exe` | recognised, not yet supported |
+| Touhou 11 — Subterranean Animism | v1.00a | `th11.exe`, static English `th11e.exe` | supported |
+| Touhou 12 — Undefined Fantastic Object | v1.00b | `th12.exe`, static English `th12e.exe` | supported |
 
-Movement, bullets, shots and other suitable systems update at the display rate,
-with sub-steps whose durations add up exactly to 60 game frames per second.
-Enemy scripts and frame-sensitive decisions retain their 60 Hz timing; enemy
-sprites are interpolated for smoother presentation. D3D9Ex can limit the driver's
-presentation queue to reduce display latency.
+TH10 is identified and then deliberately left alone — nothing is patched and the game runs
+exactly as it would without this installed. Support for it is unfinished; see
+[DEVNOTES_RUNTIME.md](DEVNOTES_RUNTIME.md) §7.
 
-The pre-refactor TH11 and TH12 builds have been tested in game. The unified build
-passes automated tests against all four executable layouts; it still needs manual
-gameplay and full-run replay testing before a stable release. Other Touhou games
-are not supported yet. See [architecture and porting guide](ARCHITECTURE.md).
+## What it does
+
+**High frame rate.** Movement, bullets, shots and other suitable systems update at the display
+rate, with sub-steps whose durations add up exactly to 60 game frames per second. Enemy scripts
+and frame-sensitive decisions retain their 60 Hz timing; enemy sprites are interpolated for
+smoother presentation. Direct3D 9Ex can limit the driver's presentation queue to reduce display
+latency. The log reports how many presented frames had no simulation tick behind them, so the
+frame rate can be checked rather than taken on trust.
+
+**Resolution and scaling.** The window can be any size, with the picture fitted and letterboxed,
+stretched, or held to whole-number multiples for pixel-perfect output. The game's fullscreen can
+become a borderless window covering the monitor. Four upscaling filters are bundled — MMPX,
+xBR-lv2, Super-xBR and ScaleFX — and any `.hlsl` file dropped into `shaders/` next to the game
+is offered alongside them, including multi-pass ones. `shaders/README.md` describes the format.
+
+**An in-game menu.** F11 by default. Every setting in the INI is there, in four tabs, and changes
+apply immediately; saving makes them the default. Settings that cannot take effect in the current
+configuration are disabled with the reason shown rather than silently ignored.
+
+**Coexistence.** The patch refuses to install alongside another patch that has taken the game's
+frame loop (vpatch and the like), and warns when a Direct3D 9 wrapper such as PivotDX9 is
+presenting the game, because that takes the scaling modes and borderless fullscreen away.
+
+The pre-refactor TH11 and TH12 builds have been tested in game. The unified build passes
+automated tests against every supported executable layout and has been exercised in game on both
+supported titles; it still needs full-run replay testing before a stable release. See
+[architecture and porting guide](ARCHITECTURE.md) and [ADDING_A_GAME.md](ADDING_A_GAME.md).
 
 ## Install
 
-Download/extract `touhou_hfr_v0.2.0-test.zip` and close the game.
+Download/extract `touhou_hfr_v0.3.0-test.zip` and close the game.
 
 For a fresh installation, copy these four files next to the game executable:
 

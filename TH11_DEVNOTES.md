@@ -1,4 +1,4 @@
-> Historical notes for the original per-game build. The current unified runtime and source locations are documented in [ARCHITECTURE.md](ARCHITECTURE.md); installation instructions are in [README.md](README.md).
+> Historical notes for the original per-game build. The current unified runtime and source locations are documented in [ARCHITECTURE.md](ARCHITECTURE.md); installation instructions are in [README.md](README.md). Findings from the current work are in [DEVNOTES_RUNTIME.md](DEVNOTES_RUNTIME.md).
 
 # TH11 HFR port development notes
 

@@ -1,5 +1,8 @@
 # Shared Touhou HFR runtime
 
+For why things are the way they are, rather than what they are, see
+[DEVNOTES_RUNTIME.md](DEVNOTES_RUNTIME.md).
+
 The v0.2.0-test build contains one runtime and two game adapters. The same DLL
 supports TH11 v1.00a and TH12 v1.00b, including the static English executables
 tested with these layouts. Other games are not supported yet.
