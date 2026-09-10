@@ -61,6 +61,9 @@ static void dump(const char* prefix,const char* suffix,const void* data,size_t n
     FILE*f=fopen(name,"wb");assert(f);assert(fwrite(data,1,n,f)==n);fclose(f);
 }
 int main(int argc,char**argv) {
+    /* Unbuffered, so that a run which hangs still shows how far it got. Under Wine stdout is
+       block-buffered into a pipe and a hang otherwise prints nothing at all. */
+    setvbuf(stdout, NULL, _IONBF, 0);
     assert(argc==3);
     uint8_t*base=test_fixture;assert(base==(void*)0x400000);
     FILE*f=fopen(argv[1],"rb");assert(f);fseek(f,0,SEEK_END);long n=ftell(f);rewind(f);
@@ -112,7 +115,13 @@ int main(int argc,char**argv) {
             assert(conflict_scan(&game_identities[g],base,nt->OptionalHeader.SizeOfImage)==-1);
     printf("PASS: %u frame-loop sites guarded against another patch, and a clean executable trips none\n",
         (unsigned)id->conflict_count);
-    test_schedule();test_replay_parser();test_replay_roundtrip();test_runner();test_scale_rect();test_snap_client();test_menu_key();
+    /* Some of these drive the game's own structures through the profile's addresses. A profile
+       that does not describe the simulation has none, so run what does not depend on one and
+       say which were skipped -- the same split install() makes. */
+    int sim = g_game->addr.runner_fn && g_game->addr.frame_calls[0];
+    test_schedule();test_replay_parser();test_scale_rect();test_snap_client();test_menu_key();
+    if (sim) { test_replay_roundtrip();test_runner(); }
+    else puts("SKIP: replay round-trip and the shared runner (this game's simulation is not described)");
     /* A failed patch transaction must leave all game code unchanged. */
     patch_begin();uint8_t changed[6]={0};
     uintptr_t addr=id->signatures[0].addr;
@@ -121,7 +130,9 @@ int main(int argc,char**argv) {
     assert(!patch_commit());assert(!memcmp((void*)addr,id->signatures[0].bytes,5));
     cfg.subtick_input=1;cfg.d3d9ex=1;
     assert(install() && !g_patch_failed);
-    assert(orig_Direct3DCreate9 && orig_D3DXCreateTexture && orig_D3DXCreateTextureFromFileInMemoryEx && orig_joyGetPosEx);
+    assert(g_frame_hook_installed == sim);   /* the frame hook exists exactly when the profile describes one */
+    assert(orig_Direct3DCreate9 && orig_D3DXCreateTexture && orig_D3DXCreateTextureFromFileInMemoryEx);
+    assert(!sim || orig_joyGetPosEx);   /* sub-tick input only where there is a simulation */
     puts("PASS: complete patch plan has frozen signatures, no overlaps; failed transaction leaves code intact");
     dump(argv[2],".game",base,nt->OptionalHeader.SizeOfImage);
     dump(argv[2],".stubs",g_stub_mem,g_stub_used);

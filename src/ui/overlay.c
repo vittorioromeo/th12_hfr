@@ -71,6 +71,9 @@ void        hfr_ui_system_set(int i, int v) { if (i >= 0 && i < (int)g_class_cou
 const char* hfr_ui_present_path(void) { return g_own_present ? "own swap chain" : "the game's swap chain"; }
 /* A stage in progress is recording a replay, and the recording carries the simulation
    settings; changing them part way through would describe the run incorrectly. */
+int hfr_ui_simulation_patched(void) {
+    return g_game && g_game->addr.runner_fn && g_game->addr.frame_calls[0];
+}
 int hfr_ui_simulation_locked(void) {
     if (g_replay_playing) return 1;
     uint8_t* rm = g_game ? G_REPLAY_MANAGER : NULL;

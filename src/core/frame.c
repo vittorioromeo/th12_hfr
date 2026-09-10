@@ -1,10 +1,18 @@
 /* ------------------------------------------------------------------ frame hook */
 
+/* The work that belongs to the window and the menu rather than to the simulation. It has to
+   happen once a frame in every configuration, including a game whose per-frame function we do
+   not know -- so when there is no frame hook the Present hook calls it instead. Returns
+   non-zero when the frame should be abandoned. */
+static int hfr_housekeeping(void) {
+    conflict_check_late();
+    hfr_ui_apply_pending(g_dev);                      /* menu changes that touch D3D or the schedule */
+    return window_pump(g_dev);                        /* minimised, or resizing the swap chain */
+}
+
 static int __stdcall hfr_frame(void* ctx) {
     double now = now_s();
-    conflict_check_late();
-    hfr_ui_apply_pending(g_dev);                     /* menu changes that touch D3D or the schedule */
-    if (window_pump(g_dev)) { Sleep(1); return 0; }   /* minimised, or resizing the swap chain */
+    if (hfr_housekeeping()) { Sleep(1); return 0; }
     replay_check();
     if (g_t0 == 0) { g_t0 = now; g_ticks_run = 0; }
     /* how many ticks we should have run by now (long-term schedule) minus how many we did */

@@ -206,6 +206,13 @@ void draw_display_section(void) {
 }
 
 void draw_timing_section(void) {
+    if (!hfr_ui_simulation_patched()) {
+        ImGui::TextDisabled("This game's simulation is not described by the patch yet, so the");
+        ImGui::TextDisabled("frame rate and sub-stepping settings below cannot take effect.");
+        ImGui::TextDisabled("Scaling, filters, resizing and this menu do not depend on it.");
+        ImGui::Separator();
+        ImGui::BeginDisabled(true);
+    }
     bool locked = hfr_ui_simulation_locked() != 0;
     if (locked) {
         ImGui::TextDisabled("Locked while a stage is running: these change the simulation,");
@@ -250,6 +257,7 @@ void draw_timing_section(void) {
         ImGui::TreePop();
     }
     ImGui::EndDisabled();
+    if (!hfr_ui_simulation_patched()) ImGui::EndDisabled();
 }
 
 void draw_presentation_section(void) {

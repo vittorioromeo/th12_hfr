@@ -276,7 +276,7 @@ static const struct node_class th12_classes[] = {
 };
 
 static const struct GameProfile th12_profile = {
-    .identity = &game_identities[1],
+    .identity = &game_identities[GI_TH12],
     .addr = {
         .speed = 0x4b2ed0,
         .update_runner = 0x4ce89c,

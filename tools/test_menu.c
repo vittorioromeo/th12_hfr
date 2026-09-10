@@ -29,6 +29,7 @@ void        hfr_menu_key_down(int down) {
     g_key_down = down ? 1 : 0;
 }
 int         hfr_ui_simulation_locked(void) { return 0; }
+int         hfr_ui_simulation_patched(void) { return 1; }
 const char* hfr_ui_present_path(void) { return "our own swap chain"; }
 static const char* g_systems[] = { "BulletManager", "Player", "Bomb", "LaserManager",
                                    "ItemManager", "Gui", "Stage", "AnmManagerWorld", "AnmManagerUI" };

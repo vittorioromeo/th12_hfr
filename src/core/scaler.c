@@ -455,6 +455,8 @@ static void select_filter(IDirect3DDevice9* dev, const struct ScaleRect* dst,
 
 static void ui_render_frame(IDirect3DDevice9* dev, const struct ScaleRect* content);
 static void hfr_ui_apply_pending(IDirect3DDevice9* dev);   /* menu changes, applied between frames */
+static int  hfr_housekeeping(void);                        /* window and menu upkeep, once a frame */
+static int  g_frame_hook_installed;                        /* whether hfr_frame runs for this game */
 
 /* Called from the Present hook, after the game's EndScene and before the real Present. */
 static void scaler_blit(IDirect3DDevice9* dev) {
@@ -497,6 +499,9 @@ static void scaler_blit(IDirect3DDevice9* dev) {
 }
 
 static HRESULT __stdcall hook_Present(IDirect3DDevice9* dev, const RECT* src, const RECT* dst, HWND wnd, const RGNDATA* dirty) {
+    /* A game we only know how to scale has no frame hook, so this is the once-a-frame point.
+       Before the blit, so a rebuilt swap chain is the one we then draw into. */
+    if (!g_frame_hook_installed) hfr_housekeeping();
     scaler_blit(dev);
     /* Our chain carries the picture; the device's own chain is never shown. */
     if (g_own_present && g_swap) return g_swap->lpVtbl->Present(g_swap, NULL, NULL, wnd, NULL, 0);

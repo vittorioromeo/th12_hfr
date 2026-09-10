@@ -42,6 +42,7 @@ int         hfr_ui_menu_key(void);
    playing. Changing the tick rate or what is sub-stepped mid-stage would desynchronise the
    replay being recorded. */
 int         hfr_ui_simulation_locked(void);
+int         hfr_ui_simulation_patched(void);  /* 0 when this game's engine is not described yet */
 int         hfr_ui_system_count(void);
 const char* hfr_ui_system_name(int index);
 int         hfr_ui_system_get(int index);

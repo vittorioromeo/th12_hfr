@@ -22,6 +22,7 @@
 #include "core/frame.c"
 #include "backends/d3d9.c"
 #include "ui/overlay.c"
+#include "games/th10.c"
 #include "games/th11.c"
 #include "games/th12.c"
 #include "core/install.c"

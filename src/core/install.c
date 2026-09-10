@@ -1,4 +1,4 @@
-static const struct GameProfile* const game_profiles[] = {&th11_profile,&th12_profile};
+static const struct GameProfile* const game_profiles[] = {&th10_profile,&th11_profile,&th12_profile};
 static int select_game(const uint8_t* image, size_t size) {
     const struct GameIdentity* id=identify_image(image,size);
     g_game=NULL;
@@ -50,8 +50,19 @@ static int install(void) {
     g_p=stub_begin();
     if (!g_stub_mem) { LOG("Cannot allocate hook stubs; no hooks applied");return 0; }
     patch_begin();
-    install_speed_sites();
-    g_game->install_sites();
+    /* A profile need not describe the simulation at all. Everything about the picture -- the
+       scaling modes, the filters, the resizable window, the menu -- is the same code for every
+       game and needs no address from it, so a game whose engine has not been worked out yet
+       can still have all of that while the high frame rate waits. Each part below installs
+       only if the profile has the addresses for it, and says so when it does not. */
+    int sim = g_game->addr.runner_fn && g_game->addr.frame_calls[0];
+    if (sim) {
+        install_speed_sites();
+        if (g_game->install_sites) g_game->install_sites();
+    } else {
+        LOG("this game's simulation is not described yet: no high frame rate or sub-stepping.");
+        LOG("  scaling, filters, window resizing and the menu do not depend on it and are active.");
+    }
     /* Wrap the game's screenshot routine so the back buffer hook knows when the caller is
        going to lock what it gets. The filename arrives in EAX, so the stub must not touch it;
        "mov dword [flag], imm" and a relative call do not. */
@@ -64,12 +75,15 @@ static int install(void) {
         stub_end();          /* account for these bytes: they are flushed from the I-cache below */
         site_call(g_game->addr.screenshot_call,stub);
     } else LOG("screenshot routine not known for this game; its screenshots are unsupported");
-    for (int i=0;i<4;++i) site_call(g_game->addr.replay_saves[i],hfr_replay_save);
-    site_call(g_game->addr.replay_load_call,hfr_replay_load);
-    uint8_t latency[7]; memcpy(latency,site_expected(g_game->addr.latency_cmp,7),7);latency[6]=0x7f;
-    patch_bytes(g_game->addr.latency_cmp,latency,7,site_expected(g_game->addr.latency_cmp,7));
-    patch_jmp(g_game->addr.runner_fn,hfr_runner_entry,site_expected(g_game->addr.runner_fn,5));
-    for (int i=0;i<3;++i) site_call(g_game->addr.frame_calls[i],hfr_frame);
+    if (sim) {
+        for (int i=0;i<4;++i) site_call(g_game->addr.replay_saves[i],hfr_replay_save);
+        site_call(g_game->addr.replay_load_call,hfr_replay_load);
+        uint8_t latency[7]; memcpy(latency,site_expected(g_game->addr.latency_cmp,7),7);latency[6]=0x7f;
+        patch_bytes(g_game->addr.latency_cmp,latency,7,site_expected(g_game->addr.latency_cmp,7));
+        patch_jmp(g_game->addr.runner_fn,hfr_runner_entry,site_expected(g_game->addr.runner_fn,5));
+        for (int i=0;i<3;++i) site_call(g_game->addr.frame_calls[i],hfr_frame);
+        g_frame_hook_installed = 1;
+    }
     if (!hook_iat("d3d9.dll","Direct3DCreate9",hook_Direct3DCreate9,(void**)&orig_Direct3DCreate9)) {
         LOG("Required Direct3D import is unavailable; no hooks applied");return 0;
     }
@@ -78,7 +92,8 @@ static int install(void) {
         int b=hook_iat(g_game->d3dx,"D3DXCreateTextureFromFileInMemoryEx",hook_D3DXCreateTextureFromFileInMemoryEx,(void**)&orig_D3DXCreateTextureFromFileInMemoryEx);
         if (!a || !b) {cfg.d3d9ex=0;LOG("D3DX hooks unavailable (%d,%d): using D3D9",a,b);}
     }
-    if (cfg.subtick_input) hook_iat("winmm.dll","joyGetPosEx",hook_joyGetPosEx,(void**)&orig_joyGetPosEx);
+    /* Sub-tick input feeds the simulation, so it belongs with the rest of it. */
+    if (sim && cfg.subtick_input) hook_iat("winmm.dll","joyGetPosEx",hook_joyGetPosEx,(void**)&orig_joyGetPosEx);
     FlushInstructionCache(GetCurrentProcess(),g_stub_mem,g_stub_used);
     if (!patch_commit()) { LOG("Patch transaction failed; no code/import hooks applied");return 0; }
     AddVectoredExceptionHandler(1, hfr_exception_report);
