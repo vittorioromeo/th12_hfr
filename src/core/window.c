@@ -75,6 +75,11 @@ static int window_override_pp(D3DPRESENT_PARAMETERS* out, HWND hwnd) {
 static LRESULT CALLBACK hfr_wndproc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     LRESULT handled = 0;
     if (hfr_menu_wndproc(h, msg, wp, lp, &handled)) return handled;
+    /* F10 is a system key: left to DefWindowProc it puts the window into keyboard menu mode,
+       which swallows the next key and stalls the game. When it is our size-cycle key on a
+       game without its own, it goes no further than here. */
+    if ((msg == WM_SYSKEYDOWN || msg == WM_SYSKEYUP) && cfg.size_cycle_key && (int)wp == cfg.size_cycle_key &&
+        g_game && !g_game->native_size_cycle) return 0;
     switch (msg) {
     case WM_SIZE:
         if (wp == SIZE_MINIMIZED) { g_minimized = 1; break; }
@@ -173,13 +178,65 @@ static void window_apply_scale(int percent) {
     LOG("window: client sized to %dx%d (%s)", cw, ch,
         percent < 0 ? "largest whole multiple that fits" : "window_scale");
 }
+/* Borderless fullscreen asked for by the patch itself rather than by the game: the last step
+   of the size cycle. The game's window style is saved on the way in and put back on the way
+   out, so the game never sees its window change class. */
+static int  g_hfr_fullscreen;
+static int  g_hfr_style_saved;
+static LONG g_hfr_saved_style;
+static void window_hfr_fullscreen(int on) {
+    if (!g_wnd || on == g_hfr_fullscreen) return;
+    if (on) {
+        g_hfr_saved_style = GetWindowLongA(g_wnd, GWL_STYLE); g_hfr_style_saved = 1;
+        LONG popup = (g_hfr_saved_style & ~(LONG)(WS_CAPTION | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU)) | WS_POPUP;
+        SetWindowLongA(g_wnd, GWL_STYLE, popup);
+        g_hfr_fullscreen = 1;            /* window_enforce covers the monitor from here */
+    } else {
+        g_hfr_fullscreen = 0;
+        if (g_hfr_style_saved) { SetWindowLongA(g_wnd, GWL_STYLE, g_hfr_saved_style); g_hfr_style_saved = 0; }
+        SetWindowPos(g_wnd, NULL, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+    }
+}
+/* One step of the size cycle TH11 and later have on F10 and TH10 does not: the next preset
+   larger than the window now, then borderless fullscreen, then round to the smallest. A
+   preset the screen cannot hold is skipped rather than clamped into a near-fullscreen. */
+static void window_cycle_size(void) {
+    static const int presets[] = { 100, 150, 200 };
+    if (!g_wnd || g_native_w <= 0) return;
+    LONG style = GetWindowLongA(g_wnd, GWL_STYLE);
+    int game_fullscreen = !(style & WS_CAPTION) && (style & WS_POPUP) && !g_hfr_fullscreen;
+    if (game_fullscreen) return;                 /* the game's own exclusive request: not ours to cycle */
+    if (g_hfr_fullscreen) {
+        window_hfr_fullscreen(0);
+        cfg.window_scale = presets[0];
+        window_apply_scale(cfg.window_scale);
+        LOG("window: size cycle -> %d%%", cfg.window_scale);
+        return;
+    }
+    int cw, ch; client_size(g_wnd, &cw, &ch);
+    RECT work; { HMONITOR m = MonitorFromWindow(g_wnd, MONITOR_DEFAULTTONEAREST); MONITORINFO mi; mi.cbSize = sizeof mi;
+                 if (m && GetMonitorInfoA(m, &mi)) work = mi.rcWork; else { work.left = work.top = 0; work.right = GetSystemMetrics(SM_CXSCREEN); work.bottom = GetSystemMetrics(SM_CYSCREEN); } }
+    RECT frame = { 0, 0, 0, 0 }; AdjustWindowRect(&frame, (DWORD)style, FALSE);
+    int maxw = (work.right - work.left) - (frame.right - frame.left), maxh = (work.bottom - work.top) - (frame.bottom - frame.top);
+    for (size_t i = 0; i < sizeof presets / sizeof *presets; ++i) {
+        int pw = g_native_w * presets[i] / 100, ph = g_native_h * presets[i] / 100;
+        if (pw > cw + 8 && pw <= maxw && ph <= maxh) {   /* the next one up that still fits */
+            cfg.window_scale = presets[i];
+            window_apply_scale(cfg.window_scale);
+            LOG("window: size cycle -> %d%%", cfg.window_scale);
+            return;
+        }
+    }
+    window_hfr_fullscreen(1);
+    LOG("window: size cycle -> borderless fullscreen");
+}
 /* Re-assert the style and, in borderless, the geometry. Runs once per frame; a no-op
    unless something (usually the game's own reset path) has changed them. */
 static void window_enforce(void) {
     if (!g_win_ready || !g_wnd || g_minimized) return;
     LONG style = GetWindowLongA(g_wnd, GWL_STYLE);
-    int game_fullscreen = !(style & WS_CAPTION) && (style & WS_POPUP);
-    int want_borderless = cfg.fullscreen_mode == FS_BORDERLESS && game_fullscreen;
+    int game_fullscreen = !(style & WS_CAPTION) && (style & WS_POPUP) && !g_hfr_fullscreen;
+    int want_borderless = g_hfr_fullscreen || (cfg.fullscreen_mode == FS_BORDERLESS && game_fullscreen);
     if (want_borderless) {
         RECT m; monitor_rect(g_wnd, &m);
         RECT cur; GetWindowRect(g_wnd, &cur);
@@ -258,6 +315,7 @@ int menu_key_press(struct menu_key* k, int polled_down, int focus) {
 
 static int g_menu_request;          /* set by anything that wants the menu toggled once */
 static struct menu_key g_menu_key;
+static struct menu_key g_cycle_key;
 
 void hfr_menu_requested(void) { g_menu_request = 1; }
 void hfr_menu_key_down(int down) {
@@ -285,6 +343,12 @@ static void poll_menu_key(void) {
         g_menu_request = 0;
         hfr_menu_toggle();
         LOG("menu: %s", hfr_menu_visible() ? "opened" : "closed");
+    }
+    /* The size cycle key, for a game that has no such key of its own. Same level-based press
+       detection as the menu key, polled only: nothing else needs to agree about it. */
+    if (cfg.size_cycle_key && g_game && !g_game->native_size_cycle) {
+        int cheld = (GetAsyncKeyState(cfg.size_cycle_key) & 0x8000) != 0;
+        if (menu_key_press(&g_cycle_key, cheld, focus)) window_cycle_size();
     }
 }
 /* Called from the frame hook. Returns non-zero when the frame should be skipped. */

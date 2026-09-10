@@ -27,8 +27,9 @@ smoother presentation. Direct3D 9Ex can limit the driver's presentation queue to
 latency. The log reports how many presented frames had no simulation tick behind them, so the
 frame rate can be checked rather than taken on trust.
 
-**Resolution and scaling.** The window can be any size — dragged, or set at startup with
-`window_scale` (TH10's own dialog only offers 640x480) — with the picture fitted and letterboxed,
+**Resolution and scaling.** The window can be any size — dragged, set at startup with
+`window_scale`, or stepped with F10 through 1x, 1.5x, 2x and borderless fullscreen the way
+TH11 and later do natively (TH10's own dialog only offers 640x480) — with the picture fitted and letterboxed,
 stretched, or held to whole-number multiples for pixel-perfect output. The game's fullscreen can
 become a borderless window covering the monitor. Four upscaling filters are bundled — MMPX,
 xBR-lv2, Super-xBR and ScaleFX — and any `.hlsl` file dropped into `shaders/` next to the game

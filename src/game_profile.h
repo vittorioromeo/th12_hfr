@@ -75,6 +75,7 @@ struct GameProfile {
     uint32_t critical_flag_mask;    /* zero: the runner always locks */
     int runner_stack_arg;
     int runner_return8_ends;
+    int native_size_cycle;          /* the game cycles its own window sizes on F10 (TH11 on) */
     const char* d3dx;
     void (*install_sites)(void);
     void (*place_enemy)(uint8_t* enemy, uint8_t* anm, uint32_t flags, const float* position);

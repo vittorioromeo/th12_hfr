@@ -48,6 +48,7 @@ static struct {
     int snap_aspect;        /* keep the window itself at the native aspect while dragging */
     int fullscreen_mode;    /* 0 leave the game's exclusive fullscreen, 1 borderless desktop */
     int menu_key;           /* virtual-key code that opens the in-game menu */
+    int size_cycle_key;     /* cycles the window size, for games without their own F10 (0 = off) */
     int own_present;        /* -1 auto, 0 present through the game's chain, 1 through ours */
 /* Named, not positional: the old form was a bare list of eighteen numbers that had to stay in
    the same order as the fields above, so inserting a setting anywhere but the end silently
@@ -59,5 +60,5 @@ static struct {
     .max_frame_latency = 1, .flipex = 0,
     .scaling = 1, .filter = FILTER_SHARP, .filter_name = "",
     .resizable = 1, .window_scale = 0, .snap_aspect = 0, .fullscreen_mode = 1,
-    .menu_key = VK_F11, .own_present = -1,
+    .menu_key = VK_F11, .size_cycle_key = VK_F10, .own_present = -1,
 };

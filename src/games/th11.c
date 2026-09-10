@@ -205,6 +205,7 @@ static const struct GameProfile th11_profile = {
     .critical_flag_mask = 0x8000, .runner_return8_ends = 1,
     .classes = th11_classes, .class_count = sizeof th11_classes / sizeof *th11_classes,
     .mask_minor_player_edges = 1, .d3dx = "d3dx9_37.dll",
-     .install_sites = th11_install_sites,
+    .native_size_cycle = 1,
+    .install_sites = th11_install_sites,
     .place_enemy = th11_place_enemy,
 };

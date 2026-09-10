@@ -218,7 +218,9 @@ void draw_display_section(void) {
         }
         ImGui::EndDisabled();
         help("Applied now, and at every start once saved. The window can still be\n"
-             "dragged to any size afterwards; this only sets where it begins.");
+             "dragged to any size afterwards; this only sets where it begins.\n"
+             "F10 steps through 1x, 1.5x, 2x and borderless fullscreen, as TH11 and\n"
+             "later do on their own; on those games it is the game's key.");
     }
     toggle("Resizable window", UI_RESIZABLE);
     ImGui::SameLine();
