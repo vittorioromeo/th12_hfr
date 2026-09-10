@@ -189,6 +189,9 @@ static void detect_d3d9_wrapper(void) {
     if (n && _strnicmp(module, system, n) == 0) return;      /* the real one */
     g_want_own_present = 0;
     LOG("d3d9 wrapper in use (%s): presenting through the game's own chain", module);
+    LOG("  the wrapper decides how the image reaches the window, so the scaling modes and");
+    LOG("  borderless fullscreen cannot take effect. Filters and the menu still work.");
+    LOG("  Rename that d3d9.dll to use them -- this patch replaces what it does.");
     if (cfg.d3d9ex) {
         cfg.d3d9ex = 0;
         LOG("Direct3D 9Ex disabled: resizing needs Reset, and a reset with 9Ex would lose every game texture");

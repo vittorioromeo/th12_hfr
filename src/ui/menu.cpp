@@ -29,6 +29,15 @@ extern "C" void hfr_imgui_failed(const char* expr, const char* file, int line) {
 namespace {
 bool g_ready = false;
 bool g_visible = false;
+/* Set whenever the menu is opened, and whenever the surface it is drawn on changes size.
+   ImGui's own "place this window when it appears" condition cannot be used for either: while
+   the menu is hidden this file does not call NewFrame at all, so ImGui's frame counter is
+   frozen and the window never counts as newly appearing when it comes back. That is what left
+   the menu holding a position from a viewport that no longer existed -- open at 1817x1156,
+   game switches resolution to 640x480, and the window is now off the edge of the screen with
+   no way to bring it back, because reopening did not move it either. */
+bool g_place_next = true;
+ImVec2 g_last_display(0, 0);
 bool g_objects = false;
 ImGuiContext* g_ctx = nullptr;
 int  g_hint_frames = 0;      /* a short "press this for settings" note after startup */
@@ -78,7 +87,12 @@ extern "C" void hfr_menu_shutdown(void) {
 extern "C" void hfr_menu_invalidate(void) {
     if (g_ready && g_objects) { ImGui_ImplDX9_InvalidateDeviceObjects(); g_objects = false; }
 }
-extern "C" void hfr_menu_toggle(void) { if (g_ready) { g_visible = !g_visible; g_hint_frames = 0; } }
+extern "C" void hfr_menu_toggle(void) {
+    if (!g_ready) return;
+    g_visible = !g_visible;
+    g_hint_frames = 0;
+    if (g_visible) g_place_next = true;      /* opening always puts it somewhere visible */
+}
 extern "C" int  hfr_menu_visible(void) { return g_ready && g_visible; }
 
 extern "C" int hfr_menu_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, LRESULT* result) {
@@ -143,10 +157,24 @@ void draw_hint(void) {
 }
 
 void draw_display_section(void) {
+    /* A d3d9 wrapper such as PivotDX9 presents the game itself, so it -- not this patch --
+       decides how the image reaches the window. The filters still work, because they run
+       before that point, but placing the image inside the window no longer does. Say so and
+       disable the two controls rather than leaving them to be adjusted with no effect. */
+    bool own = hfr_ui_get(UI_OWN_PRESENT) != 0;
+    if (!own) {
+        ImGui::TextDisabled("A d3d9 wrapper is presenting this game, so it decides how the");
+        ImGui::TextDisabled("image fills the window. Scaling and borderless fullscreen below");
+        ImGui::TextDisabled("cannot take effect; filters still can. Rename d3d9.dll in the");
+        ImGui::TextDisabled("game's folder to use them -- this patch replaces what it does.");
+        ImGui::Separator();
+    }
     const char* modes[] = { "Stretch to fill", "Fit, keep aspect ratio", "Pixel perfect (whole multiples)" };
     int scaling = hfr_ui_get(UI_SCALING);
     if (scaling < 0 || scaling > 2) scaling = 1;
+    ImGui::BeginDisabled(!own);
     if (ImGui::Combo("Scaling", &scaling, modes, IM_ARRAYSIZE(modes))) hfr_ui_set(UI_SCALING, scaling);
+    ImGui::EndDisabled();
     help("Pixel perfect keeps every game pixel the same size, at the cost of\n"
          "larger black bars when the window is not a whole multiple of 640x480.");
 
@@ -170,7 +198,9 @@ void draw_display_section(void) {
     toggle("Resizable window", UI_RESIZABLE);
     ImGui::SameLine();
     toggle("Snap to 4:3 while dragging", UI_SNAP_ASPECT);
+    ImGui::BeginDisabled(!own);
     toggle("Borderless fullscreen", UI_FULLSCREEN_MODE);
+    ImGui::EndDisabled();
     help("On: the game's fullscreen becomes a borderless window covering the\n"
          "monitor at its own resolution, instead of a 640x480 mode change.");
 }
@@ -251,18 +281,32 @@ void draw_diagnostics_section(void) {
 void draw_window(void) {
     ImGuiIO& io = ImGui::GetIO();
     float k = io.FontGlobalScale;
+    bool display_changed = io.DisplaySize.x != g_last_display.x || io.DisplaySize.y != g_last_display.y;
+    g_last_display = io.DisplaySize;
     /* A fixed, resizable window rather than one that fits its contents: with a tab bar,
-       auto-fitting would change the window's size every time you changed tab.
-       Appearing, not FirstUseEver: reopening always brings the window back to somewhere
-       visible, so it can never end up stranded outside a game window that has since been
-       made smaller, while still being freely draggable for as long as it is open. */
-    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f),
-                            ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    ImGui::SetNextWindowSize(ImVec2(620 * k, 420 * k), ImGuiCond_Appearing);
+       auto-fitting would change the window's size every time you changed tab. Opening it
+       always centres it, so it is always somewhere visible, and it stays draggable after. */
+    if (g_place_next) {
+        ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f),
+                                ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+        ImGui::SetNextWindowSize(ImVec2(620 * k, 420 * k), ImGuiCond_FirstUseEver);
+        g_place_next = false;
+    }
     ImGui::SetNextWindowSizeConstraints(ImVec2(400 * k, 240 * k), io.DisplaySize);
     /* No close button: the menu key is the only way in and out, so the menu can never be
        left in a state where that key looks like it has stopped working. */
     if (ImGui::Begin("Touhou HFR", nullptr, ImGuiWindowFlags_NoCollapse)) {
+        /* ImGui's own clamping only keeps a window's title bar on screen, which still leaves
+           almost all of it outside a viewport that has just shrunk a long way. Put the whole
+           window back inside. */
+        if (display_changed) {
+            ImVec2 pos = ImGui::GetWindowPos(), size = ImGui::GetWindowSize(), want = pos;
+            if (want.x + size.x > io.DisplaySize.x) want.x = io.DisplaySize.x - size.x;
+            if (want.y + size.y > io.DisplaySize.y) want.y = io.DisplaySize.y - size.y;
+            if (want.x < 0.0f) want.x = 0.0f;
+            if (want.y < 0.0f) want.y = 0.0f;
+            if (want.x != pos.x || want.y != pos.y) ImGui::SetWindowPos(want);
+        }
         char line[256];
         hfr_ui_status(line, sizeof line);
         ImGui::TextUnformatted(line);

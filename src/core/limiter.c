@@ -34,6 +34,15 @@ static int update_only_tick(void) {
 static unsigned g_stat_repeat_frames;
 static uint64_t g_stat_ticks_run_prev;
 
+/* The tick counter restarts when a replay begins or ends, so the difference across a window
+   that contains one of those goes negative -- and a log that reports -2936 ticks/s is a log
+   nobody can use to judge whether the frame rate is real. Report nothing rather than nonsense. */
+static double tick_rate_since(double now) {
+    double dt = now - g_stat_last;
+    if (dt <= 0 || g_ticks_run < g_stat_ticks_run_last) return 0.0;
+    return (double)(g_ticks_run - g_stat_ticks_run_last) / dt;
+}
+
 static void limiter_stats(double now) {
     g_stat_ticks++;
     if (g_ticks_run == g_stat_ticks_run_prev) g_stat_repeat_frames++;
@@ -50,7 +59,7 @@ static void limiter_stats(double now) {
         if (g_stat_last > 0)
             LOG("stats: %.2f presents/s (target %d), extra ticks %u, skipped ticks %u, sub calls %u, frame calls %u, logical %.3f, long gaps %u/%u, ticks/s %.2f, subtick polls %u applied %u, repeated frames %u/%u",
                 g_stat_ticks / (now - g_stat_last), g_refresh, g_stat_catchup, g_stat_skipped, g_stat_sub_calls, g_stat_frame_calls, g_logical, g_stat_long, g_stat_vlong,
-                (double)(g_ticks_run - g_stat_ticks_run_last) / (now - g_stat_last), g_stat_subtick_polls, g_stat_subtick_applied,
+                tick_rate_since(now), g_stat_subtick_polls, g_stat_subtick_applied,
                 g_stat_repeat_frames, g_stat_ticks);
         g_stat_last = now; g_stat_ticks = 0; g_stat_sub_calls = g_stat_frame_calls = g_stat_long = g_stat_vlong = g_stat_catchup = g_stat_skipped = 0; g_stat_ticks_run_last = g_ticks_run;
         g_stat_subtick_polls = g_stat_subtick_applied = 0; g_stat_repeat_frames = 0;

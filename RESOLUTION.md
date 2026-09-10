@@ -293,6 +293,42 @@ are swallowed, plus `WM_SETCURSOR` while the menu is open, since the game hides 
 never sees the runtime's globals, and a build can leave it out — the test harness defines
 `HFR_NO_UI` and gets no-ops.
 
+### 2.6.2 The menu that could not be brought back
+
+Reported twice, and the second report had the detail that mattered: the menu was open when
+the game changed resolution, and after that it was invisible and reopening did nothing.
+
+The window was keeping a position from a viewport that no longer existed. Open centred on a
+1817x1156 surface, the window sits around (900, 580); the game then switches to 640x480 and
+that position is off the edge. ImGui does clamp windows, but only enough to keep the title bar
+reachable, which still leaves nearly all of a 620-wide window outside a 640-wide surface.
+
+The reason reopening did not rescue it is the interesting half. The placement used
+`ImGuiCond_Appearing`, chosen precisely so that every reopen would put the window somewhere
+visible. It never fires: while the menu is hidden this file returns before `ImGui::NewFrame()`,
+so ImGui's frame counter does not advance, and "appearing" is defined as the window not having
+been submitted for at least two frames. The counter is frozen, the window was submitted on the
+last frame that happened, and so it is never new. A condition that looked like the fix was
+doing nothing at all -- and nothing failed to say so.
+
+Now the menu tracks its own placement: opening it sets a flag that centres it with
+`ImGuiCond_Always` for one frame, and a change in surface size pushes the whole window back
+inside the surface rather than just its title bar.
+
+### 2.6.3 When a d3d9 wrapper is presenting
+
+TH11 in the reporter's install still had PivotDX9's `d3d9.dll` active, where TH12's had been
+renamed to `d3d9.dllx`. That is the whole explanation for "the shaders work but the scaling
+modes and borderless fullscreen do not": with a wrapper in the way the patch presents through
+the game's own chain, so the scaling geometry is computed against the game's back buffer and
+the wrapper then stretches that to the window however it likes. Filters run before that point
+and are unaffected.
+
+The patch cannot fix this from inside -- the wrapper owns the last step -- so it now says so
+instead: three lines in the log naming the consequence and the remedy, and the two controls
+that cannot take effect are greyed out in the menu with the reason above them. Offering a
+scaling mode that silently does nothing is worse than not offering it.
+
 ## 2.7 Making failures speak
 
 Two mechanisms exist purely so that a fault in a windowed process is not silent, because the
