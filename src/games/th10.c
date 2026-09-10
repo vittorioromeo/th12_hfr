@@ -1,40 +1,123 @@
-/* TH10 (Mountain of Faith), the first game of this engine.
- *
- * Everything about the picture works: the scaling modes, the filters, the resizable window,
- * borderless fullscreen, the menu, the screenshot fix and the conflict guard. None of that
- * needs an address from the game, which is the point of keeping the video path free of them.
- *
- * The simulation is not described here, so TH10 runs at its stock 60 Hz. That is not a matter
- * of filling in more addresses: TH10 predates the single game-speed float that TH11 and TH12
- * both write a literal 1.0 into at 22 sites, which is what the sub-stepping design hangs off.
- * Its top three candidate globals take 12, 12 and 10 writes, so its speed model has to be
- * worked out on its own terms first. install_sites is per-game hand-written code besides.
- *
- * A profile with no simulation addresses is a supported shape, not a broken one: install()
- * checks for them, skips what it cannot do, says so in the log, and the menu disables the
- * timing controls with the reason. See ADDING_A_GAME.md.
- *
- * NOT YET USABLE. Identification, the conflict guard, the screenshot routine and the whole
- * shader chain are verified, but the game faults at 0x42b1e0 shortly after the first frames
- * are presented, and vanilla TH10 in the same rig does not. Ruled out so far, each by removing
- * it and reproducing the fault unchanged: the screenshot stub, Direct3D 9Ex and its texture
- * conversion, and the sub-tick input hook. What is left is the device redirect itself -- the
- * render target handed to the game in place of its back buffer -- which TH10 evidently uses in
- * some way TH11 and TH12 do not. The faulting instruction reads through EBX at the entry of a
- * function near the code that writes a "TH10" file header, so the next step is to find that
- * function's caller and see what it expects to be holding.
- */
+/* TH10 v1.00a: timers carry a pointer to the shared speed at +0x0c.
+   Scheduling, rendering, window controls, shaders and menu remain shared. */
+static const struct SpeedSite th10_speed_sites[] = {
+    {0x4178b1,10,SPEED_ONE_PERM,0}, {0x417ca9,10,SPEED_ONE_PERM,0},
+    {0x4201b7,10,SPEED_ONE_PERM,0}, {0x425cc4,10,SPEED_ONE_PERM,0},
+    {0x4027ea,10,SPEED_ONE_TEMP,0}, {0x43ee84,10,SPEED_ONE_TEMP,0},
+    {0x422c20,10,SPEED_PAUSE_SET,0}, {0x42335f,10,SPEED_PAUSE_SET,0},
+    {0x4234ff,10,SPEED_PAUSE_SET,0},
+    {0x422c73,6,SPEED_PAUSE_RESTORE,0}, {0x423563,5,SPEED_PAUSE_RESTORE,0},
+    {0x411c3d,6,SPEED_ECL,1},
+};
+
+/* Different native replay ABIs, identical file extension and playback policy. */
+static void __fastcall th10_replay_save(void* manager, char* filename, char* name) {
+    ((void (__fastcall*)(void*,char*,char*))0x429b60)(manager,filename,name);
+    replay_append_chunk(filename);
+}
+int __stdcall __attribute__((used)) th10_replay_load_c(void* manager, char* filename) {
+    restore_replay_settings(); g_replay_playing=0;
+    uintptr_t s=(uintptr_t)manager; int result;
+    __asm__ volatile("push %2\n\tcall *%3" : "=a"(result), "+S"(s)
+        : "r"(filename), "r"((uintptr_t)0x42a200) : "ecx","edx","memory","cc");
+    replay_loaded(filename);
+    return result;
+}
+__asm__(".intel_syntax noprefix\n.globl _th10_replay_load_entry\n_th10_replay_load_entry:\n"
+        "push dword ptr [esp+4]\npush esi\ncall _th10_replay_load_c@8\nret 4\n.att_syntax\n");
+extern void th10_replay_load_entry(void);
+
+static void th10_install_sites(void) {
+    g_p=stub_begin();
+    /* The shared frame hook owns pacing and presents every scheduled slot. */
+    const uint8_t nops[6]={0x90,0x90,0x90,0x90,0x90,0x90};
+    patch_bytes(0x4393b7,nops,6,site_expected(0x4393b7,6));
+    patch_bytes(0x439488,nops,6,site_expected(0x439488,6));
+    site_call(0x423f16,th10_replay_save); site_call(0x43399d,th10_replay_save);
+    site_call(0x429257,th10_replay_load_entry); site_call(0x42948c,th10_replay_load_entry);
+    site_call(0x429765,th10_replay_load_entry);
+    /* Integer counters use the object's own timer. */
+    gate_block(0x406584,5,0x4065a0,R_EBP,0x3f8);
+    gate_block(0x425aa9,7,0x425b9d,R_EBP,0x474);
+    gate_block(0x426285,5,0x4262b4,R_EBP,0x474);
+    /* Option history, easing and callbacks are measured in original frames. */
+    gate_block(0x425520,6,0x4256de,0,-1);
+    gate_block(0x4251c1,7,0x4251c8,0,-1);
+    movement_ftol(0x42540a,0x463b2c,0);
+    movement_ftol(0x42541f,0x463b2c,1);
+    /* Item homing acceleration is a rate rather than a constant offset. */
+    const uintptr_t item_accel[]={0x41b28d,0x41b315};
+    for(unsigned i=0;i<2;i++) {
+        STUB_BEGIN(); E(0xd9,0x05); E32(0x470c38); emit_factor(); E(0xde,0xc1);
+        EJMP(item_accel[i]+6); site_hook(item_accel[i],6);
+    }
+    /* Cartesian integration shared by player shots and hitboxes. */
+    STUB_BEGIN();
+    E(0xd9,0x46,0x0c);emit_factor();E(0xd8,0x06,0xd9,0x1e);
+    E(0xd9,0x46,0x10);emit_factor();E(0xd8,0x46,0x04,0xd9,0x5e,0x04);
+    E(0xd9,0x46,0x14);emit_factor();E(0xd8,0x46,0x08,0xd9,0x5e,0x08);
+    EJMP(0x44c30f);site_hook(0x44c2aa,25);
+    /* Repeated centipixel rounding would bias every subdivided displacement. */
+    STUB_BEGIN(); E(0x81,0x3d);E32((uintptr_t)&g_factor);E32(0x3f800000);
+    EJCC(0x85,0x44c347);ECOPY(0x44c30f,5);EJMP(0x44c314);site_hook(0x44c30f,5);
+    const uintptr_t acceleration[]={0x425dab,0x4283a7};
+    const uintptr_t turn[]={0x425db5,0x4283b1};
+    for(unsigned i=0;i<2;i++) {
+        STUB_BEGIN();ECOPY(acceleration[i],3);emit_factor();ECOPY(acceleration[i]+3,4);
+        EJMP(acceleration[i]+7);site_hook(acceleration[i],7);
+        STUB_BEGIN();ECOPY(turn[i],3);emit_factor();ECOPY(turn[i]+3,3);
+        EJMP(turn[i]+6);site_hook(turn[i],6);
+    }
+    STUB_BEGIN();E(0xd9,0x47,0xe0);emit_factor();E(0xd8,0x03,0xd9,0x1b);
+    E(0xd9,0x47,0xe8);emit_factor();E(0xd8,0x47,0xe4,0xd9,0x5f,0xe4);
+    EJMP(0x425dde);site_hook(0x425dce,16);
+    /* Shot-cycle and ANM wait corrections subtract constants, not rates. */
+    uint8_t* constant=g_p;
+    E(0x8b,0x46,0x04,0x89,0x06,0xd9,0x44,0x24,0x04,0xd8,0x0d);E32((uintptr_t)&g_logical);
+    E(0xd8,0x46,0x08,0xd9,0x56,0x08);ECALL(0x463b2c);
+    E(0x89,0x46,0x04,0xc2,0x04,0x00);
+    site_call(0x428243,constant);site_call(0x440e3d,constant);
+    stub_end();
+    LOG("TH10 site patches installed (%u bytes of stubs)",(unsigned)g_stub_used);
+}
+static const struct node_class th10_classes[] = {
+    {0x406770,MODE_SUB,"BulletManager"}, {0x426500,MODE_SUB,"Player"},
+    {0x405840,MODE_FRAME,"Bomb"}, {0x41ba00,MODE_SUB,"ItemManager"},
+    {0x41c480,MODE_FRAME,"LaserManager"}, {0x415ae0,MODE_FRAME,"Gui"},
+    {0x403050,MODE_FRAME,"Stage"},
+    {0x4485d0,MODE_SUB,"AnmManagerWorld"}, {0x4485e0,MODE_SUB,"AnmManagerUI"},
+    {0x40b050,MODE_FRAME,"Spellcard"}, {0x40d810,MODE_FRAME,"EnemyManager"},
+    {0x4187c0,MODE_FRAME,"GameManager"},
+};
 static const struct GameProfile th10_profile = {
-    .identity = &game_identities[GI_TH10],
-    .addr = {
-        /* The one pair that is known: the game's BMP screenshot routine and its call site.
-           Found from the "snapshot/th%.3d.bmp" string, and confirmed by the routine calling
-           GetBackBuffer, LockRect, UnlockRect and Release through the device vtable. Without
-           this the screenshot key crashes, because what the patch hands the game as a back
-           buffer is a render target and those are not lockable. */
-        .screenshot_fn = 0x420670, .screenshot_call = 0x4392c1,
+    .identity=&game_identities[GI_TH10],
+    .addr={
+        .speed=0x476f78,.update_runner=0x491be4,.device=0x491c30,.pp=0x491d0c,
+        .frame_time=0x4923a0,.misc_flags=0x491ff4,
+        .raw_input=0x474e30,.raw_pressed=0x474e36,.game_input=0x474e5c,
+        .game_pressed=0x474e62,.game_released=0x474e64,
+        .option_flags=0x491d78,.autofocus=0x474e5a,.poll_input=0x44a5f0,
+        .replay_manager=0x477838,.frame_fn=0x439390,
+        .enemy_manager=0x477704,.anm_manager=0x491c10,.anm_get_vm=0x4491c0,
+        .remove_node=0x449f60,.crit=0x492274,.crit_count=0x49231c,
+        .gm_callback=0x4187c0,.game_manager=0x477810,
+        .record_callback=0x42a3d0,.playback_callback=0x42a3d0,
+        .player_callback=0x426500,.player=0x477834,
+        .frame_context_ptr=0x491fac,.frame_flag=0x491fb0,.frame_context_value=0x491e94,
+        .cleanup_fn=0x44c150,.cleanup_this=0x492254,
+        .frame_calls={0x438d31},.runner_fn=0x449c00,
+        .screenshot_fn=0x420670,.screenshot_call=0x4392c1,
     },
-    .d3dx = "d3dx9_31.dll",
-    /* Until the fault described above is understood, TH10 is identified and then left alone. */
-    .provisional = 1,
+    .layout={
+        .replay_stage=0x1d0,.replay_frame=0x1c8,.replay_stages=0x1c,
+        .player_timer=0x47c,.gm_pause_flags=0x58,
+        .input_size=0x6a,.input_width=2,.focus_mask=4,
+    },
+    .speed_sites=th10_speed_sites,.speed_site_count=sizeof th10_speed_sites/sizeof *th10_speed_sites,
+    .classes=th10_classes,.class_count=sizeof th10_classes/sizeof *th10_classes,
+    .runner_stack_arg=1,.mask_minor_player_edges=1,.d3dx="d3dx9_31.dll",
+    .install_sites=th10_install_sites,
+    .provisional=0, /* validated: full patch plan in the harness, and a live run under Wine
+                       that boots, plays gameplay at 240 Hz with 0 repeated frames, records and
+                       replays HFR replays with per-tick input, borderless + resize + filters */
 };

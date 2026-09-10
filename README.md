@@ -10,13 +10,13 @@ and selects its adapter; the scheduler, input, replay and Direct3D code are shar
 
 | Game | Version | Executables | State |
 | --- | --- | --- | --- |
-| Touhou 10 — Mountain of Faith | v1.00a | English `th10.exe`, Japanese `th10j.exe` | recognised, not yet supported |
+| Touhou 10 — Mountain of Faith | v1.00a | English `th10.exe`, Japanese `th10j.exe` | supported |
 | Touhou 11 — Subterranean Animism | v1.00a | `th11.exe`, static English `th11e.exe` | supported |
 | Touhou 12 — Undefined Fantastic Object | v1.00b | `th12.exe`, static English `th12e.exe` | supported |
 
-TH10 is identified and then deliberately left alone — nothing is patched and the game runs
-exactly as it would without this installed. Support for it is unfinished; see
-[DEVNOTES_RUNTIME.md](DEVNOTES_RUNTIME.md) §7.
+TH10 predates the single game-speed float that TH11 and TH12 hang their sub-stepping off, so its
+speed model is described on its own terms; how that was done is in
+[DEVNOTES_RUNTIME.md](DEVNOTES_RUNTIME.md) §7. Everything the other two games have works on it.
 
 ## What it does
 

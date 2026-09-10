@@ -64,6 +64,7 @@ int main(int argc,char**argv) {
     /* Unbuffered, so that a run which hangs still shows how far it got. Under Wine stdout is
        block-buffered into a pipe and a hang otherwise prints nothing at all. */
     setvbuf(stdout, NULL, _IONBF, 0);
+    g_log = stdout;   /* the patch's own log lines are the diagnosis when install() refuses */
     assert(argc==3);
     uint8_t*base=test_fixture;assert(base==(void*)0x400000);
     FILE*f=fopen(argv[1],"rb");assert(f);fseek(f,0,SEEK_END);long n=ftell(f);rewind(f);
@@ -129,12 +130,13 @@ int main(int argc,char**argv) {
     assert(!patch_bytes(addr+1,changed,5,NULL));
     assert(!patch_commit());assert(!memcmp((void*)addr,id->signatures[0].bytes,5));
     cfg.subtick_input=1;cfg.d3d9ex=1;
-    if (g_game->provisional) {
+    if (g_game->provisional && !getenv("HFR_VALIDATE_PROVISIONAL")) {
         assert(!install());          /* a provisional game must be left completely alone */
         puts("SKIP: hook installation (this game is provisional; the patch does not touch it)");
         printf("PASS: %u executable signatures verified; nothing patched\n", (unsigned)id->signature_count);
         free(file); return 0;
     }
+    if (g_game->provisional) { g_validate_provisional=1; puts("NOTE: validating a provisional profile's patch plan"); }
     assert(install() && !g_patch_failed);
     assert(g_frame_hook_installed == sim);   /* the frame hook exists exactly when the profile describes one */
     assert(orig_Direct3DCreate9 && orig_D3DXCreateTexture && orig_D3DXCreateTextureFromFileInMemoryEx);

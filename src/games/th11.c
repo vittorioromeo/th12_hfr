@@ -1,8 +1,21 @@
 /* TH11: reviewed game-specific hooks and object layout. */
-static const uintptr_t th11_speed_perm[] = { 0x41f963, 0x41fe23, 0x42956d, 0x4314b8, 0x459b0c };
-static const uintptr_t th11_speed_temp[] = { 0x402b7c, 0x44b4f3 };
-static const uintptr_t th11_speed_pset[] = { 0x42c73f, 0x42c85d, 0x42d696, 0x42d7db };
-static const uintptr_t th11_speed_prest[] = { 0x42c8b6, 0x42d845, 0x42e6a5 };
+static const struct SpeedSite th11_speed_sites[] = {
+    {0x41f963, 6, SPEED_ONE_PERM, 1},
+    {0x41fe23, 6, SPEED_ONE_PERM, 1},
+    {0x42956d, 6, SPEED_ONE_PERM, 1},
+    {0x4314b8, 6, SPEED_ONE_PERM, 1},
+    {0x459b0c, 6, SPEED_ONE_PERM, 1},
+    {0x402b7c, 6, SPEED_ONE_TEMP, 1},
+    {0x44b4f3, 6, SPEED_ONE_TEMP, 1},
+    {0x42c73f, 6, SPEED_PAUSE_SET, 1},
+    {0x42c85d, 6, SPEED_PAUSE_SET, 1},
+    {0x42d696, 6, SPEED_PAUSE_SET, 1},
+    {0x42d7db, 6, SPEED_PAUSE_SET, 1},
+    {0x42c8b6, 6, SPEED_PAUSE_RESTORE, 1},
+    {0x42d845, 6, SPEED_PAUSE_RESTORE, 1},
+    {0x42e6a5, 6, SPEED_PAUSE_RESTORE, 1},
+    {0x4169d0, 6, SPEED_ECL, 1},
+};
 
 static void th11_install_sites(void) {
     g_p = stub_begin();
@@ -50,18 +63,8 @@ static void th11_install_sites(void) {
     gate_block(0x430b4e, 6, 0x430d91, 0, -1);
 
     /* Fixed-point movement is in 1/128 px units. Carry sub-tick truncation. */
-    const uintptr_t ftol_sites[] = {0x430722,0x430735};
-    for (int i=0; i<2; ++i) {
-        uint8_t* st=g_p;
-        /* At stock speed retain the game's original truncation, including ECL
-           slow motion. Residuals only compensate the additional sub-division. */
-        E(0x81,0x3d); E32((uint32_t)(uintptr_t)&g_factor); E32(0x3f800000);
-        E(0x75,0x05); EJMP(0x4864e0);
-        E(0xd8,0x05); E32((uint32_t)(uintptr_t)&g_move_residual[i]); E(0xd9,0xc0);
-        ECALL(0x4864e0); E(0x50,0xdb,0x04,0x24,0x58,0xde,0xe9);
-        E(0xd9,0x1d); E32((uint32_t)(uintptr_t)&g_move_residual[i]); E(0xc3);
-        site_call(ftol_sites[i],st);
-    }
+    movement_ftol(0x430722, 0x4864e0, 0);
+    movement_ftol(0x430735, 0x4864e0, 1);
 
     /* Shared MotionState Cartesian integration (also used by player shots). */
     STUB_BEGIN();
@@ -189,6 +192,7 @@ static const struct GameProfile th11_profile = {
         .latency_cmp = 0x446799,
     },
     .layout = {
+        .runner_ending = 0x48, .gm_pause_flags = 0x60, .input_size = 0x130, .input_width = 4,
         .replay_stage = 0x1d4,
         .replay_frame = 0x1cc,
         .replay_stages = 0x1c,
@@ -197,13 +201,8 @@ static const struct GameProfile th11_profile = {
         .enemy_position = 0x1070,
         .enemy_skip_mask = 0x400000,
     },
-    .speed_sites = {
-        th11_speed_perm,  sizeof th11_speed_perm  / sizeof(uintptr_t),
-        th11_speed_temp,  sizeof th11_speed_temp  / sizeof(uintptr_t),
-        th11_speed_pset,  sizeof th11_speed_pset  / sizeof(uintptr_t),
-        th11_speed_prest, sizeof th11_speed_prest / sizeof(uintptr_t),
-        0x4169d0,
-    },
+    .speed_sites = th11_speed_sites, .speed_site_count = sizeof th11_speed_sites / sizeof *th11_speed_sites,
+    .critical_flag_mask = 0x8000, .runner_return8_ends = 1,
     .classes = th11_classes, .class_count = sizeof th11_classes / sizeof *th11_classes,
     .mask_minor_player_edges = 1, .d3dx = "d3dx9_37.dll",
      .install_sites = th11_install_sites,

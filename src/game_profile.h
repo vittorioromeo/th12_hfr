@@ -3,6 +3,8 @@
 #include "identity.h"
 enum { MODE_FRAME = 0, MODE_SUB = 1, MAX_NODE_CLASSES = 32 };
 struct node_class { uint32_t func; int mode; const char* name; };
+enum SpeedOp { SPEED_ONE_PERM, SPEED_ONE_TEMP, SPEED_PAUSE_SET, SPEED_PAUSE_RESTORE, SPEED_ECL };
+struct SpeedSite { uintptr_t addr; unsigned char size, op, pop_float; };
 struct GameProfile {
     const struct GameIdentity* identity;
     struct {
@@ -53,18 +55,16 @@ struct GameProfile {
         uint32_t enemy_flags;
         uint32_t enemy_position;
         uint32_t enemy_skip_mask;
+        uint32_t runner_ending;     /* optional field; TH10's runner ends at +0x48 */
+        uint32_t gm_pause_flags;
+        uint32_t input_size;        /* bytes saved around a sub-tick poll */
+        uint32_t input_width;       /* 2 or 4 bytes per input word */
+        uint32_t focus_mask;        /* zero selects the later engines' 0x08 */
     } layout;
-    /* Every game writes the literal 1.0 into the global game-speed float at a handful of
-       sites, in five kinds. Which addresses they are is all that differs between games, so
-       they are a table here rather than a per-game function that was the same code three
-       times over. Each list ends at its count; six bytes are replaced at every site. */
-    struct {
-        const uintptr_t* perm;  size_t perm_n;   /* permanent 1.0 */
-        const uintptr_t* temp;  size_t temp_n;   /* temporary 1.0 (unaffected by slow-mo) */
-        const uintptr_t* pset;  size_t pset_n;   /* pause: set 1.0 after saving the effective value */
-        const uintptr_t* prest; size_t prest_n;  /* pause: restore */
-        uintptr_t ecl;                           /* the ECL slow-motion write */
-    } speed_sites;
+    /* Instruction shape and semantics are independent: TH10 mostly uses MOV,
+       while later engines use FSTP. Only FSTP sites consume an x87 value. */
+    const struct SpeedSite* speed_sites;
+    size_t speed_site_count;
     const struct node_class* classes;
     size_t class_count;
     /* Set while a game is still being worked out. The patch identifies it, logs what it knows,
@@ -72,6 +72,9 @@ struct GameProfile {
        and then faults is worse than one the patch does not claim to support. */
     int provisional;
     int mask_minor_player_edges;
+    uint32_t critical_flag_mask;    /* zero: the runner always locks */
+    int runner_stack_arg;
+    int runner_return8_ends;
     const char* d3dx;
     void (*install_sites)(void);
     void (*place_enemy)(uint8_t* enemy, uint8_t* anm, uint32_t flags, const float* position);

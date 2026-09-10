@@ -1,4 +1,15 @@
 static void emit_factor(void) { E(0xd8, 0x0d); E32((uint32_t)(uintptr_t)&g_factor); }
+/* Carry the extra truncation introduced by dividing fixed-point player movement.
+   Keep the game's exact conversion at stock speed, including native slow motion. */
+static void movement_ftol(uintptr_t addr, uintptr_t ftol, unsigned axis) {
+    uint8_t* st = g_p;
+    E(0x81,0x3d); E32((uint32_t)(uintptr_t)&g_factor); E32(0x3f800000);
+    E(0x75,0x05); EJMP(ftol);
+    E(0xd8,0x05); E32((uint32_t)(uintptr_t)&g_move_residual[axis]); E(0xd9,0xc0);
+    ECALL(ftol); E(0x50,0xdb,0x04,0x24,0x58,0xde,0xe9);
+    E(0xd9,0x1d); E32((uint32_t)(uintptr_t)&g_move_residual[axis]); E(0xc3);
+    site_call(addr,st);
+}
 
 /* Gate a straight-line block; preserve the incoming flags on both branches.
    timer < 0 selects the global frame boundary, otherwise use the object's timer. */

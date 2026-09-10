@@ -17,7 +17,7 @@ for f in "$IMGUI/imgui" "$IMGUI/imgui_draw" "$IMGUI/imgui_tables" "$IMGUI/imgui_
 done
 $CXX $CXXFLAGS -I"$IMGUI" -c src/ui/menu.cpp -o build/obj/menu.o
 
-$CXX -shared -static-libgcc -static-libstdc++ -o build/touhou_hfr.dll build/obj/*.o \
+$CXX -shared -static -static-libgcc -static-libstdc++ -o build/touhou_hfr.dll build/obj/*.o \
      -ld3d9 -lwinmm -lgdi32 -ldwmapi -Wl,--kill-at
 $CC $CFLAGS -O2 -s -mwindows -static-libgcc -o build/touhou_hfr.exe src/launcher.c
 cp build/touhou_hfr.dll build/dinput8.dll

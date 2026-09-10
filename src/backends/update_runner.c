@@ -8,8 +8,9 @@ typedef void (__fastcall *RemoveNodeFn)(struct UpdateFunc* uf, uint8_t* runner);
 
 #define CRIT ((LPCRITICAL_SECTION)g_game->addr.crit)
 #define CRIT_COUNT (*(volatile uint8_t*)g_game->addr.crit_count)
-static inline void crit_enter(void) { if (G_MISC_FLAGS & 0x8000) { EnterCriticalSection(CRIT); CRIT_COUNT++; } }
-static inline void crit_leave(void) { if (G_MISC_FLAGS & 0x8000) { LeaveCriticalSection(CRIT); CRIT_COUNT--; } }
+static inline int crit_enabled(void) { return !g_game->critical_flag_mask || (G_MISC_FLAGS & g_game->critical_flag_mask); }
+static inline void crit_enter(void) { if (crit_enabled()) { EnterCriticalSection(CRIT); CRIT_COUNT++; } }
+static inline void crit_leave(void) { if (crit_enabled()) { LeaveCriticalSection(CRIT); CRIT_COUNT--; } }
 
 static struct UpdateFunc* g_stop_node; /* node that returned "stop" on the last frame tick */
 static unsigned g_stat_sub_calls, g_stat_frame_calls, g_stat_long, g_stat_vlong;
@@ -31,7 +32,7 @@ restart:
         if (!uf->func) continue;
         if (!(uf->flags & 2)) { count++; continue; }
     call_again:
-        if (*(int*)(runner + 0x48) != 0) {
+        if (g_game->layout.runner_ending && *(int*)(runner + g_game->layout.runner_ending) != 0) {
             if (uf->on_cleanup) uf->on_cleanup(uf->arg);
             count++; continue;
         }
@@ -40,7 +41,7 @@ restart:
             if (uf == g_stop_node) { count = 1; goto done; } /* the list was cut here on the last frame tick */
             /* GameManager (g_game->addr.gm_callback) returns "stop" while paused (flags 0x10/0x20/0x40); a pause raised by a
                sub-stepped node mid-frame must cut the list immediately, not only at the next frame tick */
-            if ((uint32_t)uf->func == g_game->addr.gm_callback) { uint8_t* gm = *(uint8_t**)g_game->addr.game_manager; if (gm && (*(uint32_t*)(gm + 0x60) & 0x70)) { count = 1; goto done; } }
+            if ((uint32_t)uf->func == g_game->addr.gm_callback) { uint8_t* gm = *(uint8_t**)g_game->addr.game_manager; if (gm && (*(uint32_t*)(gm + g_game->layout.gm_pause_flags) & 0x70)) { count = 1; goto done; } }
             count++; continue;
         }
         crit_leave();
@@ -58,17 +59,17 @@ restart:
         uint32_t saved_pressed = 0, saved_released = 0, saved_bomb = 0;
         int player_minor = g_game->mask_minor_player_edges && fn == g_game->addr.player_callback && !g_major;
         if (player_minor) {
-            saved_pressed = *(uint32_t*)g_game->addr.game_pressed;
-            saved_released = *(uint32_t*)g_game->addr.game_released;
+            saved_pressed = input_read(g_game->addr.game_pressed);
+            saved_released = input_read(g_game->addr.game_released);
             saved_bomb = G_GAME_INPUT & 2;
-            G_GAME_INPUT &= ~2u;
-            *(uint32_t*)g_game->addr.game_pressed = *(uint32_t*)g_game->addr.game_released = 0;
+            set_game_input(G_GAME_INPUT & ~2u);
+            input_write(g_game->addr.game_pressed, 0); input_write(g_game->addr.game_released, 0);
         }
         int r = uf->func(uf->arg);
         if (player_minor) {
-            *(uint32_t*)g_game->addr.game_pressed = saved_pressed;
-            *(uint32_t*)g_game->addr.game_released = saved_released;
-            G_GAME_INPUT |= saved_bomb;
+            input_write(g_game->addr.game_pressed, saved_pressed);
+            input_write(g_game->addr.game_released, saved_released);
+            set_game_input(G_GAME_INPUT | saved_bomb);
         }
         if (fn == g_game->addr.player_callback) { uint8_t* pl = *(uint8_t**)g_game->addr.player; if (pl) { g_ptf_prev = g_ptf_cur; g_ptf_cur = *(float*)(pl + g_game->layout.player_timer); } }
         if (replay_node) { uint8_t* rm = G_REPLAY_MANAGER; if (rm && *(int*)(rm + g_game->layout.replay_frame) != frame_before) g_frame_active = 1; }
@@ -77,7 +78,8 @@ restart:
         case 0: game_remove_node(uf, runner); count++; break;
         case 2: if (uf->flags & 2) goto call_again; count++; break;
         case 3: if (g_major) g_stop_node = uf; count = 1; goto done;
-        case 4: case 8: count = 0; goto done;
+        case 4: count = 0; goto done;
+        case 8: if (g_game->runner_return8_ends) { count = 0; goto done; } count++; break;
         case 5: count = -1; goto done;
         case 6: n = *(struct ListNode**)(runner + 0x18); count = 0; goto restart;
         case 7: if (uf->on_cleanup) uf->on_cleanup(uf->arg); count++; break;
@@ -96,3 +98,4 @@ __asm__(
     ".att_syntax\n"
 );
 extern void hfr_runner_entry(void);
+static int __stdcall hfr_runner_stack_entry(uint8_t* runner) { return hfr_runner(runner); }

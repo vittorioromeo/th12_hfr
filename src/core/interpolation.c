@@ -26,7 +26,7 @@ static struct EnemyTrack* track_find(uint8_t* e) {
     return stale;
 }
 static void enemy_interp(double phase) {
-    if (!cfg.substep || !cfg.enemy_interp) return;
+    if (!cfg.substep || !cfg.enemy_interp || !g_game->place_enemy) return;
     uint8_t* em = G_ENEMY_MANAGER; uint8_t* am = G_ANM_MANAGER;
     if (!em || !am) return;
     int capture = g_major && !g_skip_update;

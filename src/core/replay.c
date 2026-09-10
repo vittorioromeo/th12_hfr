@@ -195,13 +195,16 @@ static void __fastcall hfr_replay_save(char* filename, char* name, int p3) {
     orig_replay_save(filename, name, p3);
     replay_append_chunk(filename);
 }
-static void __stdcall hfr_replay_load(void* mgr, char* filename) {
-    restore_replay_settings();g_replay_playing=0;
-    orig_replay_load(mgr, filename);
+static void replay_loaded(const char* filename) {
     g_replay_rate = replay_read_chunk(filename);
     LOG("replay %s loaded for playback: recorded rate %d", filename, g_replay_rate);
     if(g_replay_metadata<0) {
         LOG("WARNING: unsupported replay simulation metadata; playback may desynchronize");
         MessageBoxA(NULL,"This replay uses different or invalid Touhou HFR simulation metadata. Playback may desynchronize. Use the build that recorded it for accurate playback.","Touhou HFR replay compatibility",MB_OK|MB_ICONWARNING);
     } else if(g_replay_rate && !g_replay_metadata) LOG("Legacy HFR replay: rate/input retained, simulation version unknown; use its original build if playback desynchronizes");
+}
+static void __stdcall hfr_replay_load(void* mgr, char* filename) {
+    restore_replay_settings();g_replay_playing=0;
+    orig_replay_load(mgr, filename);
+    replay_loaded(filename);
 }

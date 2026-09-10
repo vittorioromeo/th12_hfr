@@ -1,10 +1,23 @@
 /* TH12: reviewed game-specific hooks and object layout. */
+static const struct SpeedSite th12_speed_sites[] = {
+    {0x421d5f, 6, SPEED_ONE_PERM, 1},
+    {0x4222a0, 6, SPEED_ONE_PERM, 1},
+    {0x42f56d, 6, SPEED_ONE_PERM, 1},
+    {0x436ed7, 6, SPEED_ONE_PERM, 1},
+    {0x4653fc, 6, SPEED_ONE_PERM, 1},
+    {0x4030fc, 6, SPEED_ONE_TEMP, 1},
+    {0x455670, 6, SPEED_ONE_TEMP, 1},
+    {0x432835, 6, SPEED_PAUSE_SET, 1},
+    {0x43293c, 6, SPEED_PAUSE_SET, 1},
+    {0x433853, 6, SPEED_PAUSE_SET, 1},
+    {0x4339a2, 6, SPEED_PAUSE_SET, 1},
+    {0x432988, 6, SPEED_PAUSE_RESTORE, 1},
+    {0x433a1d, 6, SPEED_PAUSE_RESTORE, 1},
+    {0x4348ed, 6, SPEED_PAUSE_RESTORE, 1},
+    {0x4193e4, 6, SPEED_ECL, 1},
+};
 static const uint8_t FSTP_SPEED[6] = { 0xD9, 0x1D, 0xD0, 0x2E, 0x4B, 0x00 };
 
-static const uintptr_t th12_speed_perm[] = { 0x421d5f, 0x4222a0, 0x42f56d, 0x436ed7, 0x4653fc };
-static const uintptr_t th12_speed_temp[] = { 0x4030fc, 0x455670 };
-static const uintptr_t th12_speed_pset[] = { 0x432835, 0x43293c, 0x433853, 0x4339a2 };
-static const uintptr_t th12_speed_prest[] = { 0x432988, 0x433a1d, 0x4348ed };
 
 
 static void th12_install_sites(void) {
@@ -322,6 +335,7 @@ static const struct GameProfile th12_profile = {
         .screenshot_fn = 0x42fca0, .screenshot_call = 0x450891,
     },
     .layout = {
+        .runner_ending = 0x48, .gm_pause_flags = 0x60, .input_size = 0x130, .input_width = 4,
         .replay_stage = 0x1d8,
         .replay_frame = 0x1d0,
         .replay_stages = 0x20,
@@ -330,13 +344,8 @@ static const struct GameProfile th12_profile = {
         .enemy_position = 0x1074,
         .enemy_skip_mask = 0x1000000,
     },
-    .speed_sites = {
-        th12_speed_perm,  sizeof th12_speed_perm  / sizeof(uintptr_t),
-        th12_speed_temp,  sizeof th12_speed_temp  / sizeof(uintptr_t),
-        th12_speed_pset,  sizeof th12_speed_pset  / sizeof(uintptr_t),
-        th12_speed_prest, sizeof th12_speed_prest / sizeof(uintptr_t),
-        0x4193e4,
-    },
+    .speed_sites = th12_speed_sites, .speed_site_count = sizeof th12_speed_sites / sizeof *th12_speed_sites,
+    .critical_flag_mask = 0x8000, .runner_return8_ends = 1,
     .classes = th12_classes, .class_count = sizeof th12_classes / sizeof *th12_classes,
     .mask_minor_player_edges = 0, .d3dx = "d3dx9_40.dll",
      .install_sites = th12_install_sites,

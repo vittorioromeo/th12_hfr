@@ -9,10 +9,18 @@
  */
 #define G_INPUT_RAW       ((uint8_t*)g_game->addr.raw_input)
 #define G_INPUT_RAW_SIZE  0x130
-#define G_GAME_INPUT      (*(uint32_t*)g_game->addr.game_input)
+static uint32_t input_read(uintptr_t addr) {
+    return g_game->layout.input_width == 2 ? *(uint16_t*)addr : *(uint32_t*)addr;
+}
+static void input_write(uintptr_t addr, uint32_t v) {
+    if (g_game->layout.input_width == 2) *(uint16_t*)addr = (uint16_t)v;
+    else *(uint32_t*)addr = v;
+}
+#define G_GAME_INPUT      input_read(g_game->addr.game_input)
+static void set_game_input(uint32_t v) { input_write(g_game->addr.game_input, v); }
 #define G_OPTION_FLAGS    (*(uint32_t*)g_game->addr.option_flags)
-#define G_AUTOFOCUS_CTR   (*(int*)g_game->addr.autofocus)
-#define IN_FOCUS 0x08
+#define G_AUTOFOCUS_CTR   input_read(g_game->addr.autofocus)
+#define IN_FOCUS (g_game->layout.focus_mask ? g_game->layout.focus_mask : 0x08u)
 #define IN_MOVE  0xf0
 
 /* joystick: winmm's joyGetPosEx can be slow; between frames return the last polled state */
@@ -29,13 +37,17 @@ static MMRESULT WINAPI hook_joyGetPosEx(UINT id, LPJOYINFOEX ji) {
 }
 /* Run the game's input poll without disturbing the per-frame raw input state. */
 static uint32_t poll_input_raw(void) {
-    uint8_t save[G_INPUT_RAW_SIZE]; memcpy(save, G_INPUT_RAW, sizeof save);
+    uint8_t save[G_INPUT_RAW_SIZE];
+    size_t n = g_game->layout.input_size;
+    if (!n || n > sizeof save) n = sizeof save;
+    memcpy(save, G_INPUT_RAW, n);
     g_joy_use_cache = 1;
     uint32_t v;
-    __asm__ volatile ("call *%1" : "=a"(v) : "r"(g_game->addr.poll_input) : "ecx", "edx", "memory", "cc");
+    /* Earlier engines take keyboard index zero in ECX; later ones ignore it. */
+    __asm__ volatile ("xor %%ecx, %%ecx\n\tcall *%1" : "=a"(v) : "r"(g_game->addr.poll_input) : "ecx", "edx", "memory", "cc");
     g_joy_use_cache = 0;
-    v = G_INPUT_CUR;
-    memcpy(G_INPUT_RAW, save, sizeof save);
+    v = input_read(g_game->addr.raw_input);
+    memcpy(G_INPUT_RAW, save, n);
     return v;
 }
 /* movement + focus bits of a polled value, merged into the frame's game input word */
@@ -45,8 +57,8 @@ static uint32_t merge_subtick_bits(uint32_t frame_val, uint32_t polled, int live
     if (live && (G_OPTION_FLAGS & 0x200) && G_AUTOFOCUS_CTR >= 8) focus = IN_FOCUS;   /* "hold shot to focus" option: synthesized by the replay node */
     return v | focus;
 }
-static inline uint8_t  bits_encode(uint32_t v) { return (uint8_t)((v >> 3) & 0x1f); }
-static inline uint32_t bits_decode(uint8_t b)  { return ((uint32_t)b & 0x1f) << 3; }
+static inline uint8_t bits_encode(uint32_t v) { return (uint8_t)(((v & IN_MOVE) >> 3) | !!(v & IN_FOCUS)); }
+static inline uint32_t bits_decode(uint8_t b) { return ((uint32_t)(b & 0x1e) << 3) | ((b & 1) ? IN_FOCUS : 0); }
 
 struct TickBuf { uint8_t* d; uint32_t n, cap; int failed; };
 static struct TickBuf g_rec[8];    /* per stage: bits of every tick since the stage's first frame (this session) */
@@ -78,9 +90,9 @@ static void subtick_input_begin(void) {
     if (!subtick_active(rm)) return;
     if (*(int*)(rm + 0x10) == 1) {
         struct TickBuf* b = &g_play[g_stream_stage];
-        if (g_stream_tick < b->n) { G_GAME_INPUT = merge_subtick_bits(G_GAME_INPUT, bits_decode(b->d[g_stream_tick]), 0); g_stat_subtick_applied++; }
+        if (g_stream_tick < b->n) { set_game_input(merge_subtick_bits(G_GAME_INPUT, bits_decode(b->d[g_stream_tick]), 0)); g_stat_subtick_applied++; }
     } else {
-        G_GAME_INPUT = merge_subtick_bits(G_GAME_INPUT, poll_input_raw(), 1); g_stat_subtick_polls++;
+        set_game_input(merge_subtick_bits(G_GAME_INPUT, poll_input_raw(), 1)); g_stat_subtick_polls++;
     }
 }
 /* end of every tick of an active frame: record the bits the player saw, advance the stream */

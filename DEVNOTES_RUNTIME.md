@@ -18,8 +18,8 @@ This file is the findings — the reasoning, the wrong turns, and the things tha
 
 ## 1. What exists now
 
-Three games are recognised. TH11 and TH12 are fully supported. TH10 is identified and then
-deliberately left alone; §7 says why.
+Three games are supported: TH10, TH11 and TH12. TH10 was the one that exercised the multi-game
+design hardest, because its speed model is unlike the other two; §7 says how.
 
 Everything about the picture is one implementation shared by every game, and none of it uses a
 game address: arbitrary window resizing with letterboxing, three scaling modes, borderless
@@ -29,8 +29,9 @@ every setting, the screenshot fix, the crash reporter, and the guards against ot
 The high frame rate is the opposite: almost all of it is per-game and needs addresses.
 
 That split is the single most useful structural fact about this codebase, and it is worth
-defending. It is why TH11 got the entire feature set with no code change, and why a game whose
-engine has not been worked out can still have all of it.
+defending. It is why TH11 got the entire feature set with no code change, why a game whose engine
+has not been worked out can still have all of the picture, and why the provisional state (§6)
+exists — a profile can ship the shared half while its simulation half is still being worked out.
 
 ---
 
@@ -287,25 +288,36 @@ sites: identity is settled first from bytes no known patch touches, so a mismatc
 
 ---
 
-## 7. TH10, and why it is provisional
+## 7. TH10, and how its speed model differs
 
-Verified: identity (40 signatures byte-identical in `th10.exe` and `th10j.exe`), five vpatch
-conflict sites, the screenshot routine, and the whole shader chain compiling once the compiler
-probe picks a capable `d3dx9`.
+TH10 is supported. It is worth writing down what made it a different job from adding a second
+game that shares TH11's engine, because TH13 and beyond will be one or the other.
 
-Not working: the game faults at `0x42b1e0` shortly after the first frames are presented, where
-vanilla TH10 in the same rig does not. Ruled out, each by removing it and reproducing the fault
-unchanged — the screenshot stub, Direct3D 9Ex and its texture conversion, and the sub-tick input
-hook. What remains is the device redirect itself: the render target handed to the game in place
-of its back buffer, which TH10 evidently uses in some way TH11 and TH12 do not. The faulting
-instruction reads through EBX at the entry of a function near code that writes a `"TH10"` file
-header, so the next step is to find that function's caller and see what it expects to be holding.
+**Its speed model is not a single float.** TH11 and TH12 each write a literal `1.0` into one
+game-speed float at ~22 sites, and the whole sub-stepping design hangs off multiplying that by
+the sub-step duration. TH10 has no such single global — its top candidates take 12, 12 and 10
+writes, spread across per-object timers that carry a pointer to the shared speed at `+0x0c`. So
+its `install_sites` is per-game hand-written code: twelve `SpeedSite` entries (the generalised
+`{addr,len,op,pop_float}` table the previous engine change introduced), plus movement-ftol,
+item-homing and Cartesian-integration hooks that TH11/TH12 do not need in that form. The
+generalised `SpeedSite` emitter and the runner's `critical_flag_mask` / `runner_return8_ends`
+knobs are what let all of that sit on the shared runtime instead of forking it.
 
-**Full support is not a matter of filling in more addresses.** TH10 predates the single
-game-speed float that TH11 and TH12 each write a literal 1.0 into at 22 sites, which is what the
-whole sub-stepping design hangs off. TH10's top three candidate globals take 12, 12 and 10
-writes. Its speed model has to be worked out on its own terms before any of that design applies,
-and `install_sites` is per-game hand-written code on top of that.
+**One runner difference cost real debugging.** TH10 enters the game's critical section
+unconditionally (`push 0x492274; call EnterCriticalSection`, no flag test), whereas TH11/TH12
+gate it behind `misc_flags & 0x8000`. The generalised runner handles this with
+`critical_flag_mask` (0 for TH10 means "always"); the only casualty was the harness, whose bare
+fixture has no initialised section — it now initialises one (see `tools/test_runner.h`).
+
+**The fault that wasn't.** An earlier session chased a crash at `0x42b1e0` and suspected the
+device redirect. It was not the patch at all: the test rig had a truncated `th10e.dat` and
+`thbgm.dat`, and TH10 aborts partway through init when a data file is short, then dereferences a
+null in its own cleanup path — vanilla does the same. With the real data files the fault is gone
+and TH10 boots, plays at a 240 Hz tick rate with zero repeated frames, and records/replays HFR
+replays with per-tick input. The lesson is the same one §8 keeps teaching: confirm the rig before
+blaming the patch. The registers-and-stack backtrace the exception handler now logs is what made
+this quick to see the second time — the faulting frame's return address landed in the game's own
+data-load cleanup, not in any of our stubs.
 
 ---
 
@@ -351,18 +363,17 @@ and `install_sites` is per-game hand-written code on top of that.
 
 ## 9. Open work, in order of value
 
-1. **TH10's fault at `0x42b1e0`** (§7). Everything else about TH10 is done.
-2. **The alt-tab input fix** vpatch has and we do not — a foreground check on the DirectInput
-   path. Cheap, and it affects both supported games.
-3. **`ReplaySlowFPS`** — slow-motion replay on a held key. The tick-rate machinery makes this
+1. **The alt-tab input fix** vpatch has and we do not — a foreground check on the DirectInput
+   path. Cheap, and it affects all three supported games.
+2. **`ReplaySlowFPS`** — slow-motion replay on a held key. The tick-rate machinery makes this
    nearly free.
-4. **The `UI_*` settings live in four places** — the enum, both switches and the save function,
+3. **The `UI_*` settings live in four places** — the enum, both switches and the save function,
    with a `default:` that stops the compiler noticing an omission. A table of
    `{id, name, section, &cfg.field}` would collapse all four and the INI read as well, which is
    currently a fifth. Nothing is inconsistent today; it is a drift risk, not a bug.
-5. **`tools/embed_shaders.py` restates the pass-splitting rule** that `shader_parse.h` owns,
+4. **`tools/embed_shaders.py` restates the pass-splitting rule** that `shader_parse.h` owns,
    because the build step is Python and the runtime is C. The checker tool includes the real
    header, so the two implementations that matter cannot disagree.
-6. **TH13 and beyond.** TH13 is closer to TH12 than TH10 is to TH11, so the speed-float pattern
+5. **TH13 and beyond.** TH13 is closer to TH12 than TH10 is to TH11, so the speed-float pattern
    in §6 is worth trying first — one `fstp` target dominating at ~22 sites means the existing
    sub-stepping design applies.

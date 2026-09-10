@@ -76,7 +76,7 @@ int hfr_ui_simulation_patched(void) {
 }
 int hfr_ui_simulation_locked(void) {
     if (g_replay_playing) return 1;
-    uint8_t* rm = g_game ? G_REPLAY_MANAGER : NULL;
+    uint8_t* rm = g_game && g_game->addr.replay_manager ? G_REPLAY_MANAGER : NULL;
     return rm && *(int*)(rm + g_game->layout.replay_frame) >= 0;
 }
 /* Called from the frame hook, between frames, where touching Direct3D is safe. */
