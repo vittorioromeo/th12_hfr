@@ -11,7 +11,6 @@
  */
 
 enum { SCALE_STRETCH = 0, SCALE_ASPECT = 1, SCALE_INTEGER = 2 };
-enum { FILTER_NEAREST = 0, FILTER_BILINEAR = 1, FILTER_SHARP = 2, FILTER_BUILTIN_COUNT };
 
 struct ScaleRect { int x, y, w, h; };
 
@@ -60,9 +59,9 @@ static IDirect3DTexture9*    g_src_tex;      /* the game's render target, native
 static IDirect3DSurface9*    g_src_surf;
 static IDirect3DSurface9*    g_src_ds;       /* our own depth stencil, native size */
 static IDirect3DSurface9*    g_real_bb;      /* the actual swap chain back buffer */
-static IDirect3DTexture9*    g_mid_tex;      /* sharp-bilinear intermediate */
-static IDirect3DSurface9*    g_mid_surf;
-static int                   g_mid_factor;
+static IDirect3DTexture9*    g_pass_tex;     /* intermediate for a prepass (sharp or shader) */
+static IDirect3DSurface9*    g_pass_surf;
+static int                   g_pass_w, g_pass_h;
 static IDirect3DStateBlock9* g_state;
 static int g_native_w, g_native_h;           /* the size the game believes it renders at */
 static int g_out_w, g_out_h;                 /* the real swap chain size */
@@ -73,12 +72,27 @@ static unsigned g_stat_blits;
 
 #define SAFE_RELEASE(p) do { if (p) { IUnknown* u_ = (IUnknown*)(p); u_->lpVtbl->Release(u_); (p) = NULL; } } while (0)
 
-static void scaler_release_mid(void) { SAFE_RELEASE(g_mid_surf); SAFE_RELEASE(g_mid_tex); g_mid_factor = 0; }
+static void scaler_release_pass(void) { SAFE_RELEASE(g_pass_surf); SAFE_RELEASE(g_pass_tex); g_pass_w = g_pass_h = 0; }
+/* One intermediate serves whichever prepass is in use; only one runs per frame. */
+static int ensure_pass_target(IDirect3DDevice9* dev, int w, int h) {
+    if (w < 1 || h < 1 || w > 8192 || h > 8192) return 0;
+    if (g_pass_tex && g_pass_w == w && g_pass_h == h) return 1;
+    scaler_release_pass();
+    if (FAILED(dev->lpVtbl->CreateTexture(dev, (UINT)w, (UINT)h, 1, D3DUSAGE_RENDERTARGET, g_bb_format, D3DPOOL_DEFAULT, &g_pass_tex, NULL)) ||
+        FAILED(g_pass_tex->lpVtbl->GetSurfaceLevel(g_pass_tex, 0, &g_pass_surf))) {
+        scaler_release_pass();
+        LOG("scaler: intermediate %dx%d unavailable", w, h);
+        return 0;
+    }
+    g_pass_w = w; g_pass_h = h;
+    return 1;
+}
 /* Release everything tied to the current swap chain. ResetEx keeps our textures alive, but the
    back buffer surface is recreated, so it is re-acquired after every reset regardless. */
 static void scaler_release(void) {
     g_scaler_ok = 0;
-    SAFE_RELEASE(g_state); SAFE_RELEASE(g_real_bb); scaler_release_mid();
+    g_pass_w = g_pass_h = 0;
+    SAFE_RELEASE(g_state); SAFE_RELEASE(g_real_bb); scaler_release_pass();
     SAFE_RELEASE(g_src_ds); SAFE_RELEASE(g_src_surf); SAFE_RELEASE(g_src_tex);
 }
 
@@ -110,7 +124,10 @@ static void scaler_adjust_pp(D3DPRESENT_PARAMETERS* out, const D3DPRESENT_PARAME
    real back buffer. Any failure leaves the patch in stock behaviour rather than half applied. */
 static int scaler_create(IDirect3DDevice9* dev, const D3DPRESENT_PARAMETERS* used) {
     scaler_release();
+    if (g_dev != dev) filters_release();   /* shaders survive a reset, not a new device */
     g_dev = dev;
+    shaders_pick_profile(dev);
+    resolve_filter();
     g_out_w = (int)used->BackBufferWidth; g_out_h = (int)used->BackBufferHeight;
     g_bb_format = used->BackBufferFormat;
     g_ds_format = used->EnableAutoDepthStencil ? used->AutoDepthStencilFormat : D3DFMT_D24S8;
@@ -190,30 +207,58 @@ static void draw_quad(IDirect3DDevice9* dev, IDirect3DTexture9* tex, const struc
     dev->lpVtbl->SetTexture(dev, 0, (IDirect3DBaseTexture9*)tex);
     dev->lpVtbl->DrawPrimitiveUP(dev, D3DPT_TRIANGLESTRIP, 2, v, sizeof v[0]);
 }
-/* Sharp bilinear: point-magnify to the smallest integer multiple that covers the destination,
-   then let bilinear handle only the leftover fraction. Keeps pixel edges crisp and even. */
-static IDirect3DTexture9* sharp_prepass(IDirect3DDevice9* dev, const struct ScaleRect* dst) {
-    int f = sharp_factor(g_native_w, g_native_h, dst->w, dst->h);
-    if (f <= 1) return NULL;
-    int w = g_native_w * f, h = g_native_h * f;
-    if (g_mid_factor != f) {
-        scaler_release_mid();
-        if (FAILED(dev->lpVtbl->CreateTexture(dev, (UINT)w, (UINT)h, 1, D3DUSAGE_RENDERTARGET, g_bb_format, D3DPOOL_DEFAULT, &g_mid_tex, NULL)) ||
-            FAILED(g_mid_tex->lpVtbl->GetSurfaceLevel(g_mid_tex, 0, &g_mid_surf))) {
-            scaler_release_mid();
-            LOG("scaler: sharp-bilinear intermediate %dx%d unavailable; using bilinear", w, h);
-            return NULL;
-        }
-        g_mid_factor = f;
-    }
-    dev->lpVtbl->SetRenderTarget(dev, 0, g_mid_surf);
+/* Render one prepass into the intermediate target, optionally through a filter shader. */
+static void shader_constants(IDirect3DDevice9* dev, int sw, int sh, int tw, int th) {
+    float c0[4] = { (float)sw, (float)sh, sw ? 1.0f / sw : 0.0f, sh ? 1.0f / sh : 0.0f };
+    float c1[4] = { (float)tw, (float)th, tw ? 1.0f / tw : 0.0f, th ? 1.0f / th : 0.0f };
+    dev->lpVtbl->SetPixelShaderConstantF(dev, 0, c0, 1);
+    dev->lpVtbl->SetPixelShaderConstantF(dev, 1, c1, 1);
+}
+static int run_prepass(IDirect3DDevice9* dev, int w, int h, int sampler, IDirect3DPixelShader9* ps) {
+    if (!ensure_pass_target(dev, w, h)) return 0;
+    dev->lpVtbl->SetRenderTarget(dev, 0, g_pass_surf);
     dev->lpVtbl->SetDepthStencilSurface(dev, NULL);
     D3DVIEWPORT9 vp = { 0, 0, (DWORD)w, (DWORD)h, 0.0f, 1.0f };
     dev->lpVtbl->SetViewport(dev, &vp);
-    quad_states(dev, D3DTEXF_POINT);
+    quad_states(dev, sampler);
+    if (ps) { dev->lpVtbl->SetPixelShader(dev, ps); shader_constants(dev, g_native_w, g_native_h, w, h); }
     struct ScaleRect full = { 0, 0, w, h };
     draw_quad(dev, g_src_tex, &full);
-    return g_mid_tex;
+    if (ps) dev->lpVtbl->SetPixelShader(dev, NULL);
+    return 1;
+}
+/* Decide what the final draw reads and how. A filter may run as a prepass into the
+   intermediate target (fixed magnification), or as the shader of the final draw itself
+   (free scale), or be a plain sampler state. */
+static void select_filter(IDirect3DDevice9* dev, const struct ScaleRect* dst,
+                          IDirect3DTexture9** src, int* sampler, IDirect3DPixelShader9** final_ps) {
+    *src = g_src_tex; *sampler = D3DTEXF_POINT; *final_ps = NULL;
+    struct Filter* f = filter_at(cfg.filter);
+    int kind = f ? cfg.filter : FILTER_SHARP;
+    if (kind >= FILTER_BUILTIN_COUNT) {
+        IDirect3DPixelShader9* ps = filter_shader(dev, f);
+        if (!ps) kind = FILTER_SHARP;                       /* unavailable: quietly degrade */
+        else if (f->scale > 0) {
+            int w = g_native_w * f->scale, h = g_native_h * f->scale;
+            if (run_prepass(dev, w, h, D3DTEXF_POINT, ps)) {
+                *src = g_pass_tex;
+                /* an exact multiple can stay point-sampled and keep every edge crisp */
+                *sampler = (dst->w % w == 0 && dst->h % h == 0) ? D3DTEXF_POINT : D3DTEXF_LINEAR;
+                return;
+            }
+            kind = FILTER_SHARP;
+        } else { *final_ps = ps; *sampler = D3DTEXF_POINT; return; }
+    }
+    if (kind == FILTER_BILINEAR) { *sampler = D3DTEXF_LINEAR; return; }
+    if (kind != FILTER_SHARP) return;                        /* nearest */
+    /* Sharp bilinear: point-magnify to the smallest integer multiple that covers the
+       destination, so bilinear only has to soften the sub-pixel remainder. */
+    int factor = sharp_factor(g_native_w, g_native_h, dst->w, dst->h);
+    if (factor <= 1) { *sampler = (dst->w == g_native_w && dst->h == g_native_h) ? D3DTEXF_POINT : D3DTEXF_LINEAR; return; }
+    if (run_prepass(dev, g_native_w * factor, g_native_h * factor, D3DTEXF_POINT, NULL)) {
+        *src = g_pass_tex;
+        *sampler = (dst->w == g_pass_w && dst->h == g_pass_h) ? D3DTEXF_POINT : D3DTEXF_LINEAR;
+    } else *sampler = D3DTEXF_LINEAR;
 }
 
 static void ui_render_frame(IDirect3DDevice9* dev, const struct ScaleRect* content);
@@ -224,14 +269,8 @@ static void scaler_blit(IDirect3DDevice9* dev) {
     if (g_state) g_state->lpVtbl->Capture(g_state);
     struct ScaleRect dst = scale_rect(g_native_w, g_native_h, g_out_w, g_out_h, cfg.scaling);
     if (FAILED(dev->lpVtbl->BeginScene(dev))) { if (g_state) g_state->lpVtbl->Apply(g_state); return; }
-    IDirect3DTexture9* src = g_src_tex;
-    int filter = D3DTEXF_POINT;
-    if (cfg.filter == FILTER_BILINEAR) filter = D3DTEXF_LINEAR;
-    else if (cfg.filter == FILTER_SHARP) {
-        IDirect3DTexture9* mid = sharp_prepass(dev, &dst);
-        if (mid) { src = mid; filter = D3DTEXF_LINEAR; }
-        else filter = D3DTEXF_LINEAR;
-    }
+    IDirect3DTexture9* src; int filter; IDirect3DPixelShader9* final_ps;
+    select_filter(dev, &dst, &src, &filter, &final_ps);
     dev->lpVtbl->SetRenderTarget(dev, 0, g_real_bb);
     dev->lpVtbl->SetDepthStencilSurface(dev, NULL);
     D3DVIEWPORT9 vp = { 0, 0, (DWORD)g_out_w, (DWORD)g_out_h, 0.0f, 1.0f };
@@ -239,7 +278,9 @@ static void scaler_blit(IDirect3DDevice9* dev) {
     if (dst.w < g_out_w || dst.h < g_out_h)
         dev->lpVtbl->Clear(dev, 0, NULL, D3DCLEAR_TARGET, D3DCOLOR_XRGB(0, 0, 0), 1.0f, 0);
     quad_states(dev, filter);
+    if (final_ps) { dev->lpVtbl->SetPixelShader(dev, final_ps); shader_constants(dev, g_native_w, g_native_h, dst.w, dst.h); }
     draw_quad(dev, src, &dst);
+    if (final_ps) dev->lpVtbl->SetPixelShader(dev, NULL);
     ui_render_frame(dev, &dst);
     dev->lpVtbl->EndScene(dev);
     dev->lpVtbl->SetTexture(dev, 0, NULL);

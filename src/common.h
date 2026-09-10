@@ -17,6 +17,9 @@ static void logf_(const char* fmt, ...) {
 }
 #define LOG(...) logf_(__VA_ARGS__)
 
+/* Built-in filters occupy the first indices; shader filters are appended after them. */
+enum { FILTER_NEAREST = 0, FILTER_BILINEAR = 1, FILTER_SHARP = 2, FILTER_BUILTIN_COUNT };
+
 /* ------------------------------------------------------------------ config */
 static struct {
     int fps;            /* 0 = auto from display */
@@ -33,9 +36,10 @@ static struct {
     int flipex;             /* windowed: D3DSWAPEFFECT_FLIPEX (experimental) */
     /* output scaling */
     int scaling;            /* 0 stretch, 1 aspect fit, 2 integer (pixel perfect) */
-    int filter;             /* 0 nearest, 1 bilinear, 2 sharp bilinear, >=3 shader filters */
+    int filter;             /* index into the filter registry */
+    char filter_name[32];   /* how it was written in the INI, so it survives folder changes */
     int resizable;          /* add a resize border to the game's window */
     int snap_aspect;        /* keep the window itself at the native aspect while dragging */
     int fullscreen_mode;    /* 0 leave the game's exclusive fullscreen, 1 borderless desktop */
 } cfg = { 0, 1, 1, 1, 0, 0, 1, 0, 1, 1, 1, 0,
-          1, 2, 1, 1, 1 };
+          1, FILTER_SHARP, "", 1, 1, 1 };

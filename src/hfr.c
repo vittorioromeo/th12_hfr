@@ -13,6 +13,7 @@
 #include "core/input.c"
 #include "backends/update_runner.c"
 #include "core/limiter.c"
+#include "core/shaders.c"
 #include "core/scaler.c"
 #include "core/window.c"
 #include "ui/overlay.c"
