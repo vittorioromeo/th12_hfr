@@ -14,6 +14,10 @@ tested with these layouts. Other games are not supported yet.
 | Shared core | `src/core/` | Patch transactions, x86 emission, dyadic scheduler, input, interpolation history, frame pacing, replay extensions, configuration and proxy |
 | Update backend | `src/backends/update_runner.c` | TH11/TH12 update-list ABI, node return values, pause boundaries and player input edges |
 | Renderer backend | `src/backends/d3d9.c` | D3D9/9Ex, resource conversion, display refresh, reset and latency |
+| Output scaling | `src/core/scaler.c` | Render-target redirection, scaling geometry, filter passes, present blit |
+| Filter shaders | `src/core/shaders.c`, `shaders/` | Runtime shader compilation, filter registry, drop-in shader folder |
+| Window | `src/core/window.c` | Resize border, aspect snapping, borderless fullscreen, deferred reset |
+| In-game menu | `src/ui/` , `third_party/imgui` | Dear ImGui overlay; `ui_api.h` is the whole C/C++ interface |
 | Game adapters | `src/games/th11.c`, `src/games/th12.c` | Actual game addresses, exact x86 hooks and sprite placement |
 | Launcher | `src/launcher.c` | Detect and launch a supported executable using the common identity code |
 | Tests | `tools/test_hfr.c`, `tools/test_*.h`, `tools/test_*_stubs.py` | Native shared-runtime tests and emulation of emitted x86 hooks |
@@ -137,6 +141,10 @@ The tests map game files as inert local data and never ship them in a release.
 The pre-refactor TH11 port passed the user's gameplay test. This unified build
 still needs manual gameplay and full-run replay testing in both games; the
 automated checks do not prove every character/stage combination correct.
+
+Output scaling, the filter pipeline, window management and the menu are described in
+`RESOLUTION.md`; they live in the shared core because they are Direct3D and Win32 work that
+needed no game-specific addresses.
 
 Detailed reverse-engineering notes remain in `DEVNOTES.md` (TH12) and
 `TH11_DEVNOTES.md` (TH11). They describe the original implementations; use the

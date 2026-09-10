@@ -165,6 +165,8 @@ static void scaler_rebind(IDirect3DDevice9* dev) {
 
 struct QuadVtx { float x, y, z, rhw, u, v; };
 #define QUAD_FVF (D3DFVF_XYZRHW | D3DFVF_TEX1)
+struct QuadVtxVS { float x, y, z, u, v; };
+#define QUAD_FVF_VS (D3DFVF_XYZ | D3DFVF_TEX1)
 
 static void quad_states(IDirect3DDevice9* dev, int filter) {
     dev->lpVtbl->SetVertexShader(dev, NULL);
@@ -192,7 +194,6 @@ static void quad_states(IDirect3DDevice9* dev, int filter) {
     dev->lpVtbl->SetSamplerState(dev, 0, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
     dev->lpVtbl->SetSamplerState(dev, 0, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
     dev->lpVtbl->SetSamplerState(dev, 0, D3DSAMP_SRGBTEXTURE, FALSE);
-    dev->lpVtbl->SetFVF(dev, QUAD_FVF);
 }
 /* One textured quad. The half-texel shift is what maps texel centres onto pixel centres. */
 static void draw_quad(IDirect3DDevice9* dev, IDirect3DTexture9* tex, const struct ScaleRect* r) {
@@ -205,6 +206,25 @@ static void draw_quad(IDirect3DDevice9* dev, IDirect3DTexture9* tex, const struc
         { x1, y1, 0.0f, 1.0f, 1.0f, 1.0f },
     };
     dev->lpVtbl->SetTexture(dev, 0, (IDirect3DBaseTexture9*)tex);
+    dev->lpVtbl->SetFVF(dev, QUAD_FVF);
+    dev->lpVtbl->DrawPrimitiveUP(dev, D3DPT_TRIANGLESTRIP, 2, v, sizeof v[0]);
+}
+/* Same rectangle, but in clip space for the pass-through vertex shader. The half-pixel
+   shift is applied before the conversion, so both paths rasterise identically. */
+static void draw_quad_vs(IDirect3DDevice9* dev, IDirect3DTexture9* tex, const struct ScaleRect* r, int tw, int th) {
+    if (tw < 1 || th < 1) return;
+    float x0 = ((float)r->x - 0.5f) * 2.0f / (float)tw - 1.0f;
+    float x1 = ((float)r->x - 0.5f + (float)r->w) * 2.0f / (float)tw - 1.0f;
+    float y0 = 1.0f - ((float)r->y - 0.5f) * 2.0f / (float)th;
+    float y1 = 1.0f - ((float)r->y - 0.5f + (float)r->h) * 2.0f / (float)th;
+    struct QuadVtxVS v[4] = {
+        { x0, y0, 0.0f, 0.0f, 0.0f },
+        { x1, y0, 0.0f, 1.0f, 0.0f },
+        { x0, y1, 0.0f, 0.0f, 1.0f },
+        { x1, y1, 0.0f, 1.0f, 1.0f },
+    };
+    dev->lpVtbl->SetTexture(dev, 0, (IDirect3DBaseTexture9*)tex);
+    dev->lpVtbl->SetFVF(dev, QUAD_FVF_VS);
     dev->lpVtbl->DrawPrimitiveUP(dev, D3DPT_TRIANGLESTRIP, 2, v, sizeof v[0]);
 }
 /* Render one prepass into the intermediate target, optionally through a filter shader. */
@@ -221,10 +241,17 @@ static int run_prepass(IDirect3DDevice9* dev, int w, int h, int sampler, IDirect
     D3DVIEWPORT9 vp = { 0, 0, (DWORD)w, (DWORD)h, 0.0f, 1.0f };
     dev->lpVtbl->SetViewport(dev, &vp);
     quad_states(dev, sampler);
-    if (ps) { dev->lpVtbl->SetPixelShader(dev, ps); shader_constants(dev, g_native_w, g_native_h, w, h); }
     struct ScaleRect full = { 0, 0, w, h };
-    draw_quad(dev, g_src_tex, &full);
-    if (ps) dev->lpVtbl->SetPixelShader(dev, NULL);
+    if (ps) {
+        IDirect3DVertexShader9* vs = quad_vertex_shader(dev);
+        if (!vs) return 0;
+        dev->lpVtbl->SetVertexShader(dev, vs);
+        dev->lpVtbl->SetPixelShader(dev, ps);
+        shader_constants(dev, g_native_w, g_native_h, w, h);
+        draw_quad_vs(dev, g_src_tex, &full, w, h);
+        dev->lpVtbl->SetPixelShader(dev, NULL);
+        dev->lpVtbl->SetVertexShader(dev, NULL);
+    } else draw_quad(dev, g_src_tex, &full);
     return 1;
 }
 /* Decide what the final draw reads and how. A filter may run as a prepass into the
@@ -247,7 +274,8 @@ static void select_filter(IDirect3DDevice9* dev, const struct ScaleRect* dst,
                 return;
             }
             kind = FILTER_SHARP;
-        } else { *final_ps = ps; *sampler = D3DTEXF_POINT; return; }
+        } else if (quad_vertex_shader(dev)) { *final_ps = ps; *sampler = D3DTEXF_POINT; return; }
+        else kind = FILTER_SHARP;
     }
     if (kind == FILTER_BILINEAR) { *sampler = D3DTEXF_LINEAR; return; }
     if (kind != FILTER_SHARP) return;                        /* nearest */
@@ -278,9 +306,14 @@ static void scaler_blit(IDirect3DDevice9* dev) {
     if (dst.w < g_out_w || dst.h < g_out_h)
         dev->lpVtbl->Clear(dev, 0, NULL, D3DCLEAR_TARGET, D3DCOLOR_XRGB(0, 0, 0), 1.0f, 0);
     quad_states(dev, filter);
-    if (final_ps) { dev->lpVtbl->SetPixelShader(dev, final_ps); shader_constants(dev, g_native_w, g_native_h, dst.w, dst.h); }
-    draw_quad(dev, src, &dst);
-    if (final_ps) dev->lpVtbl->SetPixelShader(dev, NULL);
+    if (final_ps) {
+        dev->lpVtbl->SetVertexShader(dev, quad_vertex_shader(dev));
+        dev->lpVtbl->SetPixelShader(dev, final_ps);
+        shader_constants(dev, g_native_w, g_native_h, dst.w, dst.h);
+        draw_quad_vs(dev, src, &dst, g_out_w, g_out_h);
+        dev->lpVtbl->SetPixelShader(dev, NULL);
+        dev->lpVtbl->SetVertexShader(dev, NULL);
+    } else draw_quad(dev, src, &dst);
     ui_render_frame(dev, &dst);
     dev->lpVtbl->EndScene(dev);
     dev->lpVtbl->SetTexture(dev, 0, NULL);

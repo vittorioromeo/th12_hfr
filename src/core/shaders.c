@@ -28,6 +28,15 @@ struct Filter {
     IDirect3DPixelShader9* ps;
     int   state;                    /* 0 not tried, 1 ready, -1 failed */
 };
+/* Direct3D 9 does not allow a ps_3_0 pixel shader with the fixed-function vertex pipeline,
+   so a shader filter is drawn through this pass-through vertex shader with clip-space
+   vertices instead of the pre-transformed ones the built-in filters use. */
+static const char PASSTHROUGH_VS[] =
+    "void main(float4 p : POSITION, float2 t : TEXCOORD0,\n"
+    "          out float4 op : POSITION, out float2 ot : TEXCOORD0) { op = p; ot = t; }\n";
+static IDirect3DVertexShader9* g_quad_vs;
+static int g_quad_vs_state;
+
 static struct Filter g_filters[MAX_FILTERS];
 static int g_filter_count;
 static int g_filters_scanned;
@@ -149,7 +158,27 @@ static void shaders_scan(void) {
     FindClose(h);
     LOG("shaders: %d filter(s) available (%d from the shaders folder)", g_filter_count, added);
 }
+/* Compiled once alongside the first filter shader; a failure disables shader filters. */
+static IDirect3DVertexShader9* quad_vertex_shader(IDirect3DDevice9* dev) {
+    if (g_quad_vs_state) return g_quad_vs;
+    g_quad_vs_state = -1;
+    if (!dev || !g_ps_profile || !shaders_load_compiler()) return NULL;
+    const char* profile = g_ps_profile[3] == '3' ? "vs_3_0" : "vs_2_0";
+    void *code = NULL, *errors = NULL;
+    HRESULT hr = d3dx_compile(PASSTHROUGH_VS, (UINT)(sizeof PASSTHROUGH_VS - 1), NULL, NULL, "main", profile, 0, &code, &errors, NULL);
+    if (SUCCEEDED(hr) && code) {
+        hr = dev->lpVtbl->CreateVertexShader(dev, (const DWORD*)buffer_ptr(code), &g_quad_vs);
+        if (SUCCEEDED(hr)) { g_quad_vs_state = 1; LOG("shaders: %s pass-through vertex shader ready", profile); }
+    }
+    if (g_quad_vs_state != 1)
+        LOG("shaders: %s pass-through vertex shader failed (0x%08lx): %.*s", profile, (long)hr,
+            errors ? (int)buffer_len(errors) : 0, errors ? (char*)buffer_ptr(errors) : "");
+    buffer_free(code); buffer_free(errors);
+    return g_quad_vs;
+}
 static void filters_release(void) {
+    if (g_quad_vs) { g_quad_vs->lpVtbl->Release(g_quad_vs); g_quad_vs = NULL; }
+    g_quad_vs_state = 0;
     for (int i = 0; i < g_filter_count; ++i)
         if (g_filters[i].ps) { g_filters[i].ps->lpVtbl->Release(g_filters[i].ps); g_filters[i].ps = NULL; g_filters[i].state = 0; }
 }
