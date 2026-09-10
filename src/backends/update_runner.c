@@ -3,8 +3,20 @@ typedef int (__thiscall *NodeFn)(void* arg);
 struct ListNode { struct UpdateFunc* entry; struct ListNode* next; struct ListNode* prev; };
 struct UpdateFunc { int priority; uint32_t flags; NodeFn func; void* on_reg; NodeFn on_cleanup; struct ListNode node; void* arg; };
 _Static_assert(__builtin_offsetof(struct UpdateFunc, arg) == 0x20, "UpdateFunc layout");
-typedef void (__fastcall *RemoveNodeFn)(struct UpdateFunc* uf, uint8_t* runner);
-#define game_remove_node ((RemoveNodeFn)g_game->addr.remove_node)
+/* TH13 grew the UpdateFunc by a field: its argument sits at +0x24. */
+static inline void* node_arg(struct UpdateFunc* uf) {
+    return g_game->layout.node_arg ? *(void**)((uint8_t*)uf + g_game->layout.node_arg) : uf->arg;
+}
+typedef void (__fastcall *RemoveNodeFn)(void* a, void* b);
+static inline void game_remove_node(struct UpdateFunc* uf, uint8_t* runner) {
+    RemoveNodeFn f = (RemoveNodeFn)g_game->addr.remove_node;
+    if (g_game->remove_node_runner_first) f(runner, uf); else f(uf, runner);
+}
+/* TH13's runner keeps the next list node in the runner itself and re-reads it after every
+   callback, so a callback that removes the node after it (its remove function fixes the cell
+   up) redirects the walk. Mirror that exactly: the game's own removal is what maintains it. */
+static inline void next_store(uint8_t* runner, struct ListNode* n) { if (g_game->layout.runner_next) *(struct ListNode**)(runner + g_game->layout.runner_next) = n; }
+static inline struct ListNode* next_load(uint8_t* runner, struct ListNode* n) { return g_game->layout.runner_next ? *(struct ListNode**)(runner + g_game->layout.runner_next) : n; }
 
 #define CRIT ((LPCRITICAL_SECTION)g_game->addr.crit)
 #define CRIT_COUNT (*(volatile uint8_t*)g_game->addr.crit_count)
@@ -28,12 +40,12 @@ int __cdecl __attribute__((used)) hfr_runner(uint8_t* runner) {
 restart:
     while (n) {
         struct UpdateFunc* uf = n->entry;
-        n = n->next;
+        n = n->next; next_store(runner, n);
         if (!uf->func) continue;
         if (!(uf->flags & 2)) { count++; continue; }
     call_again:
         if (g_game->layout.runner_ending && *(int*)(runner + g_game->layout.runner_ending) != 0) {
-            if (uf->on_cleanup) uf->on_cleanup(uf->arg);
+            if (uf->on_cleanup) uf->on_cleanup(node_arg(uf));
             count++; continue;
         }
         int mode = node_mode((uint32_t)uf->func);
@@ -65,7 +77,7 @@ restart:
             set_game_input(G_GAME_INPUT & ~2u);
             input_write(g_game->addr.game_pressed, 0); input_write(g_game->addr.game_released, 0);
         }
-        int r = uf->func(uf->arg);
+        int r = uf->func(node_arg(uf));
         if (player_minor) {
             input_write(g_game->addr.game_pressed, saved_pressed);
             input_write(g_game->addr.game_released, saved_released);
@@ -74,15 +86,16 @@ restart:
         if (fn == g_game->addr.player_callback) { uint8_t* pl = *(uint8_t**)g_game->addr.player; if (pl) { g_ptf_prev = g_ptf_cur; g_ptf_cur = *(float*)(pl + g_game->layout.player_timer); } }
         if (replay_node) { uint8_t* rm = G_REPLAY_MANAGER; if (rm && *(int*)(rm + g_game->layout.replay_frame) != frame_before) g_frame_active = 1; }
         crit_enter();
+        n = next_load(runner, n);
         switch (r) {
-        case 0: game_remove_node(uf, runner); count++; break;
+        case 0: game_remove_node(uf, runner); n = next_load(runner, n); count++; break;
         case 2: if (uf->flags & 2) goto call_again; count++; break;
         case 3: if (g_major) g_stop_node = uf; count = 1; goto done;
         case 4: count = 0; goto done;
         case 8: if (g_game->runner_return8_ends) { count = 0; goto done; } count++; break;
         case 5: count = -1; goto done;
-        case 6: n = *(struct ListNode**)(runner + 0x18); count = 0; goto restart;
-        case 7: if (uf->on_cleanup) uf->on_cleanup(uf->arg); count++; break;
+        case 6: n = *(struct ListNode**)(runner + 0x18); next_store(runner, n); count = 0; goto restart;
+        case 7: if (uf->on_cleanup) uf->on_cleanup(node_arg(uf)); count++; break;
         default: count++; break;
         }
     }

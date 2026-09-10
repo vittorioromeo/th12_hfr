@@ -3,9 +3,10 @@
 For why things are the way they are, rather than what they are, see
 [DEVNOTES_RUNTIME.md](DEVNOTES_RUNTIME.md).
 
-The v0.2.0-test build contains one runtime and two game adapters. The same DLL
-supports TH11 v1.00a and TH12 v1.00b, including the static English executables
-tested with these layouts. Other games are not supported yet.
+The current build contains one runtime and four game adapters. The same DLL
+supports TH10 v1.00a, TH11 v1.00a, TH12 v1.00b and TH13 v1.00c, including the
+static English executables tested with these layouts. Other games are not
+supported yet.
 
 ## Source map
 
@@ -32,13 +33,15 @@ The core is compiled once, regardless of the number of registered games.
 
 The shared core uses profile fields and callbacks rather than checking the game
 number. Game IDs occur in executable registration and replay metadata. The two
-backends currently describe the engine family shared by TH11 and TH12; they are
-not assumptions that every Touhou title uses this ABI or renderer.
+backends describe the engine family shared by TH10 through TH13, parameterised
+by profile fields where the games differ (DEVNOTES_RUNTIME.md §7 and §7a); they
+are not assumptions that every Touhou title uses this ABI or renderer.
 
 ## Detection and installation
 
-Detection requires x86 PE32 at image base `0x400000`, the exact expected image
-size, and every frozen signature (63 for TH11, 59 for TH12). These cover all
+Detection requires x86 PE32 at image base `0x400000`, the expected image size
+(TH13 accepts two, since `th13e.exe` carries an extra section), and every frozen
+signature (80 for TH10, 64 for TH11, 60 for TH12, 91 for TH13). These cover all
 overwritten code ranges and selected native function entries. This is code-layout
 verification, not a whole-file checksum: resources and English text may differ.
 It does not establish compatibility with arbitrary third-party runtime patches.

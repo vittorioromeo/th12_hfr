@@ -46,6 +46,7 @@ struct GameProfile {
         uintptr_t replay_load;
         uintptr_t frame_calls[3], replay_saves[4], replay_load_call, runner_fn, latency_cmp;
         uintptr_t screenshot_fn, screenshot_call;   /* 0 when not known for this game */
+        uintptr_t data_dir;          /* NUL-terminated directory the game saves into, or 0 for the game directory */
     } addr;
     struct {
         uint32_t replay_stage;
@@ -55,11 +56,15 @@ struct GameProfile {
         uint32_t enemy_flags;
         uint32_t enemy_position;
         uint32_t enemy_skip_mask;
+        uint32_t enemy_list;        /* list head in the EnemyManager; 0 = +0x68 (TH10..TH12) */
         uint32_t runner_ending;     /* optional field; TH10's runner ends at +0x48 */
         uint32_t gm_pause_flags;
         uint32_t input_size;        /* bytes saved around a sub-tick poll */
         uint32_t input_width;       /* 2 or 4 bytes per input word */
         uint32_t focus_mask;        /* zero selects the later engines' 0x08 */
+        uint32_t node_arg;          /* the UpdateFunc's argument slot; zero selects +0x20 (TH13: +0x24) */
+        uint32_t runner_next;       /* runner field that holds the next list node during the walk, re-read
+                                       after every callback; zero: the walk keeps its own (TH13: +0x50) */
     } layout;
     /* Instruction shape and semantics are independent: TH10 mostly uses MOV,
        while later engines use FSTP. Only FSTP sites consume an x87 value. */
@@ -76,6 +81,7 @@ struct GameProfile {
     int runner_stack_arg;
     int runner_return8_ends;
     int native_size_cycle;          /* the game cycles its own window sizes on F10 (TH11 on) */
+    int remove_node_runner_first;   /* remove_node(runner, node) rather than (node, runner) (TH13) */
     const char* d3dx;
     void (*install_sites)(void);
     void (*place_enemy)(uint8_t* enemy, uint8_t* anm, uint32_t flags, const float* position);

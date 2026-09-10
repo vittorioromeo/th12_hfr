@@ -6,17 +6,21 @@ and taking the patch to three games — are in [DEVNOTES_RUNTIME.md](DEVNOTES_RU
 High refresh rate gameplay and presentation for Touhou. One DLL detects the game
 and selects its adapter; the scheduler, input, replay and Direct3D code are shared.
 
-**Current build: v0.3.0-test.** Supported executable layouts:
+**Current build: v0.4.0-test.** Supported executable layouts:
 
 | Game | Version | Executables | State |
 | --- | --- | --- | --- |
 | Touhou 10 — Mountain of Faith | v1.00a | English `th10.exe`, Japanese `th10j.exe` | supported |
 | Touhou 11 — Subterranean Animism | v1.00a | `th11.exe`, static English `th11e.exe` | supported |
 | Touhou 12 — Undefined Fantastic Object | v1.00b | `th12.exe`, static English `th12e.exe` | supported |
+| Touhou 13 — Ten Desires | v1.00c | `th13.exe`, static English `th13e.exe` | supported |
 
 TH10 predates the single game-speed float that TH11 and TH12 hang their sub-stepping off, so its
 speed model is described on its own terms; how that was done is in
-[DEVNOTES_RUNTIME.md](DEVNOTES_RUNTIME.md) §7. Everything the other two games have works on it.
+[DEVNOTES_RUNTIME.md](DEVNOTES_RUNTIME.md) §7. Everything the other games have works on it.
+TH13 is TH12's engine with a few structural changes, each described by a profile field (§7a).
+TH13 keeps its replays and scores in `%APPDATA%\ShanghaiAlice\th13\`, and so does this patch's
+replay metadata.
 
 ## What it does
 
@@ -44,13 +48,13 @@ frame loop (vpatch and the like), and warns when a Direct3D 9 wrapper such as Pi
 presenting the game, because that takes the scaling modes and borderless fullscreen away.
 
 The pre-refactor TH11 and TH12 builds have been tested in game. The unified build passes
-automated tests against every supported executable layout and has been exercised in game on both
-supported titles; it still needs full-run replay testing before a stable release. See
+automated tests against every supported executable layout and has been exercised in game on
+every supported title; it still needs full-run replay testing before a stable release. See
 [architecture and porting guide](ARCHITECTURE.md) and [ADDING_A_GAME.md](ADDING_A_GAME.md).
 
 ## Install
 
-Download/extract `touhou_hfr_v0.3.0-test.zip` and close the game.
+Download/extract `touhou_hfr_v0.4.0-test.zip` and close the game.
 
 For a fresh installation, copy these four files next to the game executable:
 
@@ -65,7 +69,7 @@ both languages of one game are present. Use `[launcher] exe=th12.exe` (for examp
 to select another executable. If multiple supported games are present, set an
 explicit target. An executable name can also be passed as the launcher's argument.
 
-The same four files work for either game. No game executable or data file is edited.
+The same four files work for every supported game. No game executable or data file is edited.
 The DLL forwards DirectInput calls to Windows' original library. Unknown or changed
 hook sites cause installation to be declined, leaving proxy forwarding available.
 
@@ -137,7 +141,7 @@ Windows requires a **32-bit MinGW-w64 GCC** compiler. The default script path is
 
 ```powershell
 .\build.ps1
-.\test.ps1 -GameExe 'G:\Touhou\TH11 ~ Subterranean Animism\th11.exe','G:\Touhou\TH12 ~ Undefined Fantastic Object\th12.exe' -Python 'C:\Python313\python.exe'
+.\test.ps1 -GameExe 'G:\Touhou\TH11 ~ Subterranean Animism\th11.exe','G:\Touhou\TH12 ~ Undefined Fantastic Object\th12.exe','G:\Touhou\TH13 ~ Ten Desires\th13.exe' -Python 'C:\Python313\python.exe'
 .\package.ps1
 ```
 

@@ -18,8 +18,10 @@ This file is the findings — the reasoning, the wrong turns, and the things tha
 
 ## 1. What exists now
 
-Three games are supported: TH10, TH11 and TH12. TH10 was the one that exercised the multi-game
-design hardest, because its speed model is unlike the other two; §7 says how.
+Four games are supported: TH10, TH11, TH12 and TH13. TH10 was the one that exercised the
+multi-game design hardest, because its speed model is unlike the other two; §7 says how. TH13 is
+TH12's engine with a handful of structural changes, each absorbed by a profile field; §7a says
+which, and what the port taught about porting the per-object hooks.
 
 Everything about the picture is one implementation shared by every game, and none of it uses a
 game address: arbitrary window resizing with letterboxing, three scaling modes, borderless
@@ -347,6 +349,61 @@ data-load cleanup, not in any of our stubs.
 
 ---
 
+## 7a. TH13, and what porting TH12's hooks taught
+
+TH13 is supported. It confirmed the prediction in the old §9: one game-speed float
+(`0x4c0a28`) written at 16 sites, so the whole `SpeedSite` design applied unchanged, and the
+video path came up on the first run. The simulation took longer, for reasons worth writing down.
+
+**Four engine changes, four profile fields, no fork.** The `UpdateFunc` grew a field, so the
+callback argument moved from `+0x20` to `+0x24` (`layout.node_arg`). The runner now keeps the
+next list node inside itself at `+0x50` and re-reads it after every callback and after every
+removal (`layout.runner_next`; TH12 kept it in a register). `remove_node` takes
+`(runner, node)` instead of `(node, runner)` (`remove_node_runner_first`). And the critical
+section is gated on a byte flag at `0x4e49ed` rather than `misc_flags & 0x8000`
+(`critical_flag_mask = 0xff` on that byte). None of these needed a line in the shared runner
+beyond reading the field.
+
+**Replays live in `%APPDATA%`.** TH13 (like every game from TH12.5 on) chdirs into
+`%APPDATA%\ShanghaiAlice\th13\` around every save and load and keeps the string at
+`0x4dd0d1`; the extension chunk was being appended to a file beside the executable that the
+game never wrote. `addr.data_dir` names that string, and `replay_path()` prefers it when it is
+non-empty (it is empty when `APPDATA` is unset, which is also when the game falls back to its
+own directory).
+
+**The MotionState hook is not wanted here.** TH12's `MotionState::step` adds a raw per-frame
+velocity, so the runtime scales it by the sub-step. TH13 split the object into a pre-step
+(`0x4736a0`) that recomputes the velocity from speed and angle *and multiplies by the game
+speed*, and a step (`0x473780`) that adds it. The runtime already sets the game speed per tick,
+so the port's first version, which also scaled the step, moved every shot and bullet at
+`dt²`. Rule: before porting a "scale this increment" hook, check whether the increment is now
+derived from something the speed float already scales.
+
+**Addresses did not port by byte shape; structures did.** Thunks and small helpers matched
+across the two binaries by normalised instruction sequence (`th13/match.py`), but the sites
+that matter — inside big update functions — mostly did not, and the decompiled-body similarity
+matcher (`th13/dmatch.py`) only narrowed the function. What worked was reading the TH12 hook's
+*meaning* (which object, which field, which timer gates it) and finding the same operation in
+the TH13 function: the ECL variable getter (`0x420380`) gave the enemy layout in one table
+(position `+0x1230`, VM ids in a sub-object at `+0x11ec`, flags `+0x521c` with every bit two
+places higher than TH12's), the inline timer tick pattern (`mov edx,[+4]; mov [+0],edx;
+fld [ptr]; fcomp 0.99…`) marked every per-object timer, and the `Timer::add` callers with a
+constant argument (`-14.0`, and the ANM `wait N`, inlined into `AnmVm::update` in TH13 where
+TH12 had a helper) were the ones to give stock `value * logical` semantics.
+
+**Hooks that exist in TH12 and have no TH13 counterpart.** The curve laser still computes
+"graze every 3 frames" but no longer acts on it, and the beam laser has no graze branch, so only
+the line laser is gated; the UFO attraction hook has nothing to attach to; the player's
+`state_timer % 60` block is gone and the new every-3-frames block at `0x443792` is guarded by
+the game itself. Porting is not a checklist of addresses; half the list can legitimately be
+empty.
+
+**The enemy list head is a layout field now** (`layout.enemy_list`, `+0xb0` in TH13, `+0x68`
+before), because it was the one enemy-interpolation constant still hard-coded in the shared
+code.
+
+---
+
 ## 8. Verification, and the traps in the rig
 
 ### Techniques that repeatedly paid
@@ -390,7 +447,7 @@ data-load cleanup, not in any of our stubs.
 ## 9. Open work, in order of value
 
 1. **The alt-tab input fix** vpatch has and we do not — a foreground check on the DirectInput
-   path. Cheap, and it affects all three supported games.
+   path. Cheap, and it affects all four supported games.
 2. **`ReplaySlowFPS`** — slow-motion replay on a held key. The tick-rate machinery makes this
    nearly free.
 3. **The `UI_*` settings live in four places** — the enum, both switches and the save function,
@@ -400,6 +457,6 @@ data-load cleanup, not in any of our stubs.
 4. **`tools/embed_shaders.py` restates the pass-splitting rule** that `shader_parse.h` owns,
    because the build step is Python and the runtime is C. The checker tool includes the real
    header, so the two implementations that matter cannot disagree.
-5. **TH13 and beyond.** TH13 is closer to TH12 than TH10 is to TH11, so the speed-float pattern
-   in §6 is worth trying first — one `fstp` target dominating at ~22 sites means the existing
-   sub-stepping design applies.
+5. **TH14 and beyond.** TH13's port (§7a) is the template: the speed-float pattern held, the
+   engine changes were absorbed by profile fields, and the per-object hooks were found by
+   meaning rather than by byte shape. Expect the same shape of job.

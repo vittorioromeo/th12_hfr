@@ -32,7 +32,8 @@ static void enemy_interp(double phase) {
     int capture = g_major && !g_skip_update;
     if (capture) g_major_count++;
     float alpha = (float)(phase + g_dt); if (alpha > 1.0f) alpha = 1.0f;   /* fraction of the frame's motion to show */
-    for (uint32_t* node = *(uint32_t**)(em + 0x68); node; node = (uint32_t*)node[1]) {
+    uint32_t list = g_game->layout.enemy_list ? g_game->layout.enemy_list : 0x68;
+    for (uint32_t* node = *(uint32_t**)(em + list); node; node = (uint32_t*)node[1]) {
         uint8_t* e = (uint8_t*)node[0];
         if (!e) continue;
         uint32_t flags = *(uint32_t*)(e + g_game->layout.enemy_flags);

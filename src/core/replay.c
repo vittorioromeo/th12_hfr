@@ -56,8 +56,15 @@ static void replay_check(void) {
 
 /* ------------------------------------------------------------------ replay file chunk (recording rate) */
 #define HFR_CHUNK_TYPE 0x48   /* 'H' : our USER chunk type */
+/* Where the game keeps its replays: beside the executable, unless the game has a data
+   directory of its own (TH13 keeps a "%APPDATA%\ShanghaiAlice\th13\" string, with the
+   trailing separator, and chdirs into it around every save and load; empty when APPDATA
+   is unset, in which case it falls back to the game directory like the older games). */
 static int replay_path(char* out, size_t n, const char* name) {
-    char dir[MAX_PATH]; GetModuleFileNameA(NULL, dir, MAX_PATH); char* p = strrchr(dir, '\\'); if (p) *p = 0;
+    char dir[MAX_PATH];
+    const char* data = g_game && g_game->addr.data_dir ? (const char*)g_game->addr.data_dir : "";
+    if (*data) { strncpy(dir, data, MAX_PATH - 1); dir[MAX_PATH - 1] = 0; size_t l = strlen(dir); if (l && dir[l-1] == '\\') dir[l-1] = 0; }
+    else { GetModuleFileNameA(NULL, dir, MAX_PATH); char* p = strrchr(dir, '\\'); if (p) *p = 0; }
     size_t a=strlen(dir),b=strlen(name);
     if (a+8+b+1>n) { LOG("Replay path is too long");return 0; }
     memcpy(out,dir,a);memcpy(out+a,"\\replay\\",8);memcpy(out+a+8,name,b+1);return 1;
