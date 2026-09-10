@@ -326,6 +326,15 @@ gate it behind `misc_flags & 0x8000`. The generalised runner handles this with
 `critical_flag_mask` (0 for TH10 means "always"); the only casualty was the harness, whose bare
 fixture has no initialised section — it now initialises one (see `tools/test_runner.h`).
 
+**The guard every game has.** The enemy hit test opens with "player state timer unchanged
+since last frame → no damage", a stock double-hit guard. Sub-stepped, the integer timer
+advances on the last minor tick of a frame, so on the boundary tick — the only tick the 60 Hz
+enemy code runs the test — it always reads unchanged, and no shot lands at all. TH11 and TH12
+replace it with "the float timer advanced across the last Player update", which the runner
+tracks; TH10's port had everything around it but not this, and shipped with enemies immune
+unless Player sub-stepping was switched off. It is at `0x42863e` in TH10, `0x434814` in TH11,
+`0x439ef2` in TH12, and the same six-byte `cmp` in each. Look for it first in any new game.
+
 **The fault that wasn't.** An earlier session chased a crash at `0x42b1e0` and suspected the
 device redirect. It was not the patch at all: the test rig had a truncated `th10e.dat` and
 `thbgm.dat`, and TH10 aborts partway through init when a data file is short, then dereferences a

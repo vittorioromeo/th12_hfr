@@ -71,6 +71,15 @@ static void th10_install_sites(void) {
     STUB_BEGIN();E(0xd9,0x47,0xe0);emit_factor();E(0xd8,0x03,0xd9,0x1b);
     E(0xd9,0x47,0xe8);emit_factor();E(0xd8,0x47,0xe4,0xd9,0x5f,0xe4);
     EJMP(0x425dde);site_hook(0x425dce,16);
+    /* Enemy hit test (0x428630) opens with the stock double-hit guard, "player state timer
+       unchanged since last frame -> no damage" (cmp eax,[ebp+0x474] against the integer timer
+       just loaded from +0x478). Sub-stepped, the integer timer advances on the last minor tick
+       of a frame, so on the boundary tick -- the only tick the 60 Hz enemy code runs this test --
+       it always reads unchanged, and no shot ever lands. Compare the float timer around the
+       last Player update instead, as TH11 and TH12 do; the flags feed the game's own jne. */
+    STUB_BEGIN(); E(0x50,0xa1); E32((uint32_t)(uintptr_t)&g_ptf_prev);
+    E(0x3b,0x05); E32((uint32_t)(uintptr_t)&g_ptf_cur); E(0x58);
+    EJMP(0x428644); site_hook(0x42863e,6);
     /* Shot-cycle and ANM wait corrections subtract constants, not rates. */
     uint8_t* constant=g_p;
     E(0x8b,0x46,0x04,0x89,0x06,0xd9,0x44,0x24,0x04,0xd8,0x0d);E32((uintptr_t)&g_logical);
