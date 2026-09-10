@@ -83,15 +83,19 @@ extern "C" int  hfr_menu_visible(void) { return g_ready && g_visible; }
 
 extern "C" int hfr_menu_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, LRESULT* result) {
     if (!g_ready) return 0;
-    /* Raise a request rather than toggling here; the frame hook acts on it once, whether it
-       came from this message or from the runtime's poll. Swallow the key either way. */
+    /* Report whether the key is *down*, never that it was pressed: the runtime also watches
+       the key directly, and two sources reporting the same press as two events is what used
+       to toggle the menu twice and leave it looking dead. Two sources reporting a level
+       cannot disagree about how many presses happened. Swallow the key either way. */
     if (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN || msg == WM_KEYUP || msg == WM_SYSKEYUP) {
         if ((int)wp == hfr_ui_menu_key()) {
-            if ((msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN) && !(lp & (1 << 30))) hfr_menu_requested();
+            hfr_menu_key_down(msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN);
             if (result) *result = 0;
             return 1;
         }
     }
+    /* A key held as the window loses focus never gets its KEYUP here. */
+    if (msg == WM_KILLFOCUS) hfr_menu_key_down(0);
     if (!g_visible) return 0;
     /* While the menu is up the cursor must be visible even though the game hides it. */
     if (msg == WM_SETCURSOR && LOWORD(lp) == HTCLIENT) {
@@ -110,44 +114,17 @@ extern "C" int hfr_menu_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, LRESU
 }
 
 namespace {
-void draw_video_section(void) {
-    const char* modes[] = { "Stretch to fill", "Fit, keep aspect ratio", "Pixel perfect (whole multiples)" };
-    int scaling = hfr_ui_get(UI_SCALING);
-    if (ImGui::Combo("Scaling", &scaling, modes, IM_ARRAYSIZE(modes))) hfr_ui_set(UI_SCALING, scaling);
-    if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Pixel perfect keeps every game pixel the same size, at the cost of\n"
-                          "larger black bars when the window is not a whole multiple of 640x480.");
-
-    int count = hfr_ui_filter_count();
-    int filter = hfr_ui_get(UI_FILTER);
-    if (filter < 0 || filter >= count) filter = 0;
-    if (ImGui::BeginCombo("Filter", hfr_ui_filter_name(filter))) {
-        for (int i = 0; i < count; ++i) {
-            bool sel = i == filter;
-            char label[80];
-            if (hfr_ui_filter_is_fixed_scale(i)) snprintf(label, sizeof label, "%s (fixed scale)", hfr_ui_filter_name(i));
-            else snprintf(label, sizeof label, "%s", hfr_ui_filter_name(i));
-            if (ImGui::Selectable(label, sel)) hfr_ui_set(UI_FILTER, i);
-            if (sel) ImGui::SetItemDefaultFocus();
-        }
-        ImGui::EndCombo();
-    }
-    if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Any .hlsl file in the shaders folder next to the game appears here.\n"
-                          "A filter that fails to compile is reported in touhou_hfr.log.");
-
-    bool resizable = hfr_ui_get(UI_RESIZABLE) != 0;
-    if (ImGui::Checkbox("Resizable window", &resizable)) hfr_ui_set(UI_RESIZABLE, resizable);
+void help(const char* text) {
     ImGui::SameLine();
-    bool snap = hfr_ui_get(UI_SNAP_ASPECT) != 0;
-    if (ImGui::Checkbox("Snap to 4:3 while dragging", &snap)) hfr_ui_set(UI_SNAP_ASPECT, snap);
-
-    bool borderless = hfr_ui_get(UI_FULLSCREEN_MODE) != 0;
-    if (ImGui::Checkbox("Borderless fullscreen", &borderless)) hfr_ui_set(UI_FULLSCREEN_MODE, borderless);
-    if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("On: the game's fullscreen becomes a borderless window at the desktop\n"
-                          "resolution. Off: its original exclusive 640x480 mode switch.");
+    ImGui::TextDisabled("(?)");
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", text);
 }
+bool toggle(const char* label, int id) {
+    bool v = hfr_ui_get(id) != 0;
+    if (ImGui::Checkbox(label, &v)) { hfr_ui_set(id, v); return true; }
+    return false;
+}
+
 void draw_hint(void) {
     ImGuiIO& io = ImGui::GetIO();
     float a = g_hint_frames > 90 ? 1.0f : (float)g_hint_frames / 90.0f;
@@ -164,28 +141,152 @@ void draw_hint(void) {
     }
     ImGui::End();
 }
+
+void draw_display_section(void) {
+    const char* modes[] = { "Stretch to fill", "Fit, keep aspect ratio", "Pixel perfect (whole multiples)" };
+    int scaling = hfr_ui_get(UI_SCALING);
+    if (scaling < 0 || scaling > 2) scaling = 1;
+    if (ImGui::Combo("Scaling", &scaling, modes, IM_ARRAYSIZE(modes))) hfr_ui_set(UI_SCALING, scaling);
+    help("Pixel perfect keeps every game pixel the same size, at the cost of\n"
+         "larger black bars when the window is not a whole multiple of 640x480.");
+
+    int count = hfr_ui_filter_count();
+    int filter = hfr_ui_get(UI_FILTER);
+    if (filter < 0 || filter >= count) filter = 0;
+    if (ImGui::BeginCombo("Filter", hfr_ui_filter_name(filter))) {
+        for (int i = 0; i < count; ++i) {
+            bool sel = i == filter;
+            char label[80];
+            if (hfr_ui_filter_is_fixed_scale(i)) snprintf(label, sizeof label, "%s (fixed scale)", hfr_ui_filter_name(i));
+            else snprintf(label, sizeof label, "%s", hfr_ui_filter_name(i));
+            if (ImGui::Selectable(label, sel)) hfr_ui_set(UI_FILTER, i);
+            if (sel) ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
+    }
+    help("Any .hlsl file in the shaders folder next to the game appears here.\n"
+         "A filter that fails to compile is reported in touhou_hfr.log.");
+
+    toggle("Resizable window", UI_RESIZABLE);
+    ImGui::SameLine();
+    toggle("Snap to 4:3 while dragging", UI_SNAP_ASPECT);
+    toggle("Borderless fullscreen", UI_FULLSCREEN_MODE);
+    help("On: the game's fullscreen becomes a borderless window covering the\n"
+         "monitor at its own resolution, instead of a 640x480 mode change.");
+}
+
+void draw_timing_section(void) {
+    bool locked = hfr_ui_simulation_locked() != 0;
+    if (locked) {
+        ImGui::TextDisabled("Locked while a stage is running: these change the simulation,");
+        ImGui::TextDisabled("and the replay being recorded describes the settings it started with.");
+    }
+    ImGui::BeginDisabled(locked);
+
+    static const int rates[] = { 0, 60, 120, 144, 165, 240, 360, 480 };
+    static const char* rate_names[] = { "Auto (display rate)", "60", "120", "144", "165", "240", "360", "480" };
+    int fps = hfr_ui_get(UI_FPS), index = -1;
+    for (int i = 0; i < IM_ARRAYSIZE(rates); ++i) if (rates[i] == fps) index = i;
+    char current[32];
+    if (index < 0) snprintf(current, sizeof current, "%d (from the INI)", fps);
+    if (ImGui::BeginCombo("Tick rate", index < 0 ? current : rate_names[index])) {
+        for (int i = 0; i < IM_ARRAYSIZE(rates); ++i)
+            if (ImGui::Selectable(rate_names[i], i == index)) hfr_ui_set(UI_FPS, rates[i]);
+        ImGui::EndCombo();
+    }
+    help("How often the game's logic runs. Auto follows the display, which is\n"
+         "what you want unless you are comparing against stock 60 Hz.");
+
+    toggle("Sub-step gameplay", UI_SUBSTEP);
+    help("Off: stock 60 Hz logic, presented at the display rate. On: bullets,\n"
+         "the player, lasers, items and sprites advance a fraction of a frame\n"
+         "at a time, which is what makes motion smooth at high refresh rates.");
+    toggle("Sub-tick input", UI_SUBTICK_INPUT);
+    help("Poll movement and focus every tick instead of once per frame.\n"
+         "Recorded into replays and reproduced on playback.");
+    toggle("Interpolate enemy sprites", UI_ENEMY_INTERP);
+    help("Enemy scripts run at 60 Hz; this draws their sprites between those\n"
+         "positions so they move as smoothly as everything else.");
+
+    if (ImGui::TreeNode("Sub-stepped subsystems")) {
+        ImGui::TextDisabled("For narrowing down a problem; the defaults are what has been tested.");
+        int n = hfr_ui_system_count();
+        for (int i = 0; i < n; ++i) {
+            bool v = hfr_ui_system_get(i) != 0;
+            ImGui::PushID(i);
+            if (ImGui::Checkbox(hfr_ui_system_name(i), &v)) hfr_ui_system_set(i, v);
+            ImGui::PopID();
+        }
+        ImGui::TreePop();
+    }
+    ImGui::EndDisabled();
+}
+
+void draw_presentation_section(void) {
+    bool vsync = hfr_ui_get(UI_VSYNC) != 0;
+    if (ImGui::Checkbox("Vertical sync", &vsync)) hfr_ui_set(UI_VSYNC, vsync);
+    help("Rebuilds the presentation chain, which takes effect on the next frame.");
+
+    int latency = hfr_ui_get(UI_MAX_FRAME_LATENCY);
+    if (ImGui::SliderInt("Frame queue", &latency, 0, 3, "%d")) hfr_ui_set(UI_MAX_FRAME_LATENCY, latency);
+    ImGui::SameLine();
+    ImGui::TextDisabled("%s", latency == 0 ? "(driver default)" : "frame(s)");
+    help("How many frames the driver may queue before it makes the game wait.\n"
+         "1 is the lowest display latency. Needs Direct3D 9Ex.");
+
+    ImGui::Spacing();
+    ImGui::TextDisabled("Direct3D 9Ex: %s", hfr_ui_get(UI_D3D9EX) ? "in use" : "not in use");
+    ImGui::TextDisabled("Presenting through %s", hfr_ui_present_path());
+    ImGui::TextDisabled("Both are decided when the device is created; change them in the INI.");
+}
+
+void draw_diagnostics_section(void) {
+    toggle("Verbose log", UI_DEBUG);
+    help("Writes periodic engine state into touhou_hfr.log. For bug reports.");
+    int key = hfr_ui_menu_key();
+    ImGui::TextDisabled("This menu opens with virtual key 0x%02x%s", key, key == VK_F11 ? " (F11)" : "");
+    ImGui::TextDisabled("Change it with video.menu_key in touhou_hfr.ini.");
+}
+
 void draw_window(void) {
-    ImGui::SetNextWindowSize(ImVec2(0, 0), ImGuiCond_Always);
-    ImGui::SetNextWindowPos(ImVec2(20, 20), ImGuiCond_FirstUseEver);
-    if (ImGui::Begin("Touhou HFR", &g_visible, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse)) {
+    ImGuiIO& io = ImGui::GetIO();
+    float k = io.FontGlobalScale;
+    /* A fixed, resizable window rather than one that fits its contents: with a tab bar,
+       auto-fitting would change the window's size every time you changed tab.
+       Appearing, not FirstUseEver: reopening always brings the window back to somewhere
+       visible, so it can never end up stranded outside a game window that has since been
+       made smaller, while still being freely draggable for as long as it is open. */
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f),
+                            ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSize(ImVec2(620 * k, 420 * k), ImGuiCond_Appearing);
+    ImGui::SetNextWindowSizeConstraints(ImVec2(400 * k, 240 * k), io.DisplaySize);
+    /* No close button: the menu key is the only way in and out, so the menu can never be
+       left in a state where that key looks like it has stopped working. */
+    if (ImGui::Begin("Touhou HFR", nullptr, ImGuiWindowFlags_NoCollapse)) {
         char line[256];
         hfr_ui_status(line, sizeof line);
         ImGui::TextUnformatted(line);
         hfr_ui_scale_info(line, sizeof line);
         ImGui::TextDisabled("%s", line);
-        ImGui::Separator();
-        draw_video_section();
-        ImGui::Separator();
-        int latency = hfr_ui_get(UI_MAX_FRAME_LATENCY);
-        if (ImGui::SliderInt("Frame queue", &latency, 0, 3, "%d"))
-            hfr_ui_set(UI_MAX_FRAME_LATENCY, latency);
-        ImGui::SameLine();
-        ImGui::TextDisabled("%s", latency == 0 ? "(driver default)" : "frame(s)");
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("How many frames the driver may queue. 1 is the lowest display latency.");
+
+        /* The tabs scroll inside the window; the save row stays pinned to the bottom. */
+        float footer = ImGui::GetFrameHeightWithSpacing() + ImGui::GetStyle().ItemSpacing.y;
+        ImGui::BeginChild("##hfr_body", ImVec2(0, -footer));
+        ImGui::PushItemWidth(240.0f * k);   /* leave the labels room instead of filling the row */
+        if (ImGui::BeginTabBar("##hfr_tabs")) {
+            if (ImGui::BeginTabItem("Display"))      { ImGui::Spacing(); draw_display_section();      ImGui::EndTabItem(); }
+            if (ImGui::BeginTabItem("Timing"))       { ImGui::Spacing(); draw_timing_section();       ImGui::EndTabItem(); }
+            if (ImGui::BeginTabItem("Presentation")) { ImGui::Spacing(); draw_presentation_section(); ImGui::EndTabItem(); }
+            if (ImGui::BeginTabItem("Diagnostics"))  { ImGui::Spacing(); draw_diagnostics_section();  ImGui::EndTabItem(); }
+            ImGui::EndTabBar();
+        }
+        ImGui::PopItemWidth();
+        ImGui::EndChild();
+
         ImGui::Separator();
         if (ImGui::Button("Save to touhou_hfr.ini")) hfr_ui_save();
         ImGui::SameLine();
-        ImGui::TextDisabled("changes apply immediately; saving makes them the default");
+        ImGui::TextDisabled("changes apply now; saving keeps them");
     }
     ImGui::End();
 }
@@ -193,7 +294,14 @@ void draw_window(void) {
 
 extern "C" void hfr_menu_render(IDirect3DDevice9* dev, int width, int height) {
     if (!g_ready || g_menu_failed || (!g_visible && g_hint_frames <= 0)) return;
-    if (!g_objects) { if (!ImGui_ImplDX9_CreateDeviceObjects()) return; g_objects = true; }
+    if (!g_objects) {
+        if (!ImGui_ImplDX9_CreateDeviceObjects()) {
+            static bool told = false;
+            if (!told) { told = true; hfr_ui_report("menu: the overlay's device objects could not be built; it cannot draw"); }
+            return;
+        }
+        g_objects = true;
+    }
     static int last_height = 0;
     if (height != last_height) { last_height = height; style_for((float)height); }
     ImGui_ImplDX9_NewFrame();

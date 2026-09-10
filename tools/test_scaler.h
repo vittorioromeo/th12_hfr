@@ -91,3 +91,81 @@ static void test_snap_client(void) {
     cw = 100; ch = 100; snap_client(WMSZ_RIGHT, 0, 0, &cw, &ch); assert(cw == 100 && ch == 100);
     puts("PASS: window aspect snapping follows the dragged edge and never degenerates");
 }
+
+/* The menu key. This exists because of a real bug: the window's key messages and the
+   runtime's own poll each announced a press, the two announcements did not always land in
+   the same frame, and when they did not the two toggles cancelled -- the key looked dead.
+   Both routes now report a level and only menu_key_press turns that into a press. */
+static void test_menu_key(void) {
+    struct menu_key k;
+    memset(&k, 0, sizeof k);
+
+    /* Both routes see the same press in the same poll: one press, not two. */
+    hfr_menu_key_down(1); k = g_menu_key;
+    assert(menu_key_press(&k, 1, 1) == 1);
+    assert(menu_key_press(&k, 1, 1) == 0);            /* still held */
+    k.msg_down = 0;
+    assert(menu_key_press(&k, 0, 1) == 0);            /* released */
+
+    /* The message arrives a poll after the hardware edge: still one press. This is the case
+       that used to produce a tight open/close pair and no visible change on screen. */
+    assert(menu_key_press(&k, 1, 1) == 1);            /* the poll sees it first */
+    k.msg_down = 1; k.msg_tapped = 1;
+    assert(menu_key_press(&k, 1, 1) == 0);            /* the message catches up */
+    k.msg_down = 0;
+    assert(menu_key_press(&k, 0, 1) == 0);
+
+    /* ...and the other way round, when DirectInput has taken the keyboard and the poll lags. */
+    k.msg_down = 1; k.msg_tapped = 1;
+    assert(menu_key_press(&k, 0, 1) == 1);
+    assert(menu_key_press(&k, 1, 1) == 0);
+    k.msg_down = 0;
+    assert(menu_key_press(&k, 0, 1) == 0);
+
+    /* Every subsequent press still registers: the level really does fall again. */
+    for (int i = 0; i < 50; ++i) {
+        k.msg_down = 1; k.msg_tapped = 1;
+        assert(menu_key_press(&k, 1, 1) == 1);
+        k.msg_down = 0;
+        assert(menu_key_press(&k, 0, 1) == 0);
+    }
+
+    /* A press that began and ended entirely between two polls -- a long frame, or a very
+       short tap -- is still a press, and still only one. */
+    memset(&k, 0, sizeof k);
+    k.msg_tapped = 1;                                  /* KEYDOWN and KEYUP both already seen */
+    assert(menu_key_press(&k, 0, 1) == 1);
+    assert(menu_key_press(&k, 0, 1) == 0);             /* and not again on the next poll */
+
+    /* Held with no focus: no press, and nothing left behind that eats the next one. */
+    memset(&k, 0, sizeof k);
+    assert(menu_key_press(&k, 1, 0) == 0);
+    assert(menu_key_press(&k, 1, 0) == 0);
+    k.msg_down = 1; k.msg_tapped = 1;
+    assert(menu_key_press(&k, 1, 1) == 1);
+    k.msg_down = 0;
+    assert(menu_key_press(&k, 0, 1) == 0);
+
+    /* A KEYUP lost because the window lost focus while the key was held must not wedge the
+       key down forever. Focus loss clears it outright... */
+    memset(&k, 0, sizeof k);
+    k.msg_down = 1; k.msg_tapped = 1;
+    assert(menu_key_press(&k, 1, 1) == 1);
+    assert(menu_key_press(&k, 1, 0) == 0);             /* focus lost, key still held */
+    assert(k.msg_down == 0 && k.msg_tapped == 0);
+    assert(menu_key_press(&k, 0, 1) == 0);             /* focus back, key up */
+    k.msg_down = 1; k.msg_tapped = 1;
+    assert(menu_key_press(&k, 1, 1) == 1);             /* the next press lands */
+
+    /* ...and a message route that somehow keeps claiming "down" while the hardware says up
+       is eventually given up on rather than believed forever. */
+    memset(&k, 0, sizeof k);
+    k.msg_down = 1; k.msg_tapped = 1;
+    assert(menu_key_press(&k, 1, 1) == 1);
+    for (int i = 0; i < 200 && k.msg_down; ++i) menu_key_press(&k, 0, 1);
+    assert(k.msg_down == 0 && k.level == 0);
+    assert(menu_key_press(&k, 1, 1) == 1);             /* and presses land again */
+
+    printf("PASS: menu key presses survive both routes reporting, a tap between polls, "
+           "focus loss and a lost key-up\n");
+}

@@ -7,6 +7,12 @@
 
 static char g_ini_path[MAX_PATH];
 
+/* Changes that touch Direct3D resources or the tick schedule are queued here and applied by
+   the frame hook. The menu draws inside the scaler's scene, with the back buffer bound, so
+   releasing a swap chain at the moment a checkbox is clicked would pull the ground out from
+   under the frame being drawn. */
+static int g_pending_chain, g_pending_rate;
+
 int hfr_ui_get(int id) {
     switch (id) {
     case UI_SCALING:            return cfg.scaling;
@@ -16,6 +22,13 @@ int hfr_ui_get(int id) {
     case UI_FULLSCREEN_MODE:    return cfg.fullscreen_mode;
     case UI_VSYNC:              return cfg.vsync;
     case UI_MAX_FRAME_LATENCY:  return cfg.max_frame_latency;
+    case UI_FPS:                return cfg.fps;
+    case UI_SUBSTEP:            return cfg.substep;
+    case UI_SUBTICK_INPUT:      return cfg.subtick_input;
+    case UI_ENEMY_INTERP:       return cfg.enemy_interp;
+    case UI_DEBUG:              return cfg.debug;
+    case UI_D3D9EX:             return g_using_ex;
+    case UI_OWN_PRESENT:        return g_own_present;
     default:                    return 0;
     }
 }
@@ -31,7 +44,12 @@ void hfr_ui_set(int id, int value) {
     case UI_RESIZABLE:       cfg.resizable = !!value; break;
     case UI_SNAP_ASPECT:     cfg.snap_aspect = !!value; break;
     case UI_FULLSCREEN_MODE: cfg.fullscreen_mode = !!value; break;
-    case UI_VSYNC:           cfg.vsync = !!value; break;
+    case UI_VSYNC:           cfg.vsync = !!value; g_pending_chain = 1; break;
+    case UI_FPS:             cfg.fps = value < 0 ? 0 : (value > 1000 ? 1000 : value); g_pending_rate = 1; break;
+    case UI_SUBSTEP:         cfg.substep = !!value; g_pending_rate = 1; break;
+    case UI_SUBTICK_INPUT:   cfg.subtick_input = !!value; break;
+    case UI_ENEMY_INTERP:    cfg.enemy_interp = !!value; break;
+    case UI_DEBUG:           cfg.debug = !!value; break;
     case UI_MAX_FRAME_LATENCY:
         cfg.max_frame_latency = value < 0 ? 0 : (value > 16 ? 16 : value);
         if (g_using_ex && g_dev && cfg.max_frame_latency > 0) {
@@ -46,6 +64,32 @@ int         hfr_ui_filter_count(void) { return filter_count(); }
 const char* hfr_ui_filter_name(int index) { struct Filter* f = filter_at(index); return f ? f->name : ""; }
 int         hfr_ui_filter_is_fixed_scale(int index) { struct Filter* f = filter_at(index); return f && f->scale > 0; }
 int         hfr_ui_menu_key(void) { return cfg.menu_key; }
+int         hfr_ui_system_count(void) { return g_game ? (int)g_class_count : 0; }
+const char* hfr_ui_system_name(int i) { return (g_game && i >= 0 && i < (int)g_class_count) ? g_classes[i].name : ""; }
+int         hfr_ui_system_get(int i) { return (i >= 0 && i < (int)g_class_count) ? g_sub_enabled[i] : 0; }
+void        hfr_ui_system_set(int i, int v) { if (i >= 0 && i < (int)g_class_count) g_sub_enabled[i] = !!v; }
+const char* hfr_ui_present_path(void) { return g_own_present ? "own swap chain" : "the game's swap chain"; }
+/* A stage in progress is recording a replay, and the recording carries the simulation
+   settings; changing them part way through would describe the run incorrectly. */
+int hfr_ui_simulation_locked(void) {
+    if (g_replay_playing) return 1;
+    uint8_t* rm = g_game ? G_REPLAY_MANAGER : NULL;
+    return rm && *(int*)(rm + g_game->layout.replay_frame) >= 0;
+}
+/* Called from the frame hook, between frames, where touching Direct3D is safe. */
+static void hfr_ui_apply_pending(IDirect3DDevice9* dev) {
+    if (g_pending_rate) {
+        g_pending_rate = 0;
+        int want = cfg.fps > 0 ? cfg.fps : g_display_hz;
+        LOG("menu: tick rate -> %d (substep=%d)", want, cfg.substep);
+        recompute_rate(want);
+    }
+    if (g_pending_chain && dev && g_own_present && g_wnd) {
+        g_pending_chain = 0;
+        LOG("menu: rebuilding the presentation chain (vsync=%d)", cfg.vsync);
+        scaler_set_output(dev, g_wnd, g_out_w, g_out_h);
+    } else g_pending_chain = 0;
+}
 void hfr_ui_report(const char* fmt, ...) {
     if (!g_log) return;
     va_list ap; va_start(ap, fmt); vfprintf(g_log, fmt, ap); va_end(ap);
@@ -64,6 +108,16 @@ void hfr_ui_save(void) {
     ini_put_int("video", "snap_aspect", cfg.snap_aspect);
     ini_put_int("video", "fullscreen_mode", cfg.fullscreen_mode);
     ini_put_int("hfr", "max_frame_latency", cfg.max_frame_latency);
+    ini_put_int("hfr", "fps", cfg.fps);
+    ini_put_int("hfr", "vsync", cfg.vsync);
+    ini_put_int("hfr", "substep", cfg.substep);
+    ini_put_int("hfr", "subtick_input", cfg.subtick_input);
+    ini_put_int("hfr", "enemy_interp", cfg.enemy_interp);
+    ini_put_int("hfr", "debug", cfg.debug);
+    for (int i = 0; g_game && i < (int)g_class_count; ++i) {
+        char key[64]; snprintf(key, sizeof key, "sub_%s", g_classes[i].name);
+        ini_put_int("systems", key, g_sub_enabled[i]);
+    }
     LOG("menu: settings written to %s", g_ini_path);
 }
 void hfr_ui_status(char* buf, int len) {

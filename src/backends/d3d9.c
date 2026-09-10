@@ -76,6 +76,7 @@ static void fill_mode_ex(D3DPRESENT_PARAMETERS* pp, D3DDISPLAYMODEEX* m) {
 }
 static void after_device(IDirect3DDevice9* dev) {
     int hz = detect_refresh(dev);
+    g_display_hz = hz;
     LOG("display refresh detected: %d Hz", hz);
     recompute_rate(cfg.fps > 0 ? cfg.fps : hz);
     g_next = 0;

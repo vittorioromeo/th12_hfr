@@ -72,6 +72,7 @@ static IDirect3DStateBlock9* g_state;
 static int g_native_w, g_native_h;           /* the size the game believes it renders at */
 static int g_out_w, g_out_h;                 /* the real swap chain size */
 static int g_scaler_ok;                      /* redirection is live */
+static int g_display_hz = 60;                /* the display's own rate, for "auto" */
 static int g_scaler_enabled = 1;             /* may be turned off when unsupported */
 static D3DFORMAT g_bb_format, g_ds_format;
 static unsigned g_stat_blits;
@@ -363,6 +364,7 @@ static void select_filter(IDirect3DDevice9* dev, const struct ScaleRect* dst,
 }
 
 static void ui_render_frame(IDirect3DDevice9* dev, const struct ScaleRect* content);
+static void hfr_ui_apply_pending(IDirect3DDevice9* dev);   /* menu changes, applied between frames */
 
 /* Called from the Present hook, after the game's EndScene and before the real Present. */
 static void scaler_blit(IDirect3DDevice9* dev) {

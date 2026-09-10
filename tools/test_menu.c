@@ -22,6 +22,21 @@ void        hfr_ui_status(char* b, int n) { snprintf(b, (size_t)n, "TH12 v1.00b 
 void        hfr_ui_scale_info(char* b, int n) { snprintf(b, (size_t)n, "640x480 game image at 2x, 0 x 0 of black bars"); }
 int         hfr_ui_menu_key(void) { return VK_F11; }
 void        hfr_menu_requested(void) { hfr_menu_toggle(); }   /* the runtime acts on this per frame */
+/* The runtime turns the key's level into a press; here the harness just mirrors that. */
+static int  g_key_down;
+void        hfr_menu_key_down(int down) {
+    if (down && !g_key_down) hfr_menu_toggle();
+    g_key_down = down ? 1 : 0;
+}
+int         hfr_ui_simulation_locked(void) { return 0; }
+const char* hfr_ui_present_path(void) { return "our own swap chain"; }
+static const char* g_systems[] = { "BulletManager", "Player", "Bomb", "LaserManager",
+                                   "ItemManager", "Gui", "Stage", "AnmManagerWorld", "AnmManagerUI" };
+static int g_system_on[9] = { 1, 1, 0, 1, 1, 0, 1, 1, 1 };
+int         hfr_ui_system_count(void) { return 9; }
+const char* hfr_ui_system_name(int i) { return (i >= 0 && i < 9) ? g_systems[i] : ""; }
+int         hfr_ui_system_get(int i) { return (i >= 0 && i < 9) ? g_system_on[i] : 0; }
+void        hfr_ui_system_set(int i, int v) { if (i >= 0 && i < 9) g_system_on[i] = v; }
 void        hfr_ui_report(const char* fmt, ...) {
     va_list ap; va_start(ap, fmt); printf("REPORT: "); vprintf(fmt, ap); printf("\n"); va_end(ap); g_failed = 1;
 }

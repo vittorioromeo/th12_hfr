@@ -13,9 +13,16 @@ enum {
     UI_FILTER,               /* index into the filter registry */
     UI_RESIZABLE,
     UI_SNAP_ASPECT,
-    UI_FULLSCREEN_MODE,      /* 0 keep the game's exclusive mode, 1 borderless */
+    UI_FULLSCREEN_MODE,      /* 0 leave the window alone, 1 borderless over the monitor */
     UI_VSYNC,
     UI_MAX_FRAME_LATENCY,
+    UI_FPS,                  /* ticks per second; 0 follows the display */
+    UI_SUBSTEP,
+    UI_SUBTICK_INPUT,
+    UI_ENEMY_INTERP,
+    UI_DEBUG,
+    UI_D3D9EX,               /* fixed once the device exists */
+    UI_OWN_PRESENT,          /* likewise */
     UI_SETTING_COUNT
 };
 
@@ -29,8 +36,20 @@ void        hfr_ui_save(void);
 void        hfr_ui_status(char* buf, int len);
 void        hfr_ui_scale_info(char* buf, int len);
 int         hfr_ui_menu_key(void);
+/* Settings that only take effect on the next run, so the menu can say so rather than
+   pretending a change did something. */
+/* True while the simulation must not be reconfigured: a stage is running, or a replay is
+   playing. Changing the tick rate or what is sub-stepped mid-stage would desynchronise the
+   replay being recorded. */
+int         hfr_ui_simulation_locked(void);
+int         hfr_ui_system_count(void);
+const char* hfr_ui_system_name(int index);
+int         hfr_ui_system_get(int index);
+void        hfr_ui_system_set(int index, int value);
+const char* hfr_ui_present_path(void);
 void        hfr_ui_report(const char* fmt, ...);   /* into the patch's log */
-void        hfr_menu_requested(void);              /* the key arrived; act on it once per frame */
+void        hfr_menu_requested(void);              /* toggle the menu once, on the next frame */
+void        hfr_menu_key_down(int down);           /* the menu key's state per the window's messages */
 
 /* Implemented by the menu (C++); all are safe to call when the menu failed to start.
    A build without the menu (the test harness) defines HFR_NO_UI and gets local no-ops. */
