@@ -42,5 +42,6 @@ static struct {
     int snap_aspect;        /* keep the window itself at the native aspect while dragging */
     int fullscreen_mode;    /* 0 leave the game's exclusive fullscreen, 1 borderless desktop */
     int menu_key;           /* virtual-key code that opens the in-game menu */
+    int own_present;        /* -1 auto, 0 present through the game's chain, 1 through ours */
 } cfg = { 0, 1, 1, 1, 0, 0, 1, 0, 1, 1, 1, 0,
-          1, FILTER_SHARP, "", 1, 1, 1, VK_INSERT };
+          1, FILTER_SHARP, "", 1, 1, 1, VK_INSERT, -1 };

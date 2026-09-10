@@ -113,6 +113,18 @@ static HRESULT __stdcall hook_Reset(IDirect3DDevice9* dev, D3DPRESENT_PARAMETERS
         LOG("Reset %ux%u -> 0x%08lx", use.BackBufferWidth, use.BackBufferHeight, (long)hr);
     }
     if (SUCCEEDED(hr)) { scaler_create(dev, &use, device_window(pp)); after_device(dev); }
+    else {
+        /* The chain is untouched, but our render target is gone and the game is about to
+           draw into it. Rebuild against the size the chain actually still has. */
+        D3DPRESENT_PARAMETERS keep = use;
+        IDirect3DSurface9* bb = NULL;
+        if (SUCCEEDED(orig_GetBackBuffer(dev, 0, 0, D3DBACKBUFFER_TYPE_MONO, &bb)) && bb) {
+            D3DSURFACE_DESC d;
+            if (SUCCEEDED(bb->lpVtbl->GetDesc(bb, &d))) { keep.BackBufferWidth = d.Width; keep.BackBufferHeight = d.Height; }
+            bb->lpVtbl->Release(bb);
+        }
+        scaler_create(dev, &keep, device_window(pp));
+    }
     return hr;
 }
 static HRESULT __stdcall hook_CreateDevice(IDirect3D9* d3d, UINT adapter, D3DDEVTYPE type, HWND hwnd, DWORD flags, D3DPRESENT_PARAMETERS* pp, IDirect3DDevice9** out) {
@@ -155,10 +167,36 @@ static HRESULT __stdcall hook_CreateDevice(IDirect3D9* d3d, UINT adapter, D3DDEV
     }
     return hr;
 }
+/* A d3d9.dll sitting in the game folder (a rotation or compatibility wrapper) replaces the
+   real one for the whole process. Such a wrapper only ever expects the single implicit swap
+   chain: PivotDX9 accepts CreateAdditionalSwapChain and then never returns from Present on
+   it. So when the loaded d3d9 is not the system one we present through the device's own
+   chain and resize it with Reset -- which in turn means Direct3D 9Ex has to go, because 9Ex
+   forces the game's textures into the default pool where a reset destroys them and the game
+   has no code to reload them. */
+static void detect_d3d9_wrapper(void) {
+    if (cfg.own_present >= 0) {                     /* forced by the INI */
+        g_want_own_present = cfg.own_present;
+        LOG("presentation chain forced to %s by own_present", g_want_own_present ? "ours" : "the game's");
+        if (!g_want_own_present) cfg.d3d9ex = 0;
+        return;
+    }
+    char module[MAX_PATH] = "", system[MAX_PATH] = "";
+    HMODULE m = GetModuleHandleA("d3d9.dll");
+    if (!m || !GetModuleFileNameA(m, module, MAX_PATH) || !GetSystemDirectoryA(system, MAX_PATH)) return;
+    size_t n = strlen(system);
+    if (n && _strnicmp(module, system, n) == 0) return;      /* the real one */
+    g_want_own_present = 0;
+    LOG("d3d9 wrapper in use (%s): presenting through the game's own chain", module);
+    if (cfg.d3d9ex) {
+        cfg.d3d9ex = 0;
+        LOG("Direct3D 9Ex disabled: resizing needs Reset, and a reset with 9Ex would lose every game texture");
+    }
+}
 static IDirect3D9* __stdcall hook_Direct3DCreate9(UINT sdk) {
     IDirect3D9* d3d = NULL;
+    detect_d3d9_wrapper();
     if (cfg.d3d9ex) {
-        /* use the d3d9.dll the game resolved its import from (a wrapper in the game folder stays in the chain) */
         HMODULE m = GetModuleHandleA("d3d9.dll");
         Direct3DCreate9ExFn createEx = m ? (Direct3DCreate9ExFn)GetProcAddress(m, "Direct3DCreate9Ex") : NULL;
         if (createEx) {

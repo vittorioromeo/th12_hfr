@@ -61,6 +61,7 @@ static IDirect3DSurface9*    g_src_ds;       /* our own depth stencil, native si
 static IDirect3DSwapChain9*  g_swap;         /* our presentation chain, sized to the window */
 static IDirect3DSurface9*    g_real_bb;      /* its back buffer */
 static int                   g_own_present;  /* we present; the device's own chain is unused */
+static int                   g_want_own_present = 1;  /* cleared when a d3d9 wrapper is in the way */
 static IDirect3DTexture9*    g_pass_tex;     /* intermediate for a prepass (sharp or shader) */
 static IDirect3DSurface9*    g_pass_surf;
 static int                   g_pass_w, g_pass_h;
@@ -116,6 +117,7 @@ static void scaler_release(void) {
 static int scaler_set_output(IDirect3DDevice9* dev, HWND hwnd, int w, int h) {
     if (!dev || !hwnd || w < 1 || h < 1) return 0;
     scaler_release_output();
+    if (!g_want_own_present) return 0;
     D3DPRESENT_PARAMETERS pp;
     memset(&pp, 0, sizeof pp);
     pp.BackBufferWidth = (UINT)w;
@@ -150,9 +152,6 @@ static void scaler_adjust_pp(D3DPRESENT_PARAMETERS* out, const D3DPRESENT_PARAME
     *out = *game;
     if (!g_scaler_enabled) return;
     if (g_native_w <= 0) { g_native_w = (int)game->BackBufferWidth; g_native_h = (int)game->BackBufferHeight; }
-    /* The device's own chain is never presented, so it keeps the game's size. It must stay
-       windowed: an exclusive-fullscreen device cannot carry the windowed chain we present
-       through, and taking an exclusive mode is what we are replacing in the first place. */
     window_override_pp(out, hwnd);
     if (!out->Windowed) {
         LOG("scaler: keeping the device windowed instead of taking an exclusive %ux%u mode",
@@ -160,8 +159,18 @@ static void scaler_adjust_pp(D3DPRESENT_PARAMETERS* out, const D3DPRESENT_PARAME
         out->Windowed = TRUE;
         out->FullScreen_RefreshRateInHz = 0;
     }
-    out->BackBufferWidth = (UINT)g_native_w;
-    out->BackBufferHeight = (UINT)g_native_h;
+    if (g_want_own_present) {
+        /* We present through a chain of our own, so the device's stays at the game's size. */
+        out->BackBufferWidth = (UINT)g_native_w;
+        out->BackBufferHeight = (UINT)g_native_h;
+    } else {
+        /* The device's own chain is what reaches the screen, so it follows the window. */
+        if (want_w <= 0 || want_h <= 0) {
+            int cw, ch; client_size(hwnd, &cw, &ch);
+            want_w = cw > 0 ? cw : g_native_w;
+            want_h = ch > 0 ? ch : g_native_h;
+        }
+    }
     if (want_w > 0 && want_h > 0) { out->BackBufferWidth = (UINT)want_w; out->BackBufferHeight = (UINT)want_h; }
     out->MultiSampleType = D3DMULTISAMPLE_NONE;
     out->MultiSampleQuality = 0;
@@ -183,9 +192,16 @@ static int scaler_create(IDirect3DDevice9* dev, const D3DPRESENT_PARAMETERS* use
     if (hwnd && GetClientRect(hwnd, &c)) { cw = c.right; ch = c.bottom; }
     if (cw < 1 || ch < 1) { cw = g_native_w; ch = g_native_h; }
     if (!scaler_set_output(dev, hwnd, cw, ch)) {
-        LOG("scaler: no presentation chain available; leaving the game to present as it always did");
-        g_scaler_enabled = 0;
-        return 0;
+        /* Fall back to the device's own chain: it was sized to the window at creation, and a
+           resize goes through Reset. */
+        HRESULT bb = orig_GetBackBuffer(dev, 0, 0, D3DBACKBUFFER_TYPE_MONO, &g_real_bb);
+        if (FAILED(bb)) {
+            LOG("scaler: no output surface (0x%08lx); leaving the game to present as it always did", (long)bb);
+            g_scaler_enabled = 0;
+            return 0;
+        }
+        g_out_w = (int)used->BackBufferWidth; g_out_h = (int)used->BackBufferHeight;
+        LOG("scaler: presenting through the game's own chain at %dx%d", g_out_w, g_out_h);
     }
     HRESULT hr = dev->lpVtbl->CreateTexture(dev, (UINT)g_native_w, (UINT)g_native_h, 1,
                                             D3DUSAGE_RENDERTARGET, g_bb_format, D3DPOOL_DEFAULT, &g_src_tex, NULL);

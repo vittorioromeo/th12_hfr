@@ -36,6 +36,7 @@ static void read_config(void) {
     cfg.snap_aspect = GetPrivateProfileIntA("video", "snap_aspect", 1, ini);
     cfg.fullscreen_mode = GetPrivateProfileIntA("video", "fullscreen_mode", 1, ini);
     cfg.menu_key = GetPrivateProfileIntA("video", "menu_key", VK_INSERT, ini);
+    cfg.own_present = GetPrivateProfileIntA("video", "own_present", -1, ini);
     for (size_t i = 0; g_game && i < g_class_count; i++) {
         char key[64]; snprintf(key, sizeof key, "sub_%s", g_classes[i].name);
         g_sub_enabled[i] = GetPrivateProfileIntA("systems", key, g_classes[i].mode == MODE_SUB, ini);

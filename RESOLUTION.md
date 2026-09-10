@@ -161,8 +161,27 @@ because an exclusive-fullscreen device cannot carry the windowed chain we presen
 between "borderless over the monitor" and "leave the window where the game puts it", not
 between borderless and a real mode change.
 
-If `CreateAdditionalSwapChain` fails, the scaler disables itself and the game presents exactly
-as it always did — no filters and no resizing, but nothing broken.
+### 2.5.1 When a d3d9 wrapper is in the way
+
+A `d3d9.dll` dropped in the game folder — PivotDX9, dgVoodoo, a d3d8-to-9 shim — replaces the
+real one for the whole process, and such a wrapper only ever expects the one implicit swap
+chain. PivotDX9 in particular accepts `CreateAdditionalSwapChain`, hands back a swap chain
+that looks fine, and then **never returns from `Present` on it**. The game hangs on its very
+first present, during startup, before the main loop is ever entered.
+
+So the presentation path is chosen from what `d3d9.dll` actually resolves to. If the loaded
+module is not the one in the system directory, we present through the game's own chain and
+resize it with `Reset` — which in turn forces Direct3D 9Ex off, because 9Ex is what pushes the
+game's textures into the default pool where a reset destroys them (2.5). That costs
+`SetMaximumFrameLatency`, and the log says so.
+
+`video.own_present` overrides the choice if the detection is ever wrong: `1` always uses our
+chain, `0` always the game's, `-1` (the default) decides as above.
+
+If our chain cannot be created at all, we fall back to the game's; if that also fails, the
+scaler disables itself and the game presents exactly as it always did — no filters and no
+resizing, but nothing broken. A failed `Reset` rebuilds the render target against the size the
+chain still has, so the game is never left drawing into a surface we have released.
 
 ### 2.6 The menu
 
@@ -204,6 +223,13 @@ never sees the runtime's globals, and a build can leave it out — the test harn
 `test.sh` runs the native harness under Wine when no Windows host is available, which is how
 the geometry was developed. The scaling and snapping tests are exhaustive over the ranges that
 matter rather than spot checks.
+
+The game itself runs under Wine on a virtual X display with llvmpipe, which is how the
+PivotDX9 hang was found and A/B tested: with the wrapper in the folder the log stops at the
+first present, without it the game runs indefinitely. Software rendering is slow enough that
+the game takes ~20 s to reach device creation, and anything else touching the X display while
+it runs will starve it, but for questions of the form "does this code path get reached" it is
+far quicker than a round trip to a real machine.
 
 `tools/shader_check.c` compiles a shader exactly as the runtime does, against a real
 `d3dx9_40.dll`, so a bundled or user shader can be checked without starting the game. Both
