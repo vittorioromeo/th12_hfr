@@ -14,7 +14,7 @@ static void ini_trim(char* s) {
 static void read_config(void) {
     char ini[MAX_PATH]; GetModuleFileNameA(NULL, ini, MAX_PATH);
     char* p = strrchr(ini, '\\'); if (p) strcpy(p + 1, "touhou_hfr.ini"); else strcpy(ini, "touhou_hfr.ini");
-    if (GetFileAttributesA(ini)==INVALID_FILE_ATTRIBUTES && g_game) {
+    if (GetFileAttributesA(ini)==INVALID_FILE_ATTRIBUTES && g_game && g_game->identity->legacy_ini) {
         if (p) strcpy(p+1,g_game->identity->legacy_ini); else strcpy(ini,g_game->identity->legacy_ini);
     }
     snprintf(g_ini_path, sizeof g_ini_path, "%s", ini);

@@ -1,4 +1,4 @@
-static const struct GameProfile* const game_profiles[] = {&th10_profile,&th11_profile,&th12_profile};
+static const struct GameProfile* const game_profiles[] = {&th10_profile,&th11_profile,&th12_profile,&th13_profile};
 static int select_game(const uint8_t* image, size_t size) {
     const struct GameIdentity* id=identify_image(image,size);
     g_game=NULL;

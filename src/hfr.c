@@ -25,5 +25,6 @@
 #include "games/th10.c"
 #include "games/th11.c"
 #include "games/th12.c"
+#include "games/th13.c"
 #include "core/install.c"
 #include "core/entry.c"

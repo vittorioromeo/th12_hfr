@@ -15,11 +15,15 @@ struct ConflictSite { uintptr_t addr; size_t size; uint8_t bytes[8]; const char*
 #include "games/th10_signatures.h"
 #include "games/th11_signatures.h"
 #include "games/th12_signatures.h"
+#include "games/th13_signatures.h"
 #include "games/th10_conflicts.h"
 #include "games/th11_conflicts.h"
 #include "games/th12_conflicts.h"
+#include "games/th13_conflicts.h"
 struct GameIdentity {
     unsigned id, image_size;
+    unsigned image_size_alt;    /* a second accepted SizeOfImage, or 0: the English TH13 build is the same
+                                   code with an appended section that loads its translation DLL */
     const char *name, *legacy_ini, *replay_magic;
     const char* executables[2]; /* English first, then Japanese. */
     const struct GameSignature* signatures;
@@ -30,14 +34,15 @@ struct GameIdentity {
 /* Named slots, so a profile says which game it is rather than counting rows. Inserting a game
    at the front of the table used to silently repoint every profile after it at its neighbour's
    identity -- the same trap as a positional initialiser, and just as quiet. */
-enum { GI_TH10, GI_TH11, GI_TH12 };
+enum { GI_TH10, GI_TH11, GI_TH12, GI_TH13 };
 static const struct GameIdentity game_identities[] = {
     /* TH10's executables are named the other way round from later games: the English patch
        replaces th10.exe and keeps the original as th10j.exe. The replay magic is unused while
        the simulation is undescribed, so it is left at the obvious guess rather than asserted. */
-    [GI_TH10] = {10,0x9c000,"TH10 v1.00a","th10_hfr.ini","t10r",{"th10.exe","th10j.exe"},th10_signatures,sizeof th10_signatures/sizeof *th10_signatures,th10_conflicts,sizeof th10_conflicts/sizeof *th10_conflicts},
-    [GI_TH11] = {11,0xcd000,"TH11 v1.00a","th11_hfr.ini","t11r",{"th11e.exe","th11.exe"},th11_signatures,sizeof th11_signatures/sizeof *th11_signatures,th11_conflicts,sizeof th11_conflicts/sizeof *th11_conflicts},
-    [GI_TH12] = {12,0xd9000,"TH12 v1.00b","th12_hfr.ini","t12r",{"th12e.exe","th12.exe"},th12_signatures,sizeof th12_signatures/sizeof *th12_signatures,th12_conflicts,sizeof th12_conflicts/sizeof *th12_conflicts},
+    [GI_TH10] = {10,0x9c000,0,"TH10 v1.00a","th10_hfr.ini","t10r",{"th10.exe","th10j.exe"},th10_signatures,sizeof th10_signatures/sizeof *th10_signatures,th10_conflicts,sizeof th10_conflicts/sizeof *th10_conflicts},
+    [GI_TH11] = {11,0xcd000,0,"TH11 v1.00a","th11_hfr.ini","t11r",{"th11e.exe","th11.exe"},th11_signatures,sizeof th11_signatures/sizeof *th11_signatures,th11_conflicts,sizeof th11_conflicts/sizeof *th11_conflicts},
+    [GI_TH12] = {12,0xd9000,0,"TH12 v1.00b","th12_hfr.ini","t12r",{"th12e.exe","th12.exe"},th12_signatures,sizeof th12_signatures/sizeof *th12_signatures,th12_conflicts,sizeof th12_conflicts/sizeof *th12_conflicts},
+    [GI_TH13] = {13,0xe9000,0xea000,"TH13 v1.00c",NULL,"t13r",{"th13e.exe","th13.exe"},th13_signatures,sizeof th13_signatures/sizeof *th13_signatures,th13_conflicts,sizeof th13_conflicts/sizeof *th13_conflicts},
 };
 #define GAME_COUNT (sizeof game_identities / sizeof *game_identities)
 static const IMAGE_NT_HEADERS32* image_header(const uint8_t* image, size_t size) {
@@ -57,7 +62,8 @@ static const struct GameIdentity* identify_image(const uint8_t* image, size_t si
     if (!nt || nt->OptionalHeader.SizeOfImage>size) return NULL;
     for (size_t g=0;g<GAME_COUNT;++g) {
         const struct GameIdentity* game=&game_identities[g];
-        if (nt->OptionalHeader.SizeOfImage!=game->image_size) continue;
+        if (nt->OptionalHeader.SizeOfImage!=game->image_size &&
+            !(game->image_size_alt && nt->OptionalHeader.SizeOfImage==game->image_size_alt)) continue;
         size_t i=0;
         for (;i<game->signature_count;++i) {
             const struct GameSignature* s=&game->signatures[i];

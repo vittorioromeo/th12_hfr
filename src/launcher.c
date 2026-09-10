@@ -41,7 +41,7 @@ int main(int argc,char** argv) {
             if(selected && selected!=id)die("More than one supported game is present. Set [launcher] exe in touhou_hfr.ini or pass an executable name.");
             if(!selected){strcpy(target,game_identities[g].executables[e]);selected=id;}
         }
-        if(selected && !common_ini) {
+        if(selected && !common_ini && selected->legacy_ini) {
             if(!local_path(ini,sizeof ini,dir,selected->legacy_ini))die("Configuration path is too long.");
             char legacy[MAX_PATH];GetPrivateProfileStringA("launcher","exe","",legacy,sizeof legacy,ini);
             if(legacy[0])strcpy(target,legacy);
