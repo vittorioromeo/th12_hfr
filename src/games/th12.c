@@ -332,6 +332,7 @@ static const struct GameProfile th12_profile = {
         .replay_load_call = 0x43b1d2,
         .runner_fn = 0x4624c0,
         .latency_cmp = 0x450729,
+        .screenshot_fn = 0x42fca0, .screenshot_call = 0x450891,
     },
     .layout = {
         .replay_stage = 0x1d8,

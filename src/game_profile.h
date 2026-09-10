@@ -43,6 +43,7 @@ struct GameProfile {
         uintptr_t replay_save;
         uintptr_t replay_load;
         uintptr_t frame_calls[3], replay_saves[4], replay_load_call, runner_fn, latency_cmp;
+        uintptr_t screenshot_fn, screenshot_call;   /* 0 when not known for this game */
     } addr;
     struct {
         uint32_t replay_stage;

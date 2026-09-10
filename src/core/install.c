@@ -35,6 +35,18 @@ static int install(void) {
     patch_begin();
     g_game->install_speed();
     g_game->install_sites();
+    /* Wrap the game's screenshot routine so the back buffer hook knows when the caller is
+       going to lock what it gets. The filename arrives in EAX, so the stub must not touch it;
+       "mov dword [flag], imm" and a relative call do not. */
+    if (g_game->addr.screenshot_call && g_game->addr.screenshot_fn) {
+        uint8_t* stub=g_p;
+        E(0xC7,0x05);E32((uint32_t)(uintptr_t)&g_in_screenshot);E32(1);
+        ECALL(g_game->addr.screenshot_fn);
+        E(0xC7,0x05);E32((uint32_t)(uintptr_t)&g_in_screenshot);E32(0);
+        E(0xC3);
+        stub_end();          /* account for these bytes: they are flushed from the I-cache below */
+        site_call(g_game->addr.screenshot_call,stub);
+    } else LOG("screenshot routine not known for this game; its screenshots are unsupported");
     for (int i=0;i<4;++i) site_call(g_game->addr.replay_saves[i],hfr_replay_save);
     site_call(g_game->addr.replay_load_call,hfr_replay_load);
     uint8_t latency[7]; memcpy(latency,site_expected(g_game->addr.latency_cmp,7),7);latency[6]=0x7f;
