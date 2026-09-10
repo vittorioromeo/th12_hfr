@@ -4,6 +4,11 @@ typedef HRESULT (__stdcall *ResetFn)(IDirect3DDevice9*, D3DPRESENT_PARAMETERS*);
 typedef IDirect3D9* (__stdcall *Direct3DCreate9Fn)(UINT);
 static CreateDeviceFn orig_CreateDevice; static ResetFn orig_Reset; static Direct3DCreate9Fn orig_Direct3DCreate9;
 
+static HWND g_device_window;
+static HWND device_window(const D3DPRESENT_PARAMETERS* pp) {
+    if (pp && pp->hDeviceWindow) return pp->hDeviceWindow;
+    return g_device_window;
+}
 static int detect_refresh(IDirect3DDevice9* dev) {
     int hz = 0;
     if (dev) { D3DDISPLAYMODE m; if (SUCCEEDED(dev->lpVtbl->GetDisplayMode(dev, 0, &m)) && m.RefreshRate > 0) hz = m.RefreshRate; }
@@ -83,26 +88,30 @@ static void after_device(IDirect3DDevice9* dev) {
 }
 static HRESULT __stdcall hook_Reset(IDirect3DDevice9* dev, D3DPRESENT_PARAMETERS* pp) {
     apply_pp(pp);
+    D3DPRESENT_PARAMETERS use; scaler_adjust_pp(&use, pp, device_window(pp), 0, 0);
+    scaler_release();   /* our render target and back buffer reference belong to the old chain */
     HRESULT hr;
     if (g_using_ex) {
-        IDirect3DDevice9Ex* ex = (IDirect3DDevice9Ex*)dev; D3DDISPLAYMODEEX m; fill_mode_ex(pp, &m);
-        hr = ex->lpVtbl->ResetEx(ex, pp, pp->Windowed ? NULL : &m);
-        LOG("ResetEx -> 0x%08lx", (long)hr);
+        IDirect3DDevice9Ex* ex = (IDirect3DDevice9Ex*)dev; D3DDISPLAYMODEEX m; fill_mode_ex(&use, &m);
+        hr = ex->lpVtbl->ResetEx(ex, &use, use.Windowed ? NULL : &m);
+        LOG("ResetEx %ux%u -> 0x%08lx", use.BackBufferWidth, use.BackBufferHeight, (long)hr);
     } else {
-        hr = orig_Reset(dev, pp);
-        LOG("Reset -> 0x%08lx", (long)hr);
+        hr = orig_Reset(dev, &use);
+        LOG("Reset %ux%u -> 0x%08lx", use.BackBufferWidth, use.BackBufferHeight, (long)hr);
     }
-    if (SUCCEEDED(hr)) after_device(dev);
+    if (SUCCEEDED(hr)) { scaler_create(dev, &use); after_device(dev); }
     return hr;
 }
 static HRESULT __stdcall hook_CreateDevice(IDirect3D9* d3d, UINT adapter, D3DDEVTYPE type, HWND hwnd, DWORD flags, D3DPRESENT_PARAMETERS* pp, IDirect3DDevice9** out) {
     apply_pp(pp);
+    g_device_window = hwnd ? hwnd : (pp ? pp->hDeviceWindow : NULL);
+    D3DPRESENT_PARAMETERS use; scaler_adjust_pp(&use, pp, g_device_window, 0, 0);
     HRESULT hr;
     if (g_using_ex) {
-        IDirect3D9Ex* ex = (IDirect3D9Ex*)d3d; D3DDISPLAYMODEEX m; fill_mode_ex(pp, &m);
-        hr = ex->lpVtbl->CreateDeviceEx(ex, adapter, type, hwnd, flags, pp, pp->Windowed ? NULL : &m, (IDirect3DDevice9Ex**)out);
-        LOG("CreateDeviceEx -> 0x%08lx", (long)hr);
-        if (FAILED(hr)) { hr = orig_CreateDevice(d3d, adapter, type, hwnd, flags, pp, out); LOG("fallback CreateDevice on the 9Ex object -> 0x%08lx", (long)hr); }
+        IDirect3D9Ex* ex = (IDirect3D9Ex*)d3d; D3DDISPLAYMODEEX m; fill_mode_ex(&use, &m);
+        hr = ex->lpVtbl->CreateDeviceEx(ex, adapter, type, hwnd, flags, &use, use.Windowed ? NULL : &m, (IDirect3DDevice9Ex**)out);
+        LOG("CreateDeviceEx %ux%u -> 0x%08lx", use.BackBufferWidth, use.BackBufferHeight, (long)hr);
+        if (FAILED(hr)) { hr = orig_CreateDevice(d3d, adapter, type, hwnd, flags, &use, out); LOG("fallback CreateDevice on the 9Ex object -> 0x%08lx", (long)hr); }
         if (SUCCEEDED(hr) && out && *out) {
             static const GUID iid_dev9ex = { 0xb18b10ce, 0x2649, 0x405a, { 0x87, 0x0f, 0x95, 0xf7, 0x77, 0xd4, 0x31, 0x3a } };
             void* q = NULL;
@@ -111,18 +120,21 @@ static HRESULT __stdcall hook_CreateDevice(IDirect3D9* d3d, UINT adapter, D3DDEV
             if (hwnd) SetWindowPos(hwnd, 0, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW);   /* 9Ex resets the window style */
         }
     } else {
-        hr = orig_CreateDevice(d3d, adapter, type, hwnd, flags, pp, out);
-        LOG("CreateDevice -> 0x%08lx", (long)hr);
+        hr = orig_CreateDevice(d3d, adapter, type, hwnd, flags, &use, out);
+        LOG("CreateDevice %ux%u -> 0x%08lx", use.BackBufferWidth, use.BackBufferHeight, (long)hr);
     }
     if (SUCCEEDED(hr) && out && *out) {
         IDirect3DDevice9* dev = *out;
         void** vt = *(void***)dev;
         patch_vtable(vt, 16, (void*)hook_Reset, (void**)&orig_Reset);
+        patch_vtable(vt, 17, (void*)hook_Present, (void**)&orig_Present);
+        patch_vtable(vt, 18, (void*)hook_GetBackBuffer, (void**)&orig_GetBackBuffer);
         if (g_using_ex) {
             patch_vtable(vt, 23, (void*)hook_CreateTexture, (void**)&orig_CreateTexture);
             patch_vtable(vt, 26, (void*)hook_CreateVertexBuffer, (void**)&orig_CreateVertexBuffer);
             patch_vtable(vt, 27, (void*)hook_CreateIndexBuffer, (void**)&orig_CreateIndexBuffer);
         }
+        scaler_create(dev, &use);
         after_device(dev);
     }
     return hr;

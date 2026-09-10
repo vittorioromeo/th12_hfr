@@ -16,6 +16,8 @@ static void read_config(void) {
     cfg.d3d9ex = GetPrivateProfileIntA("hfr", "d3d9ex", 1, ini);
     cfg.max_frame_latency = GetPrivateProfileIntA("hfr", "max_frame_latency", 1, ini);
     cfg.flipex = GetPrivateProfileIntA("hfr", "flipex", 0, ini);
+    cfg.scaling = GetPrivateProfileIntA("video", "scaling", 1, ini);
+    cfg.filter = GetPrivateProfileIntA("video", "filter", 2, ini);
     for (size_t i = 0; g_game && i < g_class_count; i++) {
         char key[64]; snprintf(key, sizeof key, "sub_%s", g_classes[i].name);
         g_sub_enabled[i] = GetPrivateProfileIntA("systems", key, g_classes[i].mode == MODE_SUB, ini);
@@ -53,8 +55,9 @@ BOOL WINAPI DllMain(HINSTANCE h, DWORD reason, LPVOID res) {
         if (nt) select_game(base,nt->OptionalHeader.SizeOfImage);
         read_config();
         if (cfg.log) { char path[MAX_PATH]; GetModuleFileNameA(NULL, path, MAX_PATH); char* p = strrchr(path, '\\'); if (p) strcpy(p + 1, "touhou_hfr.log"); g_log = fopen(path, "w"); }
-        LOG("Touhou HFR v0.2.0-test loading; fps=%d vsync=%d substep=%d subtick_input=%d d3d9ex=%d max_frame_latency=%d flipex=%d enemy_interp=%d",
+        LOG("Touhou HFR v0.3.0-test loading; fps=%d vsync=%d substep=%d subtick_input=%d d3d9ex=%d max_frame_latency=%d flipex=%d enemy_interp=%d",
             cfg.fps, cfg.vsync, cfg.substep, cfg.subtick_input, cfg.d3d9ex, cfg.max_frame_latency, cfg.flipex, cfg.enemy_interp);
+        LOG("video: scaling=%d filter=%d", cfg.scaling, cfg.filter);
         if (!g_game || !install()) LOG("Unsupported/modified executable or installation failure; HFR inactive (proxy forwarding available)");
     }
     return TRUE;

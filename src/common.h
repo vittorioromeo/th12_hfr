@@ -31,4 +31,8 @@ static struct {
     int d3d9ex;             /* create the device through Direct3D9Ex */
     int max_frame_latency;  /* IDirect3DDevice9Ex::SetMaximumFrameLatency (0 = leave default) */
     int flipex;             /* windowed: D3DSWAPEFFECT_FLIPEX (experimental) */
-} cfg = { 0, 1, 1, 1, 0, 0, 1, 0, 1, 1, 1, 0 };
+    /* output scaling */
+    int scaling;            /* 0 stretch, 1 aspect fit, 2 integer (pixel perfect) */
+    int filter;             /* 0 nearest, 1 bilinear, 2 sharp bilinear, >=3 shader filters */
+} cfg = { 0, 1, 1, 1, 0, 0, 1, 0, 1, 1, 1, 0,
+          1, 2 };

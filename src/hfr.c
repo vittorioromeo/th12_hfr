@@ -15,6 +15,8 @@
 #include "core/limiter.c"
 #include "core/replay.c"
 #include "core/frame.c"
+#include "core/scaler.c"
+#include "ui/overlay.c"
 #include "backends/d3d9.c"
 #include "games/th11.c"
 #include "games/th12.c"
