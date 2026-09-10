@@ -1,16 +1,8 @@
 /* TH11: reviewed game-specific hooks and object layout. */
-static void th11_install_speed(void) {
-    const uintptr_t perm[] = {0x41f963, 0x41fe23, 0x42956d, 0x4314b8, 0x459b0c};
-    const uintptr_t temp[] = {0x402b7c, 0x44b4f3};
-    const uintptr_t pset[] = {0x42c73f, 0x42c85d, 0x42d696, 0x42d7db};
-    const uintptr_t prest[] = {0x42c8b6, 0x42d845, 0x42e6a5};
-    for (size_t i=0; i<sizeof perm/sizeof *perm; ++i) patch_call_n(perm[i],stub_set_one_perm,6,site_expected(perm[i],6));
-    for (size_t i=0; i<sizeof temp/sizeof *temp; ++i) patch_call_n(temp[i],stub_set_one_temp,6,site_expected(temp[i],6));
-    for (size_t i=0; i<sizeof pset/sizeof *pset; ++i) patch_call_n(pset[i],stub_pause_set,6,site_expected(pset[i],6));
-    for (size_t i=0; i<sizeof prest/sizeof *prest; ++i) patch_call_n(prest[i],stub_pause_restore,6,site_expected(prest[i],6));
-    patch_call_n(0x4169d0,stub_set_ecl,6,site_expected(0x4169d0,6));
-    /* Paired effective-speed restores and the laser manager's temporary zero stay intact. */
-}
+static const uintptr_t th11_speed_perm[] = { 0x41f963, 0x41fe23, 0x42956d, 0x4314b8, 0x459b0c };
+static const uintptr_t th11_speed_temp[] = { 0x402b7c, 0x44b4f3 };
+static const uintptr_t th11_speed_pset[] = { 0x42c73f, 0x42c85d, 0x42d696, 0x42d7db };
+static const uintptr_t th11_speed_prest[] = { 0x42c8b6, 0x42d845, 0x42e6a5 };
 
 static void th11_install_sites(void) {
     g_p = stub_begin();
@@ -205,8 +197,15 @@ static const struct GameProfile th11_profile = {
         .enemy_position = 0x1070,
         .enemy_skip_mask = 0x400000,
     },
+    .speed_sites = {
+        th11_speed_perm,  sizeof th11_speed_perm  / sizeof(uintptr_t),
+        th11_speed_temp,  sizeof th11_speed_temp  / sizeof(uintptr_t),
+        th11_speed_pset,  sizeof th11_speed_pset  / sizeof(uintptr_t),
+        th11_speed_prest, sizeof th11_speed_prest / sizeof(uintptr_t),
+        0x4169d0,
+    },
     .classes = th11_classes, .class_count = sizeof th11_classes / sizeof *th11_classes,
     .mask_minor_player_edges = 1, .d3dx = "d3dx9_37.dll",
-    .install_speed = th11_install_speed, .install_sites = th11_install_sites,
+     .install_sites = th11_install_sites,
     .place_enemy = th11_place_enemy,
 };

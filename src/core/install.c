@@ -28,13 +28,29 @@ static LONG CALLBACK hfr_exception_report(EXCEPTION_POINTERS* ep) {
     }
     return EXCEPTION_CONTINUE_SEARCH;
 }
+/* Redirect every write of a literal 1.0 into the game-speed float. Was a per-game function
+   that differed only in its addresses; the addresses now live in the profile. */
+static void install_speed_sites(void) {
+    const struct GameProfile* g = g_game;
+    struct { const uintptr_t* a; size_t n; void* stub; } kind[] = {
+        { g->speed_sites.perm,  g->speed_sites.perm_n,  (void*)stub_set_one_perm },
+        { g->speed_sites.temp,  g->speed_sites.temp_n,  (void*)stub_set_one_temp },
+        { g->speed_sites.pset,  g->speed_sites.pset_n,  (void*)stub_pause_set },
+        { g->speed_sites.prest, g->speed_sites.prest_n, (void*)stub_pause_restore },
+    };
+    for (size_t k = 0; k < sizeof kind / sizeof *kind; ++k)
+        for (size_t i = 0; i < kind[k].n; ++i)
+            patch_call_n(kind[k].a[i], kind[k].stub, 6, site_expected(kind[k].a[i], 6));
+    if (g->speed_sites.ecl)
+        patch_call_n(g->speed_sites.ecl, (void*)stub_set_ecl, 6, site_expected(g->speed_sites.ecl, 6));
+}
 static int install(void) {
     if (!g_game) return 0;
     if (conflict_found(0)) return 0;   /* another patch already owns the frame loop */
     g_p=stub_begin();
     if (!g_stub_mem) { LOG("Cannot allocate hook stubs; no hooks applied");return 0; }
     patch_begin();
-    g_game->install_speed();
+    install_speed_sites();
     g_game->install_sites();
     /* Wrap the game's screenshot routine so the back buffer hook knows when the caller is
        going to lock what it gets. The filename arrives in EAX, so the stub must not touch it;

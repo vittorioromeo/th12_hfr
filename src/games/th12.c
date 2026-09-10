@@ -1,23 +1,10 @@
 /* TH12: reviewed game-specific hooks and object layout. */
 static const uint8_t FSTP_SPEED[6] = { 0xD9, 0x1D, 0xD0, 0x2E, 0x4B, 0x00 };
 
-static void th12_install_speed(void) {
-    /* permanent 1.0 */
-    static const uintptr_t perm[] = { 0x421d5f, 0x4222a0, 0x42f56d, 0x436ed7, 0x4653fc };
-    /* temporary 1.0 (Stage / AnmVm "unaffected by slow-mo") */
-    static const uintptr_t temp[] = { 0x4030fc, 0x455670 };
-    /* pause set 1.0 (after saving effective) */
-    static const uintptr_t pset[] = { 0x432835, 0x43293c, 0x433853, 0x4339a2 };
-    /* pause restore */
-    static const uintptr_t prest[] = { 0x432988, 0x433a1d, 0x4348ed };
-    for (size_t i = 0; i < 5; i++) patch_call_n(perm[i], (void*)stub_set_one_perm, 6, FSTP_SPEED);
-    for (size_t i = 0; i < 2; i++) patch_call_n(temp[i], (void*)stub_set_one_temp, 6, FSTP_SPEED);
-    for (size_t i = 0; i < 4; i++) patch_call_n(pset[i], (void*)stub_pause_set, 6, FSTP_SPEED);
-    for (size_t i = 0; i < 3; i++) patch_call_n(prest[i], (void*)stub_pause_restore, 6, FSTP_SPEED);
-    patch_call_n(0x4193e4, (void*)stub_set_ecl, 6, FSTP_SPEED);
-    /* 0x403123, 0x42840c, 0x42841b, 0x455b3e, 0x4586f4, 0x45871f: save/restore of effective values or
-       literal 0.0 — left untouched. */
-}
+static const uintptr_t th12_speed_perm[] = { 0x421d5f, 0x4222a0, 0x42f56d, 0x436ed7, 0x4653fc };
+static const uintptr_t th12_speed_temp[] = { 0x4030fc, 0x455670 };
+static const uintptr_t th12_speed_pset[] = { 0x432835, 0x43293c, 0x433853, 0x4339a2 };
+static const uintptr_t th12_speed_prest[] = { 0x432988, 0x433a1d, 0x4348ed };
 
 
 static void th12_install_sites(void) {
@@ -343,8 +330,15 @@ static const struct GameProfile th12_profile = {
         .enemy_position = 0x1074,
         .enemy_skip_mask = 0x1000000,
     },
+    .speed_sites = {
+        th12_speed_perm,  sizeof th12_speed_perm  / sizeof(uintptr_t),
+        th12_speed_temp,  sizeof th12_speed_temp  / sizeof(uintptr_t),
+        th12_speed_pset,  sizeof th12_speed_pset  / sizeof(uintptr_t),
+        th12_speed_prest, sizeof th12_speed_prest / sizeof(uintptr_t),
+        0x4193e4,
+    },
     .classes = th12_classes, .class_count = sizeof th12_classes / sizeof *th12_classes,
     .mask_minor_player_edges = 0, .d3dx = "d3dx9_40.dll",
-    .install_speed = th12_install_speed, .install_sites = th12_install_sites,
+     .install_sites = th12_install_sites,
     .place_enemy = th12_place_enemy,
 };

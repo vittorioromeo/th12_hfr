@@ -54,11 +54,21 @@ struct GameProfile {
         uint32_t enemy_position;
         uint32_t enemy_skip_mask;
     } layout;
+    /* Every game writes the literal 1.0 into the global game-speed float at a handful of
+       sites, in five kinds. Which addresses they are is all that differs between games, so
+       they are a table here rather than a per-game function that was the same code three
+       times over. Each list ends at its count; six bytes are replaced at every site. */
+    struct {
+        const uintptr_t* perm;  size_t perm_n;   /* permanent 1.0 */
+        const uintptr_t* temp;  size_t temp_n;   /* temporary 1.0 (unaffected by slow-mo) */
+        const uintptr_t* pset;  size_t pset_n;   /* pause: set 1.0 after saving the effective value */
+        const uintptr_t* prest; size_t prest_n;  /* pause: restore */
+        uintptr_t ecl;                           /* the ECL slow-motion write */
+    } speed_sites;
     const struct node_class* classes;
     size_t class_count;
     int mask_minor_player_edges;
     const char* d3dx;
-    void (*install_speed)(void);
     void (*install_sites)(void);
     void (*place_enemy)(uint8_t* enemy, uint8_t* anm, uint32_t flags, const float* position);
 };

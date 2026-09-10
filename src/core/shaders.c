@@ -74,21 +74,60 @@ static void* buffer_ptr(void* b) { return ((void* (WINAPI*)(void*))(*(void***)b)
 static DWORD buffer_len(void* b) { return ((DWORD (WINAPI*)(void*))(*(void***)b)[4])(b); }
 static void  buffer_free(void* b) { if (b) ((ULONG (WINAPI*)(void*))(*(void***)b)[2])(b); }
 
-/* The game already imports a d3dx9; use that one, and fall back across the range of
-   redistributables if a different game build imports another. */
+/* Which d3dx9 compiles the filters is not a matter of taste. The one the game imports can be
+   very old -- TH10 ships d3dx9_31, from 2006, whose HLSL compiler rejects an early return
+   inside an if ("error X3500: asymetric returns from if statements not yet implemented") and
+   so cannot build MMPX or Super-xBR. Newer is not automatically better either: from
+   d3dx9_42 onward D3DXCompileShader forwards to a separate D3DCompiler_NN.dll that may not be
+   installed, and then it fails too.
+   So do not reason about versions at all -- ask each candidate to compile something that uses
+   the features the bundled filters use, and take the first that can. */
+static const char COMPILER_PROBE[] =
+    "sampler2D S : register(s0);\n"
+    "float4 main(float2 uv : TEXCOORD0) : COLOR0 {\n"
+    "    if (uv.x > 0.5) return tex2D(S, uv);\n"   /* the early return old compilers reject */
+    "    float4 c = 0;\n"
+    "    for (int i = 0; i < 3; ++i) c += tex2D(S, uv + i * 0.01);\n"
+    "    return c / 3;\n"
+    "}\n";
+static int compiler_works(D3DXCompileShaderFn fn) {
+    void *code = NULL, *errors = NULL;
+    HRESULT hr = fn(COMPILER_PROBE, (UINT)(sizeof COMPILER_PROBE - 1), NULL, NULL, "main",
+                    g_ps_profile ? g_ps_profile : "ps_3_0", 0, &code, &errors, NULL);
+    int ok = SUCCEEDED(hr) && code != NULL;
+    buffer_free(code); buffer_free(errors);
+    return ok;
+}
 static int shaders_load_compiler(void) {
     if (d3dx_compile) return 1;
     const char* first = g_game ? g_game->d3dx : NULL;
     char name[32];
-    for (int i = -1; i <= 43; ++i) {
+    D3DXCompileShaderFn fallback = NULL;
+    const char* fallback_name = NULL;
+
+    /* Newest first, then the game's own, so a capable compiler is preferred but the one that
+       is certainly present is still used if it is the only one that works. */
+    for (int i = 43; i >= 23; --i) {
         const char* dll;
-        if (i < 0) { if (!first) continue; dll = first; }
-        else { if (i < 24) continue; snprintf(name, sizeof name, "d3dx9_%d.dll", i); dll = name; }
+        if (i == 23) { if (!first) continue; dll = first; }
+        else { snprintf(name, sizeof name, "d3dx9_%d.dll", i); dll = name; }
         HMODULE m = GetModuleHandleA(dll);
         if (!m) m = LoadLibraryA(dll);
         if (!m) continue;
-        d3dx_compile = (D3DXCompileShaderFn)GetProcAddress(m, "D3DXCompileShader");
-        if (d3dx_compile) { LOG("shaders: compiling with %s", dll); return 1; }
+        D3DXCompileShaderFn fn = (D3DXCompileShaderFn)GetProcAddress(m, "D3DXCompileShader");
+        if (!fn) continue;
+        if (compiler_works(fn)) {
+            d3dx_compile = fn;
+            LOG("shaders: compiling with %s", dll);
+            return 1;
+        }
+        if (!fallback) { fallback = fn; fallback_name = dll; }
+        LOG("shaders: %s has a compiler but it cannot build the bundled filters; looking further", dll);
+    }
+    if (fallback) {
+        d3dx_compile = fallback;
+        LOG("shaders: falling back to %s; some filters will not compile", fallback_name);
+        return 1;
     }
     LOG("shaders: no d3dx9 with D3DXCompileShader; shader filters unavailable");
     return 0;
