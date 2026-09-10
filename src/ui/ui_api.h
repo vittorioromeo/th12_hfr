@@ -12,6 +12,7 @@ enum {
     UI_SCALING = 0,          /* SCALE_STRETCH / SCALE_ASPECT / SCALE_INTEGER */
     UI_FILTER,               /* index into the filter registry */
     UI_RESIZABLE,
+    UI_WINDOW_SCALE,         /* percent of the game's own size; 0 as the game made it, -1 largest fit */
     UI_SNAP_ASPECT,
     UI_FULLSCREEN_MODE,      /* 0 leave the window alone, 1 borderless over the monitor */
     UI_VSYNC,
@@ -23,6 +24,7 @@ enum {
     UI_DEBUG,
     UI_D3D9EX,               /* fixed once the device exists */
     UI_OWN_PRESENT,          /* likewise */
+    UI_BORDERLESS_ACTIVE,    /* read-only: the window is currently covering the monitor */
     UI_SETTING_COUNT
 };
 

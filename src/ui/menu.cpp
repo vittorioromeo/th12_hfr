@@ -195,6 +195,31 @@ void draw_display_section(void) {
     help("Any .hlsl file in the shaders folder next to the game appears here.\n"
          "A filter that fails to compile is reported in touhou_hfr.log.");
 
+    /* The window's size is what gives the scaler and the filters something to do: at the
+       game's own 640x480 every mode and every filter is the same 1:1 picture. TH10's dialog
+       offers nothing larger, so this is the one place a user of it can ask for more. */
+    {
+        static const int   pct[]   = { 0, 100, 150, 200, 250, 300, -1 };
+        static const char* names[] = { "As the game made it", "1x  (640 x 480)", "1.5x  (960 x 720)",
+                                       "2x  (1280 x 960)", "2.5x  (1600 x 1200)", "3x  (1920 x 1440)",
+                                       "Largest whole multiple that fits" };
+        bool fullscreen_active = hfr_ui_get(UI_BORDERLESS_ACTIVE) != 0;
+        int cur = hfr_ui_get(UI_WINDOW_SCALE), idx = -1;
+        for (int i = 0; i < IM_ARRAYSIZE(pct); ++i) if (pct[i] == cur) idx = i;
+        char custom[40]; snprintf(custom, sizeof custom, "%d%% (from the INI)", cur);
+        ImGui::BeginDisabled(!own || fullscreen_active);
+        if (ImGui::BeginCombo("Window size", idx >= 0 ? names[idx] : custom)) {
+            for (int i = 0; i < IM_ARRAYSIZE(pct); ++i) {
+                bool sel = i == idx;
+                if (ImGui::Selectable(names[i], sel)) hfr_ui_set(UI_WINDOW_SCALE, pct[i]);
+                if (sel) ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
+        ImGui::EndDisabled();
+        help("Applied now, and at every start once saved. The window can still be\n"
+             "dragged to any size afterwards; this only sets where it begins.");
+    }
     toggle("Resizable window", UI_RESIZABLE);
     ImGui::SameLine();
     toggle("Snap to 4:3 while dragging", UI_SNAP_ASPECT);
@@ -354,8 +379,13 @@ extern "C" void hfr_menu_render(IDirect3DDevice9* dev, int width, int height) {
         }
         g_objects = true;
     }
-    static int last_height = 0;
-    if (height != last_height) { last_height = height; style_for((float)height); }
+    static int last_width = 0, last_height = 0;
+    if (width != last_width || height != last_height) {
+        /* A window that just shrank -- from the Window size control, say -- would otherwise
+           leave the menu hanging off its edge until the next open. */
+        if (last_height) g_place_next = true;
+        last_width = width; last_height = height; style_for((float)height);
+    }
     ImGui_ImplDX9_NewFrame();
     ImGui_ImplWin32_NewFrame();
     ImGuiIO& io = ImGui::GetIO();

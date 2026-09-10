@@ -133,6 +133,46 @@ static void window_attach(HWND h) {
     g_win_ready = 1;
     LOG("window: subclassed %p (resizable=%d borderless=%d)", (void*)h, cfg.resizable, cfg.fullscreen_mode);
 }
+static int g_window_scaled;           /* the startup size has been applied */
+/* Size the client area to a percentage of the game's own, -1 meaning the largest whole
+   multiple that fits the monitor's work area. Anything that would overflow the work area is
+   held at the largest size of the same aspect that fits, and the window is centred, so a 2x
+   or 3x request on a small screen still lands somewhere sensible. Takes effect through the
+   ordinary resize path: WM_SIZE arrives, the presentation chain follows. */
+static void window_apply_scale(int percent) {
+    if (!g_wnd || g_native_w <= 0 || g_native_h <= 0) return;
+    HMONITOR m = MonitorFromWindow(g_wnd, MONITOR_DEFAULTTONEAREST);
+    MONITORINFO mi; mi.cbSize = sizeof mi;
+    RECT work;
+    if (m && GetMonitorInfoA(m, &mi)) work = mi.rcWork;
+    else { work.left = 0; work.top = 0; work.right = GetSystemMetrics(SM_CXSCREEN); work.bottom = GetSystemMetrics(SM_CYSCREEN); }
+    LONG style = GetWindowLongA(g_wnd, GWL_STYLE);
+    RECT frame = { 0, 0, 0, 0 };
+    AdjustWindowRect(&frame, (DWORD)style, FALSE);
+    int padx = frame.right - frame.left, pady = frame.bottom - frame.top;
+    int maxw = (work.right - work.left) - padx, maxh = (work.bottom - work.top) - pady;
+    int cw, ch;
+    if (percent < 0) {
+        int k = maxw / g_native_w; if (maxh / g_native_h < k) k = maxh / g_native_h;
+        if (k < 1) k = 1;
+        cw = g_native_w * k; ch = g_native_h * k;
+    } else {
+        cw = (int)((long long)g_native_w * percent / 100); ch = (int)((long long)g_native_h * percent / 100);
+    }
+    if (cw < g_native_w / 4) cw = g_native_w / 4;
+    if (ch < g_native_h / 4) ch = g_native_h / 4;
+    if (cw > maxw || ch > maxh) {   /* keep the aspect, fit the work area */
+        double s = (double)maxw / cw; if ((double)maxh / ch < s) s = (double)maxh / ch;
+        cw = (int)(cw * s); ch = (int)(ch * s);
+    }
+    int ww = cw + padx, wh = ch + pady;
+    int x = work.left + ((work.right - work.left) - ww) / 2;
+    int y = work.top + ((work.bottom - work.top) - wh) / 2;
+    SetWindowPos(g_wnd, NULL, x, y, ww, wh, SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+    g_resize_pending = 1;
+    LOG("window: client sized to %dx%d (%s)", cw, ch,
+        percent < 0 ? "largest whole multiple that fits" : "window_scale");
+}
 /* Re-assert the style and, in borderless, the geometry. Runs once per frame; a no-op
    unless something (usually the game's own reset path) has changed them. */
 static void window_enforce(void) {
@@ -163,6 +203,14 @@ static void window_enforce(void) {
             set_client_size(g_wnd, want, cw, ch);   /* keep the client area the game asked for */
             LOG("window: resize border added, client %dx%d", cw, ch);
         }
+    }
+    /* The startup size, once. TH10's own dialog only offers a 640x480 window, and at 640x480
+       every scaling mode and every filter produce the same 1:1 picture -- which reads as
+       "none of it works". Later games offer larger windows in their dialogs, so their users
+       never met this; here the patch can size the window itself. */
+    if (!g_window_scaled && !game_fullscreen && g_native_w > 0) {
+        g_window_scaled = 1;
+        if (cfg.window_scale) window_apply_scale(cfg.window_scale);
     }
 }
 /* Opening the menu must not depend on how the game took the keyboard: it reads through

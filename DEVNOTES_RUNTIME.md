@@ -64,6 +64,14 @@ magnifies by a whole number, usually more than the window asks for — ScaleFX's
 which produces the same dotted edge, this time from the resample. Four bilinear taps at the
 quarter points of the destination pixel's footprint average it instead.
 
+**Reset the texture-coordinate transform before any fixed-function draw of your own.** TH10's
+stage renderer leaves `D3DTSS_TEXTURETRANSFORMFLAGS` enabled on stage 0 for its scrolling
+cloud layers. The Dear ImGui backend resets a long list of states and not that one, so during
+gameplay the menu's UVs went through the game's texture matrix and the whole overlay sampled
+nothing — the menu was "open" by every measure the log had and simply did not appear, while at
+the title screen it was fine. Found by bisecting a mask of state resets at run time rather
+than by reading the game, which is the faster tool when the symptom is "draws nothing".
+
 Those last two produced identical symptoms from unrelated causes, which is worth remembering:
 a filter that is subtly wrong looks exactly like a filter that is completely wrong, so
 "it renders something" is not evidence that a port is right.
@@ -155,6 +163,15 @@ submitted for at least two frames. Frozen counter, so never new.
 A condition that read exactly like the fix was doing nothing at all, and nothing failed to say
 so. That is why the bug survived a fix written specifically for it. The menu now tracks its own
 placement rather than asking ImGui to.
+
+### The features that "did not work" on TH10
+
+Everything installed, the log said so, and none of the scaling or filters made any visible
+difference. The window was 640x480. TH10's own dialog offers nothing larger — TH11 and TH12
+offer 960x720 and 1280x960, which is why their users had never met this — and at exactly the
+game's size every scaling mode and every upscaler produce the same 1:1 picture. There was
+nothing to scale, and nothing said so. `window_scale` now sizes the window at startup (and
+from the menu), and the INI comment explains why it exists.
 
 ### Two positional lists that shifted underneath
 

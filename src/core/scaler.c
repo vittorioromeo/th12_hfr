@@ -292,6 +292,15 @@ static void quad_states(IDirect3DDevice9* dev, int filter) {
     dev->lpVtbl->SetTextureStageState(dev, 0, D3DTSS_ALPHAARG1, D3DTA_TEXTURE);
     dev->lpVtbl->SetTextureStageState(dev, 1, D3DTSS_COLOROP, D3DTOP_DISABLE);
     dev->lpVtbl->SetTextureStageState(dev, 1, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
+    /* TH10's stage renderer leaves a texture-coordinate transform enabled on stage 0 for its
+       scrolling cloud layers. Fixed-function draws after it -- the menu overlay above all --
+       then have their UVs run through the game's texture matrix and sample nothing: the menu
+       simply did not appear during gameplay, while at the title screen it was fine. Neither
+       the Dear ImGui backend nor the rest of this reset touches that state. */
+    for (int i = 0; i < 2; ++i) {
+        dev->lpVtbl->SetTextureStageState(dev, (DWORD)i, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_DISABLE);
+        dev->lpVtbl->SetTextureStageState(dev, (DWORD)i, D3DTSS_TEXCOORDINDEX, (DWORD)i);
+    }
     /* Sampler 0 is the one the fixed-function path uses; the rest matter only to a
        multi-pass filter, which always wants its earlier passes read exactly as written. */
     for (int i = 0; i < CHAIN_SAMPLERS; ++i) {

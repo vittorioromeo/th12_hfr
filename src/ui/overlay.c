@@ -11,13 +11,14 @@ static char g_ini_path[MAX_PATH];
    the frame hook. The menu draws inside the scaler's scene, with the back buffer bound, so
    releasing a swap chain at the moment a checkbox is clicked would pull the ground out from
    under the frame being drawn. */
-static int g_pending_chain, g_pending_rate;
+static int g_pending_chain, g_pending_rate, g_pending_window;
 
 int hfr_ui_get(int id) {
     switch (id) {
     case UI_SCALING:            return cfg.scaling;
     case UI_FILTER:             return cfg.filter;
     case UI_RESIZABLE:          return cfg.resizable;
+    case UI_WINDOW_SCALE:       return cfg.window_scale;
     case UI_SNAP_ASPECT:        return cfg.snap_aspect;
     case UI_FULLSCREEN_MODE:    return cfg.fullscreen_mode;
     case UI_VSYNC:              return cfg.vsync;
@@ -29,6 +30,7 @@ int hfr_ui_get(int id) {
     case UI_DEBUG:              return cfg.debug;
     case UI_D3D9EX:             return g_using_ex;
     case UI_OWN_PRESENT:        return g_own_present;
+    case UI_BORDERLESS_ACTIVE:  return g_borderless_active;
     default:                    return 0;
     }
 }
@@ -42,6 +44,10 @@ void hfr_ui_set(int id, int value) {
         }
         break;
     case UI_RESIZABLE:       cfg.resizable = !!value; break;
+    case UI_WINDOW_SCALE:
+        cfg.window_scale = value < -1 ? -1 : (value > 800 ? 800 : value);
+        if (cfg.window_scale) g_pending_window = 1;   /* 0 means "leave it": nothing to apply */
+        break;
     case UI_SNAP_ASPECT:     cfg.snap_aspect = !!value; break;
     case UI_FULLSCREEN_MODE: cfg.fullscreen_mode = !!value; break;
     case UI_VSYNC:           cfg.vsync = !!value; g_pending_chain = 1; break;
@@ -87,6 +93,10 @@ static void hfr_ui_apply_pending(IDirect3DDevice9* dev) {
         LOG("menu: tick rate -> %d (substep=%d)", want, cfg.substep);
         recompute_rate(want);
     }
+    if (g_pending_window) {
+        g_pending_window = 0;
+        if (g_wnd && !g_borderless_active) window_apply_scale(cfg.window_scale);
+    }
     if (g_pending_chain && dev && g_own_present && g_wnd) {
         g_pending_chain = 0;
         LOG("menu: rebuilding the presentation chain (vsync=%d)", cfg.vsync);
@@ -108,6 +118,7 @@ void hfr_ui_save(void) {
     ini_put_int("video", "scaling", cfg.scaling);
     WritePrivateProfileStringA("video", "filter", cfg.filter_name, g_ini_path);
     ini_put_int("video", "resizable", cfg.resizable);
+    ini_put_int("video", "window_scale", cfg.window_scale);
     ini_put_int("video", "snap_aspect", cfg.snap_aspect);
     ini_put_int("video", "fullscreen_mode", cfg.fullscreen_mode);
     ini_put_int("hfr", "max_frame_latency", cfg.max_frame_latency);

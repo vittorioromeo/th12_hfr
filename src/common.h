@@ -42,6 +42,9 @@ static struct {
     int filter;             /* index into the filter registry */
     char filter_name[32];   /* how it was written in the INI, so it survives folder changes */
     int resizable;          /* add a resize border to the game's window */
+    int window_scale;       /* client size at startup, in percent of the game's own (200 = 1280x960);
+                               0 leaves the window as the game made it, -1 takes the largest
+                               whole multiple that fits the monitor */
     int snap_aspect;        /* keep the window itself at the native aspect while dragging */
     int fullscreen_mode;    /* 0 leave the game's exclusive fullscreen, 1 borderless desktop */
     int menu_key;           /* virtual-key code that opens the in-game menu */
@@ -55,6 +58,6 @@ static struct {
     .enemy_interp = 1, .debug = 0, .subtick_input = 1, .d3d9ex = 1,
     .max_frame_latency = 1, .flipex = 0,
     .scaling = 1, .filter = FILTER_SHARP, .filter_name = "",
-    .resizable = 1, .snap_aspect = 0, .fullscreen_mode = 1,
+    .resizable = 1, .window_scale = 0, .snap_aspect = 0, .fullscreen_mode = 1,
     .menu_key = VK_F11, .own_present = -1,
 };
