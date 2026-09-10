@@ -363,6 +363,36 @@ replacing it, so it inherits stock behaviour); `BugFixTh12Shadow`, a rev6-only o
 state change fixing UFO's Palanquin Ship shadow on Radeon and Intel; and `ReplaySlowFPS`,
 slow-motion replay on Shift.
 
+## 2.9 Both games, and the shape that makes a third cheap
+
+Everything above was built against TH12 and then verified on TH11: the menu and all four of its
+tabs, arbitrary resizing with letterboxing, the scaling modes, the multi-pass filters, the
+startup hint, the screenshot stub and the conflict guard. The audit that mattered was a
+negative one -- no address, game name or 640x480 assumption appears anywhere outside
+`src/games/`, so the entire video, menu and filter path applied to TH11 with no code change.
+Only two things had to be found per game, and `ADDING_A_GAME.md` records how.
+
+Three things are worth recording from doing it, because each is a way to be confidently wrong:
+
+**The compiler is whichever d3dx9 the game imports, and they differ.** TH12 imports
+`d3dx9_40`, TH11 `d3dx9_37`. Super-xBR appeared to fail to compile on TH11 with
+`E5017: Aborting due to not yet implemented feature`, which reads like an old-compiler
+limitation and nearly earned a rewrite of the compiler selection. It is Wine's own incomplete
+HLSL compiler: Wine prefers its builtin `d3dx9_NN` unless told otherwise, and the test rig had
+no native copy. With the genuine `d3dx9_37.dll` in place all four filters compile on TH11, and
+so they do on every real d3dx9 from 33 to 41. The selection was left alone.
+
+**The game blacks out on its own.** TH11 and TH12 both go black about twenty seconds after
+being left at the title screen, and a screenshot taken then is black too. Vanilla TH11 with no
+patch loaded does exactly the same, so it is the games' idle demo under a software renderer,
+not the patch. This was dismissed once as "demo mode" without checking, which is how it came
+back later disguised as a screenshot bug.
+
+**A timed-out test leaves its state behind.** A resize test that appeared to show stretching
+instead of letterboxing had actually run vanilla, because an earlier command had timed out
+before restoring the DLL it renamed. Check the patch is loaded before believing what a test
+says about it.
+
 ## 3. What is not done
 
 * **The 3D stage still renders at 640x480.** The stage background is real 3D and would look

@@ -24,8 +24,20 @@ static int update_only_tick(void) {
     return 0;
 }
 
+/* How many frames were presented with no logic tick behind them. This is the number that
+   answers "is the high frame rate real, or is it showing the same frame twice?" -- a repeated
+   frame is exactly a present with nothing simulated since the last one. At the intended
+   settings it is zero: the tick rate is the present rate, so every frame has its own tick.
+   It is legitimately non-zero when the tick rate is deliberately set below the display rate
+   (fps=60 on a 144 Hz screen asks for stock logic shown at 144 Hz), and when the game is
+   paused or between stages and the simulation is not running at all. */
+static unsigned g_stat_repeat_frames;
+static uint64_t g_stat_ticks_run_prev;
+
 static void limiter_stats(double now) {
     g_stat_ticks++;
+    if (g_ticks_run == g_stat_ticks_run_prev) g_stat_repeat_frames++;
+    g_stat_ticks_run_prev = g_ticks_run;
     { static double last = 0; double period = 1.0 / (double)g_refresh; if (last > 0) { double gap = now - last; if (gap > 1.5 * period) g_stat_long++; if (gap > 3 * period) g_stat_vlong++; } last = now; }
     g_rate_win_ticks++;
     if (g_rate_win_start == 0) g_rate_win_start = now;
@@ -36,11 +48,12 @@ static void limiter_stats(double now) {
     }
     if (now - g_stat_last >= 5.0) {
         if (g_stat_last > 0)
-            LOG("stats: %.2f presents/s (target %d), extra ticks %u, skipped ticks %u, sub calls %u, frame calls %u, logical %.3f, long gaps %u/%u, ticks/s %.2f, subtick polls %u applied %u",
+            LOG("stats: %.2f presents/s (target %d), extra ticks %u, skipped ticks %u, sub calls %u, frame calls %u, logical %.3f, long gaps %u/%u, ticks/s %.2f, subtick polls %u applied %u, repeated frames %u/%u",
                 g_stat_ticks / (now - g_stat_last), g_refresh, g_stat_catchup, g_stat_skipped, g_stat_sub_calls, g_stat_frame_calls, g_logical, g_stat_long, g_stat_vlong,
-                (double)(g_ticks_run - g_stat_ticks_run_last) / (now - g_stat_last), g_stat_subtick_polls, g_stat_subtick_applied);
+                (double)(g_ticks_run - g_stat_ticks_run_last) / (now - g_stat_last), g_stat_subtick_polls, g_stat_subtick_applied,
+                g_stat_repeat_frames, g_stat_ticks);
         g_stat_last = now; g_stat_ticks = 0; g_stat_sub_calls = g_stat_frame_calls = g_stat_long = g_stat_vlong = g_stat_catchup = g_stat_skipped = 0; g_stat_ticks_run_last = g_ticks_run;
-        g_stat_subtick_polls = g_stat_subtick_applied = 0;
+        g_stat_subtick_polls = g_stat_subtick_applied = 0; g_stat_repeat_frames = 0;
         if (cfg.debug) {
             uint8_t* rm=G_REPLAY_MANAGER;
             if (rm) LOG("state: stage=%d replay_frame=%d replay_mode=%d input=%08x",

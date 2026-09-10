@@ -14,6 +14,7 @@ struct GameSignature { uintptr_t addr; size_t size; uint8_t bytes[32]; };
 struct ConflictSite { uintptr_t addr; size_t size; uint8_t bytes[8]; const char* what; };
 #include "games/th11_signatures.h"
 #include "games/th12_signatures.h"
+#include "games/th11_conflicts.h"
 #include "games/th12_conflicts.h"
 struct GameIdentity {
     unsigned id, image_size;
@@ -25,10 +26,7 @@ struct GameIdentity {
     size_t conflict_count;
 };
 static const struct GameIdentity game_identities[] = {
-    /* No conflict sites for TH11: the equivalent addresses have not been read out of a
-       vpatch build for it, and guessing them would either miss or accuse the innocent.
-       The check for a loaded patch DLL is not per-game and still covers it. */
-    {11,0xcd000,"TH11 v1.00a","th11_hfr.ini","t11r",{"th11e.exe","th11.exe"},th11_signatures,sizeof th11_signatures/sizeof *th11_signatures,NULL,0},
+    {11,0xcd000,"TH11 v1.00a","th11_hfr.ini","t11r",{"th11e.exe","th11.exe"},th11_signatures,sizeof th11_signatures/sizeof *th11_signatures,th11_conflicts,sizeof th11_conflicts/sizeof *th11_conflicts},
     {12,0xd9000,"TH12 v1.00b","th12_hfr.ini","t12r",{"th12e.exe","th12.exe"},th12_signatures,sizeof th12_signatures/sizeof *th12_signatures,th12_conflicts,sizeof th12_conflicts/sizeof *th12_conflicts},
 };
 #define GAME_COUNT (sizeof game_identities / sizeof *game_identities)

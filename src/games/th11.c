@@ -193,6 +193,7 @@ static const struct GameProfile th11_profile = {
         .replay_saves = {0x42d2ae,0x42e21b,0x42ef4b,0x4403c5},
         .replay_load_call = 0x435a0d,
         .runner_fn = 0x456cb0,
+        .screenshot_fn = 0x429ca0, .screenshot_call = 0x446901,
         .latency_cmp = 0x446799,
     },
     .layout = {
