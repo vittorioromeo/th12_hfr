@@ -30,6 +30,7 @@ static struct {
     int log;
     int fullscreen_refresh; /* refresh rate to request in fullscreen (0 = auto = same as fps) */
     int show_stats;
+    int warn_wrapper;   /* say so when something else is presenting and settings are inert */
     int enemy_interp;
     int debug;
     int subtick_input;      /* poll the keyboard/joystick every tick and feed movement/focus to the player */
@@ -45,5 +46,15 @@ static struct {
     int fullscreen_mode;    /* 0 leave the game's exclusive fullscreen, 1 borderless desktop */
     int menu_key;           /* virtual-key code that opens the in-game menu */
     int own_present;        /* -1 auto, 0 present through the game's chain, 1 through ours */
-} cfg = { 0, 1, 1, 1, 0, 0, 1, 0, 1, 1, 1, 0,
-          1, FILTER_SHARP, "", 1, 0, 1, VK_F11, -1 };
+/* Named, not positional: the old form was a bare list of eighteen numbers that had to stay in
+   the same order as the fields above, so inserting a setting anywhere but the end silently
+   shifted every default after it. Anything omitted here is zero. */
+} cfg = {
+    .fps = 0, .vsync = 1, .substep = 1, .log = 1,
+    .fullscreen_refresh = 0, .show_stats = 0, .warn_wrapper = 1,
+    .enemy_interp = 1, .debug = 0, .subtick_input = 1, .d3d9ex = 1,
+    .max_frame_latency = 1, .flipex = 0,
+    .scaling = 1, .filter = FILTER_SHARP, .filter_name = "",
+    .resizable = 1, .snap_aspect = 0, .fullscreen_mode = 1,
+    .menu_key = VK_F11, .own_present = -1,
+};

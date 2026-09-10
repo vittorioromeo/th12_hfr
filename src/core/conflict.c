@@ -43,13 +43,23 @@ static int conflict_module(char* out, size_t n) {
 
 /* Said from a thread of its own. A message box called from DllMain would hold the loader
    lock while it waited for the user; the thread cannot start until that lock is released,
-   which is exactly when showing one becomes safe. */
-static char g_conflict_text[900];
-static DWORD WINAPI conflict_dialog(LPVOID unused) {
+   which is exactly when showing one becomes safe. Shared with the wrapper warning in the
+   Direct3D backend, so there is one piece of dialog machinery rather than two. */
+static char g_notice_text[900];
+static LONG g_notice_shown;
+static DWORD WINAPI notice_dialog(LPVOID unused) {
     (void)unused;
-    MessageBoxA(NULL, g_conflict_text, "Touhou HFR",
+    MessageBoxA(NULL, g_notice_text, "Touhou HFR",
                 MB_OK | MB_ICONWARNING | MB_SETFOREGROUND | MB_TOPMOST);
     return 0;
+}
+/* At most one notice a run: two boxes stacked over a game nobody has looked at yet is worse
+   than one, and the buffer is shared. */
+static void show_notice(const char* text) {
+    if (InterlockedCompareExchange(&g_notice_shown, 1, 0) != 0) return;
+    snprintf(g_notice_text, sizeof g_notice_text, "%s", text);
+    HANDLE t = CreateThread(NULL, 0, notice_dialog, NULL, 0, NULL);
+    if (t) CloseHandle(t);
 }
 
 /* Returns non-zero when something else has the frame loop. `installed` says whether this
@@ -69,8 +79,9 @@ static int conflict_found(int installed) {
     char who[MAX_PATH + 2] = "";
     if (has_module) snprintf(who, sizeof who, ": %s", module);
 
+    char text[900];
     if (!installed)
-        snprintf(g_conflict_text, sizeof g_conflict_text,
+        snprintf(text, sizeof text,
             "Another patch has already modified this game%s.\n\n"
             "It and Touhou HFR both replace the game's frame limiter and both decide when "
             "frames are presented, so together they would leave the game running at the other "
@@ -79,7 +90,7 @@ static int conflict_found(int installed) {
             "Start the game through touhou_hfr.exe rather than the other patch's launcher, or "
             "remove the other patch from the game's folder.", who);
     else
-        snprintf(g_conflict_text, sizeof g_conflict_text,
+        snprintf(text, sizeof text,
             "Another patch is running in this game alongside Touhou HFR%s.\n\n"
             "Both replace the game's frame limiter and both decide when frames are presented. "
             "It loaded after Touhou HFR did, too late to be refused, and the game is now being "
@@ -89,8 +100,7 @@ static int conflict_found(int installed) {
             "remove the other patch from the game's folder.\n\n"
             "Touhou HFR replaces what vpatch did for these games, so you should not need both.", who);
 
-    HANDLE t = CreateThread(NULL, 0, conflict_dialog, NULL, 0, NULL);
-    if (t) CloseHandle(t);
+    show_notice(text);
     return 1;
 }
 

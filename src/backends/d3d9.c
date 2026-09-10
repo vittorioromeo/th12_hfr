@@ -74,7 +74,44 @@ static void fill_mode_ex(D3DPRESENT_PARAMETERS* pp, D3DDISPLAYMODEEX* m) {
     memset(m, 0, sizeof *m); m->Size = sizeof *m; m->Width = pp->BackBufferWidth; m->Height = pp->BackBufferHeight;
     m->RefreshRate = pp->FullScreen_RefreshRateInHz; m->Format = pp->BackBufferFormat; m->ScanLineOrdering = D3DSCANLINEORDERING_PROGRESSIVE;
 }
+static char g_wrapper_path[MAX_PATH];   /* the non-system d3d9.dll presenting this game, if any */
+
+/* A d3d9 wrapper -- PivotDX9 and friends -- is not a conflict the way vpatch is: the patch
+   installs, the game runs, the filters work. It only takes the last step, placing the image
+   in the window, which is why the scaling modes and borderless fullscreen stop having any
+   effect there. So this warns rather than refuses, and only when it is actually costing
+   something: someone who stretches to fill and never uses borderless loses nothing and should
+   not be told off about a file they installed on purpose. video.warn_wrapper=0 silences it. */
+static void warn_if_wrapper_presents(void) {
+    if (!cfg.warn_wrapper || g_own_present) return;
+    if (cfg.scaling == SCALE_STRETCH && !cfg.fullscreen_mode) {
+        LOG("presentation is not ours, but no setting in use depends on it");
+        return;
+    }
+    char text[900];
+    if (g_wrapper_path[0])
+        snprintf(text, sizeof text,
+            "A Direct3D 9 wrapper is presenting this game:\n\n%s\n\n"
+            "It, not Touhou HFR, decides how the image ends up in the window, so the scaling "
+            "mode (fit, pixel perfect) and borderless fullscreen cannot take effect -- the game "
+            "will simply fill the window. The upscaling filters, the resizable window and the "
+            "in-game menu all still work.\n\n"
+            "Touhou HFR replaces what that wrapper did for these games. Rename it to d3d9.dllx, "
+            "or move it out of the game's folder, to get those two settings back.\n\n"
+            "Set warn_wrapper=0 under [video] in the INI to stop showing this.", g_wrapper_path);
+    else
+        snprintf(text, sizeof text,
+            "Touhou HFR could not create its own presentation chain, so the game is presenting "
+            "itself.\n\nThe scaling mode (fit, pixel perfect) and borderless fullscreen cannot "
+            "take effect -- the game will fill the window. Filters, resizing and the menu still "
+            "work. touhou_hfr.log says what failed.\n\n"
+            "Set warn_wrapper=0 under [video] in the INI to stop showing this.");
+    LOG("warning shown: presentation is not ours, so scaling and borderless fullscreen are inert");
+    show_notice(text);
+}
+
 static void after_device(IDirect3DDevice9* dev) {
+    warn_if_wrapper_presents();    /* g_own_present is settled by now, however it turned out */
     int hz = detect_refresh(dev);
     g_display_hz = hz;
     LOG("display refresh detected: %d Hz", hz);
@@ -188,6 +225,7 @@ static void detect_d3d9_wrapper(void) {
     size_t n = strlen(system);
     if (n && _strnicmp(module, system, n) == 0) return;      /* the real one */
     g_want_own_present = 0;
+    snprintf(g_wrapper_path, sizeof g_wrapper_path, "%s", module);
     LOG("d3d9 wrapper in use (%s): presenting through the game's own chain", module);
     LOG("  the wrapper decides how the image reaches the window, so the scaling modes and");
     LOG("  borderless fullscreen cannot take effect. Filters and the menu still work.");

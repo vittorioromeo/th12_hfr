@@ -324,10 +324,20 @@ the game's own chain, so the scaling geometry is computed against the game's bac
 the wrapper then stretches that to the window however it likes. Filters run before that point
 and are unaffected.
 
-The patch cannot fix this from inside -- the wrapper owns the last step -- so it now says so
-instead: three lines in the log naming the consequence and the remedy, and the two controls
-that cannot take effect are greyed out in the menu with the reason above them. Offering a
-scaling mode that silently does nothing is worse than not offering it.
+The patch cannot fix this from inside -- the wrapper owns the last step -- so it says so
+instead: three lines in the log naming the consequence and the remedy, the two controls that
+cannot take effect greyed out in the menu with the reason above them, and a dialog at startup.
+Offering a scaling mode that silently does nothing is worse than not offering it.
+
+The dialog is deliberately not the vpatch one. vpatch is a conflict: two frame schedulers, one
+of them wrong, so that refuses to install. A wrapper is not -- the patch installs, the game
+runs, the filters work -- so this only warns, and only when it is actually costing something.
+Someone who stretches to fill and never uses borderless fullscreen loses nothing to a wrapper
+and gets no dialog, just a line in the log; `video.warn_wrapper=0` silences it for anyone who
+keeps the wrapper on purpose. Both share one piece of dialog machinery and show at most one
+box a run, because two warnings stacked over a game nobody has looked at yet is worse than
+one. Verified in all three states: wrapper with affected settings, wrapper with unaffected
+settings, and no wrapper.
 
 ## 2.7 Making failures speak
 
