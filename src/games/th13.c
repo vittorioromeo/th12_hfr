@@ -62,6 +62,22 @@ static void th13_install_sites(void) {
     E(0xD9, 0x47, 0xA0); FMUL_FACTOR(); E(0xD8, 0x47, 0x9C, 0x51, 0xD9, 0x5F, 0x9C);
     E(0xD9, 0x47, 0xA8); FMUL_FACTOR(); E(0xD8, 0x47, 0xA4);
     EJMP(0x4436a1); site_hook(0x443691, 16);
+    /* --- The same array's countdown timer (prev/int/float/speed at -0x8/-0x4/+0/+4 from EDI),
+           ticked inline right after (0x4436b4). It is not motion: it is the shot's lifetime and,
+           through "int changed this tick && int % interval == 0" in the enemy hit test
+           (0x446870), its hit cadence in frames. The enemy code runs on the boundary tick
+           only, so the int must change there and nowhere else -- sub-stepped, it changed on
+           whichever tick the float happened to cross an integer, and at rates where dt is not
+           exact in float32 (360 Hz: 1/6) that was never the boundary tick, so no shot ever
+           registered a hit. Tick it by the logical speed on the boundary tick and leave it
+           alone on minor ticks (prev = cur, so the guard reads "unchanged"). --- */
+    STUB_BEGIN();
+    E(0x8B, 0x47, 0xFC, 0x89, 0x47, 0xF8);          /* mov eax,[edi-4]; mov [edi-8],eax */
+    E_not_major(); E(0x74, 0x0A);                   /* minor tick: skip the tick */
+    E(0xB9); E32((uint32_t)(uintptr_t)&g_logical);  /* mov ecx,&g_logical (the speed the game reads) */
+    EJMP(0x4436bd);
+    EJMP(0x443702);                                 /* eax = cur; the game stores it back unchanged */
+    site_hook(0x4436b4, 9);
 
     /* --- Enemy hit test guard (0x446870): "player state timer unchanged -> no damage" at
            0x446888 (cmp eax,[esi+0x664]; jne 0x44689b). Same guard as the other games; see

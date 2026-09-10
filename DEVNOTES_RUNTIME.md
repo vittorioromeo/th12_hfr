@@ -391,6 +391,20 @@ fld [ptr]; fcomp 0.99…`) marked every per-object timer, and the `Timer::add` c
 constant argument (`-14.0`, and the ANM `wait N`, inlined into `AnmVm::update` in TH13 where
 TH12 had a helper) were the ones to give stock `value * logical` semantics.
 
+**The guard that only fails at 360 Hz.** TH13's enemy hit test (`0x446870`) has, besides the
+player-timer guard every game has, a per-shot one: a shot counts only if *its own* countdown
+timer's integer changed on the last tick and `int % interval == 0`. (TH12's test is the
+inverse — it *skips* on that tick — so TH11/TH12 never showed this.) Sub-stepped, the shot's
+float ticks by `dt` and its integer changes on whichever tick the float crosses a whole
+number; the enemy code runs on the boundary tick only. At 120 and 240 Hz `dt` is exact in
+float32 and shots fired on the boundary keep crossing on the boundary, so the rig passed. At
+360 Hz `dt = 1/6` is not exact, the crossing landed one tick off, and no shot ever hit. The fix
+is the principle the runtime already uses for integer counters: a timer that exists for
+*frame-counted* decisions is ticked by the logical speed on the boundary tick and not at all
+on minor ticks (`0x4436b4`), so it reads exactly as at 60 Hz whatever the rate. Rule: any
+"integer timer changed" test that 60 Hz code makes against a sub-stepped object's timer needs
+this treatment; test at a rate whose `dt` is not a power of two before calling it done.
+
 **Hooks that exist in TH12 and have no TH13 counterpart.** The curve laser still computes
 "graze every 3 frames" but no longer acts on it, and the beam laser has no graze branch, so only
 the line laser is gated; the UFO attraction hook has nothing to attach to; the player's
@@ -416,6 +430,10 @@ code.
 - **Byte-comparing the patched image and the emitted stubs before and after a refactor.** For the
   speed-site refactor the stubs were identical and the images differed only in nine call
   displacements that all moved by the same `0x220` — our own functions shifting on rebuild.
+- **A rate whose `dt` is not exactly representable.** 120 and 240 Hz give `dt` of 0.5 and
+  0.25; every float32 sum lands exactly and phase-alignment bugs stay hidden. 144 and 360 Hz
+  give 0.416667 and 0.166667, which round, and the TH13 shot guard (§7a) only failed there.
+  The rig can run any `fps=` value; run the non-power-of-two ones too.
 - **Measuring the claim instead of arguing it.** A tester said the high frame rate was
   interpolated frames drawn twice. The stats line now counts presents that happened with no logic
   tick behind them, which is exactly what a duplicated frame is. TH11 in gameplay at a 240 Hz
