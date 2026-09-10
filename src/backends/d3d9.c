@@ -135,6 +135,7 @@ static HRESULT __stdcall hook_CreateDevice(IDirect3D9* d3d, UINT adapter, D3DDEV
             patch_vtable(vt, 27, (void*)hook_CreateIndexBuffer, (void**)&orig_CreateIndexBuffer);
         }
         scaler_create(dev, &use);
+        window_attach(g_device_window);
         after_device(dev);
     }
     return hr;

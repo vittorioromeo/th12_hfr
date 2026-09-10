@@ -79,7 +79,7 @@ int main(int argc,char**argv) {
     }
     assert(!identify_image(base,64));
     puts("PASS: executable detection rejects every individually modified signature and truncated headers");
-    test_schedule();test_replay_parser();test_replay_roundtrip();test_runner();test_scale_rect();
+    test_schedule();test_replay_parser();test_replay_roundtrip();test_runner();test_scale_rect();test_snap_client();
     /* A failed patch transaction must leave all game code unchanged. */
     patch_begin();uint8_t changed[6]={0};
     uintptr_t addr=id->signatures[0].addr;

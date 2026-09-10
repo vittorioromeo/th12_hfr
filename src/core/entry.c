@@ -18,6 +18,9 @@ static void read_config(void) {
     cfg.flipex = GetPrivateProfileIntA("hfr", "flipex", 0, ini);
     cfg.scaling = GetPrivateProfileIntA("video", "scaling", 1, ini);
     cfg.filter = GetPrivateProfileIntA("video", "filter", 2, ini);
+    cfg.resizable = GetPrivateProfileIntA("video", "resizable", 1, ini);
+    cfg.snap_aspect = GetPrivateProfileIntA("video", "snap_aspect", 1, ini);
+    cfg.fullscreen_mode = GetPrivateProfileIntA("video", "fullscreen_mode", 1, ini);
     for (size_t i = 0; g_game && i < g_class_count; i++) {
         char key[64]; snprintf(key, sizeof key, "sub_%s", g_classes[i].name);
         g_sub_enabled[i] = GetPrivateProfileIntA("systems", key, g_classes[i].mode == MODE_SUB, ini);
@@ -57,7 +60,8 @@ BOOL WINAPI DllMain(HINSTANCE h, DWORD reason, LPVOID res) {
         if (cfg.log) { char path[MAX_PATH]; GetModuleFileNameA(NULL, path, MAX_PATH); char* p = strrchr(path, '\\'); if (p) strcpy(p + 1, "touhou_hfr.log"); g_log = fopen(path, "w"); }
         LOG("Touhou HFR v0.3.0-test loading; fps=%d vsync=%d substep=%d subtick_input=%d d3d9ex=%d max_frame_latency=%d flipex=%d enemy_interp=%d",
             cfg.fps, cfg.vsync, cfg.substep, cfg.subtick_input, cfg.d3d9ex, cfg.max_frame_latency, cfg.flipex, cfg.enemy_interp);
-        LOG("video: scaling=%d filter=%d", cfg.scaling, cfg.filter);
+        LOG("video: scaling=%d filter=%d resizable=%d snap_aspect=%d fullscreen_mode=%d",
+            cfg.scaling, cfg.filter, cfg.resizable, cfg.snap_aspect, cfg.fullscreen_mode);
         if (!g_game || !install()) LOG("Unsupported/modified executable or installation failure; HFR inactive (proxy forwarding available)");
     }
     return TRUE;

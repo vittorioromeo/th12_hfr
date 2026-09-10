@@ -34,5 +34,8 @@ static struct {
     /* output scaling */
     int scaling;            /* 0 stretch, 1 aspect fit, 2 integer (pixel perfect) */
     int filter;             /* 0 nearest, 1 bilinear, 2 sharp bilinear, >=3 shader filters */
+    int resizable;          /* add a resize border to the game's window */
+    int snap_aspect;        /* keep the window itself at the native aspect while dragging */
+    int fullscreen_mode;    /* 0 leave the game's exclusive fullscreen, 1 borderless desktop */
 } cfg = { 0, 1, 1, 1, 0, 0, 1, 0, 1, 1, 1, 0,
-          1, 2 };
+          1, 2, 1, 1, 1 };

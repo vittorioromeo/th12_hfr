@@ -66,3 +66,28 @@ static void test_scale_rect(void) {
     assert(sharp_factor(W, H, 1280, 960) == 2);
     puts("PASS: output scaling geometry (stretch, aspect fit, integer) and sharp-bilinear prepass factors");
 }
+
+/* Window-resize aspect snapping: the edge being dragged is the one that survives. */
+static void test_snap_client(void) {
+    const int W = 640, H = 480;
+    int cw, ch;
+    cw = 1000; ch = 137; snap_client(WMSZ_RIGHT, W, H, &cw, &ch);  assert(cw == 1000 && ch == 750);
+    cw = 1000; ch = 137; snap_client(WMSZ_LEFT, W, H, &cw, &ch);   assert(cw == 1000 && ch == 750);
+    cw = 137;  ch = 900; snap_client(WMSZ_BOTTOM, W, H, &cw, &ch); assert(ch == 900 && cw == 1200);
+    cw = 137;  ch = 900; snap_client(WMSZ_TOP, W, H, &cw, &ch);    assert(ch == 900 && cw == 1200);
+    /* a corner follows whichever dimension was dragged further from the ratio */
+    cw = 1600; ch = 500;  snap_client(WMSZ_BOTTOMRIGHT, W, H, &cw, &ch); assert(cw == 1600 && ch == 1200);
+    cw = 500;  ch = 1200; snap_client(WMSZ_BOTTOMRIGHT, W, H, &cw, &ch); assert(ch == 1200 && cw == 1600);
+    /* already correct stays put, in every direction */
+    for (int n = 1; n <= 6; ++n) for (int e = WMSZ_LEFT; e <= WMSZ_BOTTOMRIGHT; ++e) {
+        cw = W * n; ch = H * n; snap_client(e, W, H, &cw, &ch);
+        assert(cw == W * n && ch == H * n);
+    }
+    /* never returns a degenerate size, whatever it is handed */
+    for (int e = WMSZ_LEFT; e <= WMSZ_BOTTOMRIGHT; ++e) {
+        cw = 0; ch = 0; snap_client(e, W, H, &cw, &ch); assert(cw >= 1 && ch >= 1);
+        cw = 1; ch = 4000; snap_client(e, W, H, &cw, &ch); assert(cw >= 1 && ch >= 1);
+    }
+    cw = 100; ch = 100; snap_client(WMSZ_RIGHT, 0, 0, &cw, &ch); assert(cw == 100 && ch == 100);
+    puts("PASS: window aspect snapping follows the dragged edge and never degenerates");
+}

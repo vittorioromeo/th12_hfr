@@ -82,15 +82,20 @@ static void scaler_release(void) {
     SAFE_RELEASE(g_src_ds); SAFE_RELEASE(g_src_surf); SAFE_RELEASE(g_src_tex);
 }
 
+/* Defined by the window module: may turn the game's exclusive fullscreen request into a
+   borderless window covering the monitor, in which case it fixes the size itself. */
+static int window_override_pp(D3DPRESENT_PARAMETERS* out, HWND hwnd);
+
 /* Rewrite the parameters actually handed to Direct3D: the swap chain follows the output size
    while the caller's copy (the game's own globals) keeps describing the native size. */
 static void scaler_adjust_pp(D3DPRESENT_PARAMETERS* out, const D3DPRESENT_PARAMETERS* game, HWND hwnd, int want_w, int want_h) {
     *out = *game;
     if (!g_scaler_enabled) return;
     if (g_native_w <= 0) { g_native_w = (int)game->BackBufferWidth; g_native_h = (int)game->BackBufferHeight; }
+    if (window_override_pp(out, hwnd)) { want_w = (int)out->BackBufferWidth; want_h = (int)out->BackBufferHeight; }
     if (want_w <= 0 || want_h <= 0) {
         RECT c;
-        if (game->Windowed && hwnd && GetClientRect(hwnd, &c) && c.right > 0 && c.bottom > 0) { want_w = c.right; want_h = c.bottom; }
+        if (out->Windowed && hwnd && GetClientRect(hwnd, &c) && c.right > 0 && c.bottom > 0) { want_w = c.right; want_h = c.bottom; }
         else { want_w = (int)game->BackBufferWidth; want_h = (int)game->BackBufferHeight; }
     }
     if (want_w < 1) want_w = 1;
