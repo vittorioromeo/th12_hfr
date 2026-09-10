@@ -5,6 +5,7 @@ static void read_config(void) {
     if (GetFileAttributesA(ini)==INVALID_FILE_ATTRIBUTES && g_game) {
         if (p) strcpy(p+1,g_game->identity->legacy_ini); else strcpy(ini,g_game->identity->legacy_ini);
     }
+    snprintf(g_ini_path, sizeof g_ini_path, "%s", ini);
     cfg.fps = GetPrivateProfileIntA("hfr", "fps", 0, ini);
     cfg.vsync = GetPrivateProfileIntA("hfr", "vsync", 1, ini);
     cfg.substep = GetPrivateProfileIntA("hfr", "substep", 1, ini);
@@ -21,6 +22,7 @@ static void read_config(void) {
     cfg.resizable = GetPrivateProfileIntA("video", "resizable", 1, ini);
     cfg.snap_aspect = GetPrivateProfileIntA("video", "snap_aspect", 1, ini);
     cfg.fullscreen_mode = GetPrivateProfileIntA("video", "fullscreen_mode", 1, ini);
+    cfg.menu_key = GetPrivateProfileIntA("video", "menu_key", VK_INSERT, ini);
     for (size_t i = 0; g_game && i < g_class_count; i++) {
         char key[64]; snprintf(key, sizeof key, "sub_%s", g_classes[i].name);
         g_sub_enabled[i] = GetPrivateProfileIntA("systems", key, g_classes[i].mode == MODE_SUB, ini);

@@ -1,6 +1,7 @@
 /* Native x86 regression harness. Maps a local game image as inert test data;
    never starts the game or invokes its imports. The linker reserves .fixture
    at 0x400000 so Windows cannot place the test process's heap/stack there. */
+#define HFR_NO_UI
 #include "../src/hfr.c"
 #include <assert.h>
 #include "test_replay.h"

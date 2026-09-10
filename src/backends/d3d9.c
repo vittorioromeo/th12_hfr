@@ -89,6 +89,7 @@ static void after_device(IDirect3DDevice9* dev) {
 static HRESULT __stdcall hook_Reset(IDirect3DDevice9* dev, D3DPRESENT_PARAMETERS* pp) {
     apply_pp(pp);
     D3DPRESENT_PARAMETERS use; scaler_adjust_pp(&use, pp, device_window(pp), 0, 0);
+    hfr_menu_invalidate();
     scaler_release();   /* our render target and back buffer reference belong to the old chain */
     HRESULT hr;
     if (g_using_ex) {
@@ -136,6 +137,8 @@ static HRESULT __stdcall hook_CreateDevice(IDirect3D9* d3d, UINT adapter, D3DDEV
         }
         scaler_create(dev, &use);
         window_attach(g_device_window);
+        if (!hfr_menu_init(dev, g_device_window)) LOG("menu: unavailable");
+        else LOG("menu: ready (open with virtual key 0x%02x)", cfg.menu_key);
         after_device(dev);
     }
     return hr;

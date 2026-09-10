@@ -78,6 +78,8 @@ static int window_override_pp(D3DPRESENT_PARAMETERS* out, HWND hwnd) {
 }
 
 static LRESULT CALLBACK hfr_wndproc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
+    LRESULT handled = 0;
+    if (hfr_menu_wndproc(h, msg, wp, lp, &handled)) return handled;
     switch (msg) {
     case WM_SIZE:
         if (wp == SIZE_MINIMIZED) { g_minimized = 1; break; }
