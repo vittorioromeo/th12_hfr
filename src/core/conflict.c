@@ -23,7 +23,7 @@
    code it shipped with. The second is the more general of the two -- it does not care whose
    patch it is -- but it only works for a game with recorded sites. */
 static int conflict_module(char* out, size_t n) {
-    static const char* const known[] = { "vpatch" };
+    static const char* const known[] = { "vpatch", "openinputlagpatch" };
     HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, GetCurrentProcessId());
     if (snap == INVALID_HANDLE_VALUE) return 0;
     MODULEENTRY32 me; me.dwSize = sizeof me;

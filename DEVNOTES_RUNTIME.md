@@ -230,6 +230,51 @@ for input running away after alt-tab; we call ZUN's poll routine rather than rep
 inherit stock behaviour), `BugFixTh12Shadow` (rev6-only, one render state, fixes UFO's Palanquin
 Ship shadow on Radeon and Intel), and `ReplaySlowFPS` (slow-motion replay on Shift).
 
+### OpenInputLagPatch (OILP)
+
+The open replacement for vpatch (a `dinput8.dll` proxy plus `oilp_loader.exe`, per-game address
+tables for TH6–TH18; the source is public and was used as an address cross-reference for the
+TH13 port). Read for what it does, not what its name suggests:
+
+- **Its own frame limiter in place of the game's**, with vpatch's central trick: wait *first*
+  (waitable timer, then spin) until `BltPrepareTime` — 2 ms by default — before the 60 Hz
+  deadline, and only then let the game poll input, update, draw and present. In the stock game
+  the poll happens at the start of the frame and the limiter then idles for up to ~14 ms, so the
+  sampled input is a frame stale by the time it is shown; OILP moves the poll to the end of that
+  idle. It forces the game's "fast" input-latency mode and hooks that mode's per-frame call.
+- **D3D9Ex** with `SetMaximumFrameLatency(1)` and `D3DPRESENT_INTERVAL_IMMEDIATE`.
+- **Replay speed control** on held keys (skip at 240 fps, slow-motion at 30 fps, both
+  configurable), a fullscreen refresh-rate choice, and a frame-time overlay.
+- `GameFPS` above 60 speeds the game up. There is no sub-stepping and no interpolation.
+- No alt-tab/foreground input fix — that one is vpatch's `BugFixGetDeviceState`, not OILP's.
+
+**How it relates to us.** The D3D9Ex part and the disabling of the game's limiter and latency
+`Sleep` are identical to ours (same three per-frame call sites, `frame_calls`). The late-poll
+limiter is the interesting part, and it is exactly what our design makes unnecessary: OILP saves
+up to a frame because at 60 Hz there is a long wait between poll and present; in our loop each
+present slot is poll → tick → draw → Present with the only wait inside Present for the next
+refresh, and movement/focus are polled again on every minor tick (`subtick_input_begin` calls
+the game's own DirectInput routine, merges the movement and focus bits, and records them in the
+replay's `HFRI` chunk). At 360 Hz movement input is at most one 2.8 ms slot stale, against
+16–30 ms stock. Applying OILP's reserve inside our slot would gain 1–2 ms at the cost of a spin
+and a real risk of missed refreshes whenever tick+draw overruns the reserve — less than the
+jitter of a keyboard's own USB polling, so not done.
+
+What is still frame-sampled, by design: shot, bomb and pause edges come from the game's own poll
+on the boundary tick, once per 60 Hz frame, because the game counts those in frames and the
+runner masks them on minor ticks so a bomb cannot fire twice. That is the same sampling rate
+stock+OILP has, with a shorter path to the screen afterwards. Processing a bomb on a minor tick
+would cut it further but changes game semantics (the deathbomb window is frame-counted) and
+would diverge from stock replays; if ever done, it must be an option that the replay records.
+
+Worth taking from this family, in order: vpatch's foreground check on the DirectInput path, and
+OILP/vpatch's replay skip and slow-motion on held keys, which the tick-rate machinery makes
+nearly free. Coexistence: OILP takes the same frame loop we do; the frame-loop guard in §5
+treats it like vpatch (a modified loop is a modified loop, whoever did it), and
+`openinputlagpatch` is on the known-module list. Note that OILP normally installs *as*
+`dinput8.dll`, the same file name as our proxy, so the two cannot be dropped into one folder;
+the module check only matters when it is loaded under its own name by `oilp_loader.exe`.
+
 ### d3d9 wrappers (PivotDX9 and friends)
 
 Not a conflict. The patch installs, the game runs, the filters work — the wrapper only takes the
