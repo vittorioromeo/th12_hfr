@@ -134,6 +134,7 @@ layer 15" is true of the scripts and useless for attributing draw calls.
 | 16 | `0x40e7e0` | BulletManager (back layer) |
 | 21 | `0x418f30` | EnemyManager |
 | 22 | L11 | the player's shots and options (`pl0X.anm` layer 11; the body draws at 23 with no layer) |
+| 24..25 | L12, L13 | layer 12 is the hitbox (`pl0X.anm`) and the focus ring (`effect.anm`), excluded from every class; 13 more shots |
 | 26 | `0x42eff0` | **ItemManager** (items rule) |
 | 27 | `0x438eb0` | Gui |
 | 29 | `0x42fea0` | LaserManager |

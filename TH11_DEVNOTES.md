@@ -187,6 +187,28 @@ arrays must not be transplanted. Interpolation follows the TH11 position helper:
 add `(224,16,0)` and propagate to child VMs when the parent VM's `+0x18` is zero.
 Background-relative enemies (`flags & 0x400000`) retain the game's positioning.
 
+## Draw list, sprite VMs, and the dimming's data
+
+See DEVNOTES_RUNTIME §3b for the mechanism. Draw runner `0x456e1d` (dispatch `0x456e81`:
+`mov ecx,[esi+0x20]; mov eax,[esi+8]; call eax`), sprite batch flush `0x44fd10` (ESI =
+AnmManager, pointer at `0x4c3268`, pending count at manager+0x435620), sprite VM draw
+`0x451ef0` (VM in EAX, 0x434 bytes; loaded-ANM pointer at +0x3b0, layer at +0x20,
+`slot << 16 | sprite` at +0x39c). ANM slots seen: 0 text, 4 stage01, 5 front, 6 bullet, 7
+the player, 8 enemy, 27 st01logo.
+
+Draw priorities (`debug=1` trace, stage 1): 1 `0x4290e0` binds the offscreen stage target,
+2 `0x403910` the 3D stage (VB draws), 4..10 sprite layers 0..3, **11 `0x429220` binds the
+world target (`world_prio`)**, 13 `0x4293d0` copies the stage into it, 12/15..19 layers 4..9,
+20 EnemyManager (`0x4111b0`, draws nothing itself: the enemies are sprite-layer VMs of
+enemy.anm, layer 10 → priority 21, unlike TH13 where they sit on layers 8/9), 21 layer 10
+(enemies and the player's shots together — the rules tell them apart by ANM), 22 Player
+body, 23/24 layers 11/12, **25 ItemManager `0x4240d0`**, 27 LaserManager, 29 BulletManager,
+31 Spellcard (the name text), 32..34 layers, 35 `0x4292b0` back to the stage target, 37
+`0x429420` copy, 42/43 Gui, 46 `0x429340` back buffer, 47 `0x429470` the final copy, 48 on
+the interface. bullet.anm: items layer 9, bullets 15, effects elsewhere; pl0X.anm shots on
+layer 10; the stage-enemy ANM's layer-5 scripts are the spell-card portraits (never faded)
+and its card backgrounds set no layer (drawn under the world, dimmed by the quad).
+
 ## Replay map
 
 ReplayManager pointer `0x4a8eb8`:

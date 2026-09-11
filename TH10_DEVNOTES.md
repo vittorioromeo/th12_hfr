@@ -204,6 +204,31 @@ table silently repointed TH11's and TH12's profiles at their neighbours' identit
 bare config-defaults list shifted every default after an inserted field. Both are named now
 (designated initialisers, `GI_*` enum slots).
 
+## 6a. Draw list, sprite VMs, and the dimming's data
+
+See DEVNOTES_RUNTIME §3b for the mechanism. Draw runner `0x449d40` (dispatch `0x449da3`:
+`mov ecx,[esi+0x20]; call [esi+8]`, six bytes), sprite batch flush `0x442f50` (ESI =
+AnmManager, pointer at `0x491c10`, pending count at manager+0x3adac8), sprite VM draw
+`0x4451c0` (VM in EAX, 0x3ac bytes; loaded-ANM pointer at +0x308, layer at +0x20). ANM
+slots seen: 3 capture, 5 the stage, 6 front, 7 bullet, 8 the player, 9 enemy.
+
+TH10 draws straight into the back buffer, no offscreen stage. Draw priorities (`debug=1`
+trace): 1/2 `0x420000`/`0x41fef0`, 4 GameManager, 5 `0x42a430`, 7 Stage 3D (`0x403060`),
+9 layer 0, 10 Stage 2D (`0x403070`: the clouds, and the stage-enemy ANM's 3D-mode sprites),
+**11 layer 1 (`world_prio`)** — the dim quad goes before it, over the playfield viewport —
+13 layer 2 (bullet.anm's layer-2 effects), 14 `0x409230`, 15..19 layers 3..7, 20
+EnemyManager (`0x40d820`), 21 layer 8 (the player's shots, pl0X.anm layer 8), 22 Player
+body, 23/24 layers 9/10, **25 ItemManager `0x41ba30`**, 26 layer 11, 27 LaserManager, 28
+layer 12, 29 BulletManager, 32 Spellcard, 33 layer 13, 34 Bomb, 35 `0x42b9b0`, 36 layer 14,
+37 `0x409270`, 38/48 `0x401520`/`0x401510` (the Effects object; 48 draws a constant nine
+quads of text), 40..47 interface. bullet.anm: items layer 7, bullets 13, effects elsewhere.
+
+**The spell backgrounds above the world.** Stage 1's card backgrounds set no layer and draw
+under everything; stage 2's are 23 tiles on layers 4 and 5 of `stgenm02.anm`, i.e. sprite
+layers drawn at priorities 16-17, *after* the quad. The profile's rule `{16,17,"stgenm*.anm",
+4,5, DIM_BACKGROUND}` fades their colour towards black instead. Layer 3 of the same files is
+the boss portrait cut-in (`face01ct.png`) and is left alone.
+
 ## 7. Harness and rig notes specific to TH10
 
 - The harness validates a provisional profile's patch plan when `HFR_VALIDATE_PROVISIONAL` is

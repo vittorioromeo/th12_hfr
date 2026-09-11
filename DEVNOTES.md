@@ -175,6 +175,21 @@ The update priorities found in th12 (the ones that matter here):
 `tools/scan_reg2.py` produced this table: it disassembles backwards from every `call 0x462380`
 to find the `mov ebx, prio` and `mov [reg+8], func` that precede it.
 
+**The draw list, and what the dimming needs of it** (DEVNOTES_RUNTIME §3b). The draw runner
+is `0x462634` (dispatch `0x462691`: `mov ecx,[esi+0x20]; mov eax,[esi+8]; call eax`), the
+sprite batch flush `0x45a3c0` (ESI = AnmManager, pointer at `0x4ce8cc`, pending-quad count at
+manager+0x4b56a0), the sprite VM draw `0x45c900` (VM in EAX, 0x4b4 bytes; loaded-ANM pointer
+at +0x3f8, sprite layer at +0x20, sprite id at +0x3e0). A loaded ANM begins with its slot
+index and its file name. Draw priorities from a `debug=1` trace: 1 `0x42f0b0` binds the
+offscreen stage target, 2 and 5 the Stage's 3D passes, 4..11 sprite layers 0..4, **12
+`0x42f200` binds the world target (`world_prio`)**, 14 `0x42f3b0` copies the stage into it,
+then 13/16..20 layers 5..9, 21 EnemyManager, 22 UfoManager, 23 layer 10, 24 Player, 25/26
+layers 11/12, **27 ItemManager**, 29 LaserManager, 31 BulletManager, 33 `0x40fbd0`, 35 Bomb,
+37/39 stage effects copies, 41..45 layers and Gui, 48 `0x42f320` back to the back buffer,
+49 `0x42f470` the final copy, 50 on the interface. bullet.anm carries the items (layer 10),
+the bullets (16) and the effects (every other layer); the player's shots are pl0X.anm on
+layers 11 and 13, its body sets none.
+
 ### 3.3 Timers and the global game speed
 
 The single most useful discovery: the engine has a global float **game speed** at `0x4b2ed0`

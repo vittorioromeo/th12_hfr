@@ -18,20 +18,26 @@
  * g_draw_prio, call the callback, flush again and forget the priority. Every draw call then
  * happens under exactly one callback. Where one callback draws several classes -- the
  * sprite-layer callbacks draw the player's shots, effects, spirits and more in one list -- the
- * sprite VM draw is wrapped too: each VM is classified by the profile's rules (its loaded
- * ANM's file name, its sprite layer, the callback's priority), and when its class differs
- * from the batch's the batch is flushed first. So every draw call carries one class,
- * g_batch_class, which is what the Direct3D hooks fade by.
+ * sprite VM draw is wrapped too, at both ends: each VM is classified by the profile's rules
+ * (its loaded ANM's file name, its sprite layer, the callback's priority); a classified VM has
+ * the batch flushed before it if something else is pending and after it always, so its quads
+ * are a draw call of their own and quads from paths the wrap does not see (a manager building
+ * quads itself, a VM drawn through another entry) can never share a faded call. So every draw
+ * call carries one class, g_batch_class, which is what the Direct3D hooks fade by.
  *
  * Background: before the first callback with priority >= world_prio, a black quad with the
- * configured alpha is blended over the current viewport, on top of everything drawn so far. Doing it there rather than modulating the background's own draws means fog,
- * additive layers, multi-pass stage effects and offscreen compositing all fade together,
- * whatever they do; and it lands in whichever target the background was drawn into.
+ * configured alpha is blended over the current viewport, on top of everything drawn so far.
+ * Doing it there rather than modulating the background's own draws means fog, additive
+ * layers, multi-pass stage effects and offscreen compositing all fade together, whatever they
+ * do; and it lands in whichever target the background was drawn into. A rule may also put a
+ * sprite in the background class (TH10's spell backgrounds, drawn above the world): it is then
+ * faded in colour rather than alpha, towards black like the rest.
  *
- * Items: draws under the item callbacks have their vertex alpha scaled down (the sprite
- * builder puts the colour in the vertices, and the fixed-function pipeline multiplies the
- * texture by it). Additively blended draws do not fade with alpha, so their colour is scaled
- * instead, which for that blend is the same thing. */
+ * Everything else is faded in its own draw call: the vertex colours of a 2D-mode sprite (the
+ * sprite builder puts the colour in the vertices, and the fixed-function pipeline multiplies
+ * the texture by it), or D3DRS_TEXTUREFACTOR for a 3D-mode sprite drawn from the game's unit
+ * quad. Additively blended draws do not fade with alpha, so their colour is scaled instead,
+ * which for that blend is the same thing. */
 static volatile int g_draw_prio = -1;      /* priority of the draw callback running, -1 outside the runner */
 static volatile uint8_t* g_draw_node;      /* its node, for the debug trace */
 /* g_dim_available (timing.c): the profile describes the dispatch and the wrap is in */
