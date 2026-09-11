@@ -1,0 +1,165 @@
+/* Background and pickup dimming (video.dim_background, video.dim_items).
+ *
+ * Both exist for one reason: bullets should be the most visible thing on the screen, and
+ * neither a busy stage background nor a rain of P and point items should compete with them.
+ *
+ * What draws what. Every object registers a draw callback with a priority, and each frame the
+ * draw runner calls them in that order: the stage's 3D scene first, then the sprite manager's
+ * layers interleaved with the managers that draw their own sprites (enemies, items, lasers,
+ * bullets, the player), then the interface. None of them touch Direct3D directly: a 2D sprite
+ * goes into the sprite manager's batch, which is flushed as one DrawPrimitiveUP when the
+ * texture or blend changes, or when someone asks. So a draw call, on its own, says nothing
+ * about which object it belongs to -- the items' quads are typically flushed by the first
+ * sprite of the next callback.
+ *
+ * The profile therefore names the runner's dispatch: the instructions that call one node's
+ * callback. They are wrapped (dim_install) to flush the batch, record the node's priority in
+ * g_draw_prio, call the callback, flush again and forget the priority. Every draw call then
+ * happens under exactly one callback, and the hooks can attribute it.
+ *
+ * Background: before the first callback with priority >= world_prio, a black quad with the
+ * configured alpha is blended over the current viewport, on top of everything drawn so far. Doing it there rather than modulating the background's own draws means fog,
+ * additive layers, multi-pass stage effects and offscreen compositing all fade together,
+ * whatever they do; and it lands in whichever target the background was drawn into.
+ *
+ * Items: draws under the item callbacks have their vertex alpha scaled down (the sprite
+ * builder puts the colour in the vertices, and the fixed-function pipeline multiplies the
+ * texture by it). Additively blended draws do not fade with alpha, so their colour is scaled
+ * instead, which for that blend is the same thing. */
+static volatile int g_draw_prio = -1;      /* priority of the draw callback running, -1 outside the runner */
+static volatile uint8_t* g_draw_node;      /* its node, for the debug trace */
+/* g_dim_available (timing.c): the profile describes the dispatch and the wrap is in */
+static int g_dim_drawing;                  /* our own quad is going through the hooked draw */
+static IDirect3DStateBlock9* g_dim_state;
+/* debug: g_dim_trace_frames frames have every draw logged */
+static void dim_trace(IDirect3DDevice9* dev, const char* what, UINT prims, DWORD fvf, int active, void* caller) {
+    if (g_dim_trace_frames <= 0 || !cfg.debug) return;
+    D3DVIEWPORT9 vp = {0}; dev->lpVtbl->GetViewport(dev, &vp);
+    DWORD src = 0, dst = 0, tex = 0; IDirect3DBaseTexture9* t = NULL;
+    dev->lpVtbl->GetRenderState(dev, D3DRS_SRCBLEND, &src); dev->lpVtbl->GetRenderState(dev, D3DRS_DESTBLEND, &dst);
+    dev->lpVtbl->GetTexture(dev, 0, &t); if (t) { tex = (DWORD)(uintptr_t)t; t->lpVtbl->Release(t); }
+    LOG("draw %3d: %-6s prio %2d fvf 0x%03x prims %3u vp %u,%u %ux%u blend %lu/%lu tex %08lx from %p%s", g_dim_trace_n++, what, g_draw_prio, (unsigned)fvf, prims,
+        vp.X, vp.Y, vp.Width, vp.Height, (unsigned long)src, (unsigned long)dst, (unsigned long)tex, caller, active ? "" : " (not the game RT)");
+}
+
+/* Wrap the draw runner's dispatch:
+ *   mov eax,[node+prio_off] ; mov [g_draw_prio],eax ; mov [g_draw_node],node
+ *   call flush ; call dim_at_callback
+ *   <the dispatch bytes: load argument, load callback, call it>
+ *   push eax ; call flush ; pop eax
+ *   mov dword [g_draw_prio],-1
+ *   jmp dispatch+len
+ * flush: push reg ; mov reg,[flush_this] ; call flush_fn ; pop reg ; ret
+ * EAX is free at the dispatch (the callback's return value replaces it), and the flush and the
+ * C call keep everything but EAX/ECX/EDX, which the copied bytes reload; every supported
+ * game's dispatch has that shape. */
+static void __cdecl __attribute__((force_align_arg_pointer)) dim_at_callback(void);
+static void dim_install(void) {
+    const uintptr_t at = g_game->draw.dispatch; const size_t n = g_game->draw.dispatch_len;
+    const uint8_t node = g_game->draw.node_reg, freg = g_game->draw.flush_reg;
+    if (!at) return;
+    if (n < 5 || n > 16 || node == 4 || freg == 4 || !g_game->draw.flush_fn || !g_game->draw.flush_this) { LOG("dimming: the profile's draw description is unusable"); return; }
+    if (!site_expected(at, n)) return;
+    uint8_t* flush = g_p;
+    E(0x50 | freg); E(0x8B, 0x05 | (freg << 3)); E32((uint32_t)g_game->draw.flush_this);   /* push reg; mov reg,[flush_this] */
+    ECALL(g_game->draw.flush_fn); E(0x58 | freg); E(0xC3);                                      /* call flush_fn; pop reg; ret */
+    STUB_BEGIN();
+    E(0x8B, 0x80 | node); E32(g_game->draw.prio_off);                                          /* mov eax,[node+prio_off] */
+    E(0xA3); E32((uint32_t)(uintptr_t)&g_draw_prio);                                            /* mov [g_draw_prio],eax */
+    E(0x89, 0x05 | (node << 3)); E32((uint32_t)(uintptr_t)&g_draw_node);                        /* mov [g_draw_node],node */
+    ECALL((uintptr_t)flush);
+    ECALL((uintptr_t)dim_at_callback);                                                        /* the background quad, when this is the first world callback */
+    ECOPY(at, n);
+    E(0x50); ECALL((uintptr_t)flush); E(0x58);                                                  /* push eax; call flush; pop eax */
+    E(0xC7, 0x05); E32((uint32_t)(uintptr_t)&g_draw_prio); E32(0xFFFFFFFFu);                  /* mov dword [g_draw_prio],-1 */
+    EJMP(at + n);
+    stub_end();
+    site_hook(at, n);
+    g_dim_available = 1;
+    LOG("dimming: draw callbacks attributed at the runner @%08x (world from priority %d; items at %d)",
+        (unsigned)at, g_game->draw.world_prio, g_game->draw.item_prios[0]);
+}
+static int dim_in_game(void) {
+    return !g_game->addr.enemy_manager || *(void**)g_game->addr.enemy_manager != NULL;
+}
+static int dim_is_item_prio(int prio) {
+    for (int i = 0; i < 4; ++i) if (g_game->draw.item_prios[i] >= 0 && g_game->draw.item_prios[i] == prio) return 1;
+    return 0;
+}
+/* 256 = leave the draw alone; otherwise the alpha multiplier (0..255) for the current draw. */
+static int dim_item_fade(void) {
+    if (cfg.dim_items <= 0 || !g_dim_available || g_dim_drawing || g_draw_prio < 0 || !dim_is_item_prio(g_draw_prio)) return 256;
+    int pct = cfg.dim_items > 100 ? 100 : cfg.dim_items;
+    return (100 - pct) * 255 / 100;
+}
+/* Called by the wrap before every draw callback. At the first callback of the world, blend the
+   black quad over what has been drawn: at that point the background is complete and the world
+   has not started, whether the game draws both into the back buffer or, as TH11 on do, renders
+   the stage offscreen and composites it (even several times, with TH13's trance effect) --
+   dimming the source dims every use of it. */
+static void __cdecl __attribute__((force_align_arg_pointer)) dim_at_callback(void) {
+    if (g_dim_trace_frames > 0 && cfg.debug && g_draw_node)
+        LOG("draw      callback prio %d fn %08x", g_draw_prio, (unsigned)*(const uint32_t*)((const uint8_t*)g_draw_node + 8));
+    if (cfg.dim_background <= 0 || !g_dim_available || g_dim_frame_done || !g_dev) return;
+    if (g_draw_prio < g_game->draw.world_prio || !dim_in_game()) return;
+    IDirect3DDevice9* dev = g_dev;
+    g_dim_frame_done = 1;
+    /* Over the current viewport: the whole target when the game has not restricted it (the
+       offscreen stage of TH11 on), the playfield when it has (TH10 draws straight into the back
+       buffer, with the interface painted around it afterwards). */
+    D3DVIEWPORT9 vp; if (FAILED(dev->lpVtbl->GetViewport(dev, &vp))) return;
+    int pct = cfg.dim_background > 100 ? 100 : cfg.dim_background;
+    DWORD colour = (DWORD)(pct * 255 / 100) << 24;
+    float x0 = (float)vp.X - 0.5f, y0 = (float)vp.Y - 0.5f, x1 = (float)(vp.X + vp.Width) - 0.5f, y1 = (float)(vp.Y + vp.Height) - 0.5f;
+    struct { float x, y, z, rhw; DWORD c; } v[4] = {
+        { x0, y0, 0.0f, 1.0f, colour }, { x1, y0, 0.0f, 1.0f, colour }, { x0, y1, 0.0f, 1.0f, colour }, { x1, y1, 0.0f, 1.0f, colour } };
+    g_dim_drawing = 1;
+    if (g_dim_state) g_dim_state->lpVtbl->Capture(g_dim_state);
+    dev->lpVtbl->SetVertexShader(dev, NULL); dev->lpVtbl->SetPixelShader(dev, NULL);
+    dev->lpVtbl->SetTexture(dev, 0, NULL);
+    dev->lpVtbl->SetFVF(dev, D3DFVF_XYZRHW | D3DFVF_DIFFUSE);
+    dev->lpVtbl->SetRenderState(dev, D3DRS_ALPHABLENDENABLE, TRUE);
+    dev->lpVtbl->SetRenderState(dev, D3DRS_SEPARATEALPHABLENDENABLE, FALSE);
+    dev->lpVtbl->SetRenderState(dev, D3DRS_BLENDOP, D3DBLENDOP_ADD);
+    dev->lpVtbl->SetRenderState(dev, D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
+    dev->lpVtbl->SetRenderState(dev, D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+    dev->lpVtbl->SetRenderState(dev, D3DRS_ALPHATESTENABLE, FALSE);
+    dev->lpVtbl->SetRenderState(dev, D3DRS_ZENABLE, FALSE);
+    dev->lpVtbl->SetRenderState(dev, D3DRS_ZWRITEENABLE, FALSE);
+    dev->lpVtbl->SetRenderState(dev, D3DRS_STENCILENABLE, FALSE);
+    dev->lpVtbl->SetRenderState(dev, D3DRS_FOGENABLE, FALSE);
+    dev->lpVtbl->SetRenderState(dev, D3DRS_LIGHTING, FALSE);
+    dev->lpVtbl->SetRenderState(dev, D3DRS_CULLMODE, D3DCULL_NONE);
+    dev->lpVtbl->SetRenderState(dev, D3DRS_SCISSORTESTENABLE, FALSE);
+    dev->lpVtbl->SetRenderState(dev, D3DRS_COLORWRITEENABLE, 0xF);
+    dev->lpVtbl->SetTextureStageState(dev, 0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
+    dev->lpVtbl->SetTextureStageState(dev, 0, D3DTSS_COLORARG1, D3DTA_DIFFUSE);
+    dev->lpVtbl->SetTextureStageState(dev, 0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
+    dev->lpVtbl->SetTextureStageState(dev, 0, D3DTSS_ALPHAARG1, D3DTA_DIFFUSE);
+    dev->lpVtbl->SetTextureStageState(dev, 1, D3DTSS_COLOROP, D3DTOP_DISABLE);
+    dev->lpVtbl->SetTextureStageState(dev, 1, D3DTSS_ALPHAOP, D3DTOP_DISABLE);
+    dev->lpVtbl->DrawPrimitiveUP(dev, D3DPT_TRIANGLESTRIP, 2, v, sizeof v[0]);
+    if (g_dim_state) g_dim_state->lpVtbl->Apply(g_dim_state);
+    g_dim_drawing = 0;
+}
+/* Scale the vertex colours of an item draw in place (the copy the caller made). `additive` when the
+   destination blend is ONE, where alpha alone would change nothing. */
+static void dim_fade_vertices(uint8_t* verts, UINT count, UINT stride, DWORD fvf, int fade, int additive) {
+    if (!(fvf & D3DFVF_DIFFUSE)) return;
+    UINT off = 16 + ((fvf & D3DFVF_PSIZE) ? 4 : 0);
+    if (off + 4 > stride) return;
+    for (UINT i = 0; i < count; ++i) {
+        DWORD* c = (DWORD*)(verts + i * stride + off);
+        DWORD a = ((*c >> 24) * (DWORD)fade) >> 8;
+        if (additive) {
+            DWORD r = (((*c >> 16) & 0xFF) * (DWORD)fade) >> 8, g = (((*c >> 8) & 0xFF) * (DWORD)fade) >> 8, b = ((*c & 0xFF) * (DWORD)fade) >> 8;
+            *c = (a << 24) | (r << 16) | (g << 8) | b;
+        } else *c = (a << 24) | (*c & 0x00FFFFFF);
+    }
+}
+static void dim_release(void) { SAFE_RELEASE(g_dim_state); }
+static void dim_init(IDirect3DDevice9* dev) {
+    dim_release();
+    if (!g_dim_available) return;
+    if (FAILED(dev->lpVtbl->CreateStateBlock(dev, D3DSBT_ALL, &g_dim_state))) { g_dim_state = NULL; LOG("dimming: no state block; the game's state may be disturbed"); }
+}

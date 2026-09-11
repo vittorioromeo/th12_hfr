@@ -230,6 +230,21 @@ void draw_display_section(void) {
     ImGui::EndDisabled();
     help("On: the game's fullscreen becomes a borderless window covering the\n"
          "monitor at its own resolution, instead of a 640x480 mode change.");
+
+    /* Readability: fade what competes with the bullets. Applied immediately, in-stage only. */
+    ImGui::Separator();
+    bool dim_ok = hfr_ui_get(UI_DIM_AVAILABLE) != 0;
+    if (!dim_ok) ImGui::TextDisabled("This game's sprite layers are not described by the patch yet; dimming is inert.");
+    ImGui::BeginDisabled(!dim_ok);
+    int dim_bg = hfr_ui_get(UI_DIM_BACKGROUND);
+    if (ImGui::SliderInt("Dim background", &dim_bg, 0, 100, "%d%%")) hfr_ui_set(UI_DIM_BACKGROUND, dim_bg);
+    help("Fades the stage background towards black so bullets stand out.\n"
+         "Enemies, bullets, items, the player and the interface are untouched.");
+    int dim_items = hfr_ui_get(UI_DIM_ITEMS);
+    if (ImGui::SliderInt("Fade items", &dim_items, 0, 100, "%d%%")) hfr_ui_set(UI_DIM_ITEMS, dim_items);
+    help("Fades the P, point and other pickups towards transparent so they are\n"
+         "not mistaken for bullets. 100%% hides them entirely.");
+    ImGui::EndDisabled();
 }
 
 void draw_timing_section(void) {

@@ -18,6 +18,7 @@
 #include "core/shaders.c"
 #include "core/scaler.c"
 #include "core/texscale.c"
+#include "core/dimming.c"
 #include "core/window.c"
 #include "core/replay.c"
 #include "core/frame.c"

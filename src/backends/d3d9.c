@@ -41,6 +41,7 @@ static HRESULT __stdcall hook_CreateTexture(IDirect3DDevice9* dev, UINT w, UINT 
     if (g_using_ex) unmanage(&pool, &usage);
     HRESULT hr = orig_CreateTexture(dev, w, h, levels, usage, fmt, pool, out, sh);
     if (SUCCEEDED(hr) && out && *out && cfg.texture_scale > 1) { tex_hook_class(*out); tex_register(*out); }
+    if (SUCCEEDED(hr) && out && *out && cfg.debug) LOG("texture %p %ux%u fmt %d usage 0x%lx", (void*)*out, w, h, (int)fmt, (unsigned long)usage);
     return hr;
 }
 static HRESULT __stdcall hook_CreateVertexBuffer(IDirect3DDevice9* dev, UINT len, DWORD usage, DWORD fvf, D3DPOOL pool, IDirect3DVertexBuffer9** out, HANDLE* sh) {
@@ -115,8 +116,9 @@ static void warn_if_wrapper_presents(void) {
     show_notice(text);
 }
 
-static void texscale_init(IDirect3DDevice9* dev);
+static void texscale_init(IDirect3DDevice9* dev); static void dim_init(IDirect3DDevice9* dev);
 static void after_device(IDirect3DDevice9* dev) {
+    dim_init(dev);
     warn_if_wrapper_presents();    /* g_own_present is settled by now, however it turned out */
     texscale_init(dev);
     int hz = detect_refresh(dev);
@@ -141,7 +143,7 @@ static void after_device(IDirect3DDevice9* dev) {
    On its own this only sharpens; the sprite builder rounds every corner to a whole pixel before
    the half-texel offset, so the profile's sprite_round_sites are NOPed as well (install.c),
    which is what lets a bullet at x = 100.3 land on a different screen pixel than one at 100.0. */
-static int g_iscale_active;                  /* the current render target is the game's big one */
+static int g_iscale_active;                  /* the current render target is the game's own (dimming.c uses it too) */
 typedef HRESULT (__stdcall *SetRenderTargetFn)(IDirect3DDevice9*, DWORD, IDirect3DSurface9*);
 typedef HRESULT (__stdcall *SetViewportFn)(IDirect3DDevice9*, const D3DVIEWPORT9*);
 typedef HRESULT (__stdcall *ClearFn)(IDirect3DDevice9*, DWORD, const D3DRECT*, DWORD, D3DCOLOR, float, DWORD);
@@ -149,10 +151,12 @@ typedef HRESULT (__stdcall *DrawPrimitiveUPFn)(IDirect3DDevice9*, D3DPRIMITIVETY
 static SetRenderTargetFn orig_SetRenderTarget; static SetViewportFn orig_SetViewport; static ClearFn orig_Clear; static DrawPrimitiveUPFn orig_DrawPrimitiveUP;
 static HRESULT __stdcall hook_SetRenderTarget(IDirect3DDevice9* dev, DWORD i, IDirect3DSurface9* s) {
     if (i == 0) g_iscale_active = (s != NULL && s == g_src_surf);
+    if (g_dim_trace_frames > 0 && cfg.debug) LOG("draw      SetRenderTarget %lu %p (prio %d)%s", (unsigned long)i, (void*)s, g_draw_prio, s == g_src_surf ? " (game RT)" : s == g_shot_rt ? " (shot RT)" : "");
     return orig_SetRenderTarget(dev, i, s);
 }
 static HRESULT __stdcall hook_SetViewport(IDirect3DDevice9* dev, const D3DVIEWPORT9* vp) {
-    if (g_iscale_active && vp) {
+    if (g_dim_trace_frames > 0 && cfg.debug && vp) LOG("draw      SetViewport %lu,%lu %lux%lu%s", (unsigned long)vp->X, (unsigned long)vp->Y, (unsigned long)vp->Width, (unsigned long)vp->Height, g_iscale_active ? " (scaled)" : "");
+    if (g_iscale_active && vp && !g_dim_drawing) {
         D3DVIEWPORT9 v = *vp; v.X *= g_iscale; v.Y *= g_iscale; v.Width *= g_iscale; v.Height *= g_iscale;
         return orig_SetViewport(dev, &v);
     }
@@ -168,18 +172,47 @@ static HRESULT __stdcall hook_Clear(IDirect3DDevice9* dev, DWORD n, const D3DREC
 }
 static HRESULT __stdcall hook_DrawPrimitiveUP(IDirect3DDevice9* dev, D3DPRIMITIVETYPE type, UINT prims, const void* data, UINT stride) {
     DWORD fvf = 0;
-    if (g_iscale_active && data && stride >= 16 && SUCCEEDED(dev->lpVtbl->GetFVF(dev, &fvf)) && (fvf & D3DFVF_XYZRHW)) {
+    if (g_dim_trace_frames > 0 && !g_dim_drawing) {
+        DWORD f = 0; dev->lpVtbl->GetFVF(dev, &f); dim_trace(dev, "UP", prims, f, g_iscale_active, __builtin_return_address(0));
+        if (cfg.debug && prims == 2 && stride >= 24 && (f & D3DFVF_XYZRHW) && data)
+            for (UINT i = 0; i < 4; ++i) { const float* q = (const float*)((const uint8_t*)data + i * stride); LOG("draw        v%u %.1f,%.1f uv %.3f,%.3f", i, q[0], q[1], q[(stride / 4) - 2], q[(stride / 4) - 1]); }
+    }
+    int scale = g_iscale_active && g_iscale > 1 && !g_dim_drawing, fade = dim_item_fade();
+    if ((scale || fade != 256) && data && stride >= 16 && SUCCEEDED(dev->lpVtbl->GetFVF(dev, &fvf)) && (fvf & D3DFVF_XYZRHW)) {
         UINT verts = type == D3DPT_TRIANGLELIST ? prims * 3 : type == D3DPT_TRIANGLESTRIP || type == D3DPT_TRIANGLEFAN ? prims + 2 :
                      type == D3DPT_LINELIST ? prims * 2 : type == D3DPT_LINESTRIP ? prims + 1 : prims;
         static uint8_t* buf; static UINT cap;
         UINT need = verts * stride;
         if (need > cap) { uint8_t* nb = (uint8_t*)realloc(buf, need); if (!nb) return orig_DrawPrimitiveUP(dev, type, prims, data, stride); buf = nb; cap = need; }
         memcpy(buf, data, need);
-        float n = (float)g_iscale;
-        for (UINT i = 0; i < verts; ++i) { float* v = (float*)(buf + i * stride); v[0] = (v[0] + 0.5f) * n - 0.5f; v[1] = (v[1] + 0.5f) * n - 0.5f; }
+        if (scale) {
+            float n = (float)g_iscale;
+            for (UINT i = 0; i < verts; ++i) { float* v = (float*)(buf + i * stride); v[0] = (v[0] + 0.5f) * n - 0.5f; v[1] = (v[1] + 0.5f) * n - 0.5f; }
+        }
+        if (fade != 256) {
+            DWORD dst = D3DBLEND_INVSRCALPHA; dev->lpVtbl->GetRenderState(dev, D3DRS_DESTBLEND, &dst);
+            dim_fade_vertices(buf, verts, stride, fvf, fade, dst == D3DBLEND_ONE);
+        }
         return orig_DrawPrimitiveUP(dev, type, prims, buf, stride);
     }
     return orig_DrawPrimitiveUP(dev, type, prims, data, stride);
+}
+typedef HRESULT (__stdcall *DrawPrimitiveFn)(IDirect3DDevice9*, D3DPRIMITIVETYPE, UINT, UINT);
+static DrawPrimitiveFn orig_DrawPrimitive;
+static HRESULT __stdcall hook_DrawPrimitive(IDirect3DDevice9* dev, D3DPRIMITIVETYPE type, UINT start, UINT prims) {
+    if (g_dim_trace_frames > 0) { DWORD f = 0; dev->lpVtbl->GetFVF(dev, &f); dim_trace(dev, "VB", prims, f, g_iscale_active, __builtin_return_address(0)); }
+    return orig_DrawPrimitive(dev, type, start, prims);
+}
+typedef HRESULT (__stdcall *DrawIndexedPrimitiveFn)(IDirect3DDevice9*, D3DPRIMITIVETYPE, INT, UINT, UINT, UINT, UINT);
+typedef HRESULT (__stdcall *DrawIndexedPrimitiveUPFn)(IDirect3DDevice9*, D3DPRIMITIVETYPE, UINT, UINT, UINT, const void*, D3DFORMAT, const void*, UINT);
+static DrawIndexedPrimitiveFn orig_DrawIndexedPrimitive; static DrawIndexedPrimitiveUPFn orig_DrawIndexedPrimitiveUP;
+static HRESULT __stdcall hook_DrawIndexedPrimitive(IDirect3DDevice9* dev, D3DPRIMITIVETYPE type, INT base, UINT minv, UINT nverts, UINT start, UINT prims) {
+    if (g_dim_trace_frames > 0) { DWORD f = 0; dev->lpVtbl->GetFVF(dev, &f); dim_trace(dev, "IDX", prims, f, g_iscale_active, __builtin_return_address(0)); }
+    return orig_DrawIndexedPrimitive(dev, type, base, minv, nverts, start, prims);
+}
+static HRESULT __stdcall hook_DrawIndexedPrimitiveUP(IDirect3DDevice9* dev, D3DPRIMITIVETYPE type, UINT minv, UINT nverts, UINT prims, const void* idx, D3DFORMAT ifmt, const void* data, UINT stride) {
+    if (g_dim_trace_frames > 0) { DWORD f = 0; dev->lpVtbl->GetFVF(dev, &f); dim_trace(dev, "IDXUP", prims, f, g_iscale_active, __builtin_return_address(0)); }
+    return orig_DrawIndexedPrimitiveUP(dev, type, minv, nverts, prims, idx, ifmt, data, stride);
 }
 /* Texture upscaling (texscale.c): the bind is where the copy is substituted, and the
    texture class's Release/LockRect and the D3DX surface loaders are where a copy is dropped
@@ -309,11 +342,18 @@ static HRESULT __stdcall hook_CreateDevice(IDirect3D9* d3d, UINT adapter, D3DDEV
             patch_vtable(vt, 26, (void*)hook_CreateVertexBuffer, (void**)&orig_CreateVertexBuffer);
             patch_vtable(vt, 27, (void*)hook_CreateIndexBuffer, (void**)&orig_CreateIndexBuffer);
         }
-        if (g_iscale > 1) {
+        if (g_iscale > 1 || g_dim_available) {
             patch_vtable(vt, 37, (void*)hook_SetRenderTarget, (void**)&orig_SetRenderTarget);
+            patch_vtable(vt, 83, (void*)hook_DrawPrimitiveUP, (void**)&orig_DrawPrimitiveUP);
+            patch_vtable(vt, 81, (void*)hook_DrawPrimitive, (void**)&orig_DrawPrimitive);
+            if (cfg.debug) {
+                patch_vtable(vt, 82, (void*)hook_DrawIndexedPrimitive, (void**)&orig_DrawIndexedPrimitive);
+                patch_vtable(vt, 84, (void*)hook_DrawIndexedPrimitiveUP, (void**)&orig_DrawIndexedPrimitiveUP);
+            }
+        }
+        if (g_iscale > 1) {
             patch_vtable(vt, 43, (void*)hook_Clear, (void**)&orig_Clear);
             patch_vtable(vt, 47, (void*)hook_SetViewport, (void**)&orig_SetViewport);
-            patch_vtable(vt, 83, (void*)hook_DrawPrimitiveUP, (void**)&orig_DrawPrimitiveUP);
             LOG("internal resolution x%d: the game draws at %dx%d", g_iscale, g_native_w, g_native_h);
         }
         window_attach(g_device_window);

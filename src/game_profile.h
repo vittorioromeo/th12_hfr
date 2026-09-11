@@ -86,6 +86,22 @@ struct GameProfile {
     /* Two-byte "frndint" sites in the sprite quad builder that snap every corner to a whole pixel;
        NOPed when the game draws at a higher internal resolution (video.internal_scale). */
     const uintptr_t* sprite_round_sites; size_t sprite_round_count;
+    /* Dimming (video.dim_background / dim_items, dimming.c). Every object draws from the game's
+       draw list, one callback per node in priority order, and the callbacks do not touch Direct3D
+       directly: sprites go through the sprite manager's batch, flushed whenever the texture or
+       blend changes. So the draw runner's dispatch (the instructions that load a node's argument
+       and callback and call it) is wrapped: it records the node's priority for the Direct3D hooks
+       and flushes the batch before and after, so every draw call belongs to exactly one callback.
+       `dispatch` is those instructions (position-independent, `dispatch_len` bytes), `node_reg`
+       holds the node whose priority sits at +prio_off. `flush_fn` is the batch flush, taking the
+       sprite manager (read from the pointer at `flush_this`) in `flush_reg`. Draws before the
+       first callback of priority `world_prio` are background; `item_prios` are the pickups'
+       callbacks. dispatch == 0: dimming unavailable for this game. */
+    struct {
+        uintptr_t dispatch; unsigned char dispatch_len, node_reg; uint32_t prio_off;
+        uintptr_t flush_fn; unsigned char flush_reg; uintptr_t flush_this;
+        int world_prio; int item_prios[4];
+    } draw;
     void (*install_sites)(void);
     void (*place_enemy)(uint8_t* enemy, uint8_t* anm, uint32_t flags, const float* position);
 };

@@ -129,9 +129,9 @@ static void client_size(HWND h, int* w, int* t) {
     else { *w = 0; *t = 0; }
 }
 static void scaler_release_output(void) { SAFE_RELEASE(g_real_bb); SAFE_RELEASE(g_swap); g_out_w = g_out_h = 0; g_own_present = 0; }
-static void texscale_release(void);
+static void texscale_release(void); static void dim_release(void); static int dim_in_game(void);
 static void scaler_release(void) {
-    texscale_release();
+    texscale_release(); dim_release();
     g_scaler_ok = 0;
     g_pass_w = g_pass_h = 0;
     scaler_release_output();
@@ -522,6 +522,9 @@ static HRESULT __stdcall hook_Present(IDirect3DDevice9* dev, const RECT* src, co
     /* A game we only know how to scale has no frame hook, so this is the once-a-frame point.
        Before the blit, so a rebuilt swap chain is the one we then draw into. */
     if (!g_frame_hook_installed) hfr_housekeeping();
+    g_dim_frame_done = 0;
+    if (g_dim_trace_frames > 0) { LOG("draw ---- present"); g_dim_trace_frames--; g_dim_trace_n = 0; }
+    else if (cfg.debug && g_dim_available && dim_in_game() && (++g_dim_ingame_frames % 600) == 0 && g_dim_ingame_frames <= 1800) g_dim_trace_frames = 1;   /* three frames of a stage, for the draw table */
     scaler_blit(dev);
     /* Our chain carries the picture; the device's own chain is never shown. */
     if (g_own_present && g_swap) return g_swap->lpVtbl->Present(g_swap, NULL, NULL, wnd, NULL, 0);

@@ -25,6 +25,9 @@ enum {
     UI_D3D9EX,               /* fixed once the device exists */
     UI_OWN_PRESENT,          /* likewise */
     UI_BORDERLESS_ACTIVE,    /* read-only: the window is currently covering the monitor */
+    UI_DIM_BACKGROUND,       /* percent the stage background fades towards black */
+    UI_DIM_ITEMS,            /* percent the pickups fade towards transparent */
+    UI_DIM_AVAILABLE,        /* read-only: this game's sprite layers are known to the patch */
     UI_SETTING_COUNT
 };
 

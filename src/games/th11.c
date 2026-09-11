@@ -206,6 +206,7 @@ static const struct GameProfile th11_profile = {
     .classes = th11_classes, .class_count = sizeof th11_classes / sizeof *th11_classes,
     .mask_minor_player_edges = 1, .d3dx = "d3dx9_37.dll",
     .native_size_cycle = 1,
+    .draw = { .dispatch = 0x456e81, .dispatch_len = 8, .node_reg = R_ESI, .prio_off = 0, .flush_fn = 0x44fd10, .flush_reg = R_ESI, .flush_this = 0x4c3268, .world_prio = 11, .item_prios = { 25, -1, -1, -1 } },
     .install_sites = th11_install_sites,
     .place_enemy = th11_place_enemy,
 };

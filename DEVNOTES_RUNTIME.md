@@ -198,6 +198,64 @@ because the crash coincided with a key press. `git diff` on the file, not the lo
 
 ---
 
+## 3b. Dimming the background and the pickups, and what draws what
+
+The request was simple — fade the stage towards black and the P/point items towards
+transparent so bullets stand out — and the first two attempts were wrong in instructive ways.
+
+**Attempt one: attribute by sprite layer.** The ANM manager draws its layers through one
+function with the layer number in EAX (TH13: `0x46f380`), and thanm's listings say which
+layer each script uses (bullets 15, items 10, enemies 8, player 11). Wrapping that function to
+record the layer and reading it in the `DrawPrimitiveUP` hook seemed enough. The trace showed
+otherwise: there were *no* draws on layers 8, 10 or 15, ever. The managers that own those
+objects — EnemyManager, ItemManager, BulletManager, the player — draw their VMs themselves
+from their own draw callbacks (24 callers of the VM draw `0x46a700`); the layer lists only
+carry free-standing effects and interface pieces. The layer number is a property of the
+script, not of who draws it.
+
+**Attempt two: attribute by draw call.** The next trace was stranger: no draw carried the
+items' texture at the moment the items were drawn, and the player's draw showed 34 primitives
+in one call. The sprite manager *batches*: consecutive 2D sprites with the same texture and
+blend accumulate and are flushed as one `DrawPrimitiveUP` when either changes, or when
+someone asks (`0x4679a0` in TH13, `0x442f50` TH10, `0x44fd10` TH11, `0x45a3c0` TH12 — all
+`ESI` = the ANM manager, whose pointer the profile already has). So the items' quads are
+typically flushed by the first sprite of the *next* callback. A draw call, on its own, says
+nothing about which object it belongs to.
+
+**What works: attribute by draw callback, and make the batches honest.** Every object
+registers a draw callback with a priority; the draw runner walks them in order (TH13
+`0x470c30`, list at manager+0x40, dispatch `mov ecx,[esi+0x24]; mov edx,[esi+8]; call edx`).
+The profile names that dispatch and `dimming.c` wraps it: flush the batch, record the node's
+priority in `g_draw_prio`, call the callback, flush again, forget the priority. Every draw
+call now happens under exactly one callback and the hooks can attribute it. The two extra
+flushes per callback are no-ops when nothing is pending, which is nearly always.
+
+**Where the background ends.** TH11 on render the stage into an offscreen target, switch to a
+second one for the world, copy the first into it, then copy back and forth for effects and
+finally onto the back buffer — TH13's trance re-blends the stage texture over the world with
+`DESTCOLOR/INVDESTCOLOR`. Dimming "at the first world draw" therefore lost to the copy that
+followed it. The quad is instead drawn *before the first callback with priority >=
+world_prio*, over the current viewport, which at that moment is the finished stage in
+whichever target holds it; every later copy carries the dim. `world_prio` is the callback
+that switches targets (TH11 11, TH12 12, TH13 12) or, on TH10 which draws straight into the
+back buffer, the first callback after the Stage's 2D pass (11); there the viewport is the
+playfield and the interface is painted around it afterwards. The trance overlay in TH13 is
+only partly dimmed (its blend brightens towards the texture); rare and short, left alone.
+
+**The items** are the ItemManager's callback (TH10 25, TH11 25, TH12 27, TH13 26): its
+draws have their vertex alpha scaled in the copy the internal-resolution path already makes,
+or their colour when the destination blend is ONE. Draws that lack a diffuse component are
+left alone; none of the four games' item draws do.
+
+**How the tables were found, for the next game.** With `debug=1` the runtime logs three
+frames of a stage: every draw with its callback priority, FVF, blend, texture and calling
+address, every `SetRenderTarget`/`SetViewport`, and the callback table (`callback prio N fn
+X`). Match `fn` against the class table (the ItemManager's draw callback sits a few bytes
+after its update callback: `0x427380` → `0x4273c0` in TH12) and look for the first
+`SetRenderTarget` after the stage draws. Texture creation is logged with sizes, which
+identifies the sheets by their known dimensions (bullet3.png is 256x256, eff_base.png too;
+the copies made by texture upscaling are 2× that, so trace with `texture_scale=0`).
+
 ## 4. Bugs met, and what they taught
 
 ### The menu key that stopped working

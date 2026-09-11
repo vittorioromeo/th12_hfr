@@ -53,6 +53,8 @@ static struct {
     int internal_scale;     /* the game draws at N times 640x480 (1 = as shipped) */
     int texture_scale;      /* textures magnified N times at load with texture_filter (0/1 = off) */
     char texture_filter_name[32];
+    int dim_background;     /* percent the stage background is faded towards black (0 = off) */
+    int dim_items;          /* percent the pickups (P, point, ...) are faded towards transparent */
 /* Named, not positional: the old form was a bare list of eighteen numbers that had to stay in
    the same order as the fields above, so inserting a setting anywhere but the end silently
    shifted every default after it. Anything omitted here is zero. */

@@ -112,6 +112,34 @@ catches it as well.
 
 Player (`0x12`) runs before EnemyManager (`0x15`), which matters for every guard in §6.
 
+### Draw callbacks (the other list; from a `debug=1` trace, see DEVNOTES_RUNTIME §3b)
+
+The draw runner is `0x470c30` (list at manager+0x40, dispatch `0x470c9e`), the sprite batch
+flush `0x4679a0` (ESI = AnmManager). Priorities are decimal here. `L n` is the AnmManager's
+layer thunk for sprite layer *n*; only free-standing VMs live in those lists — the managers
+below draw their own VMs (24 callers of the VM draw `0x46a700`), which is why "bullets are
+layer 15" is true of the scripts and useless for attributing draw calls.
+
+| Prio | Callback | What |
+| --- | --- | --- |
+| 1 | `0x43c4b0` | Stage: binds the offscreen stage target, 3D viewport (116,2 408x476) |
+| 2..9 | `0x403910`-ish / L0..L3 | 3D stage (VB, FVF 0x102), layer 2 = petals in 3D mode |
+| 10 | `0x413260` | Spellcard: spell background |
+| 11 | `0x46ed80` | AnmManager: world frame context |
+| 12 | `0x43c600` | Stage: binds the world target — **`world_prio`**: the dim quad goes just before this, into the finished stage |
+| 14 | `0x43c870` | Stage: copies the stage target into the world target (ONE/ZERO) |
+| 15 | L6 | spirits (additive); in trance, the stage texture re-blended DESTCOLOR/INVDESTCOLOR |
+| 16 | `0x40e7e0` | BulletManager (back layer) |
+| 21 | `0x418f30` | EnemyManager |
+| 22 | L11 | player VMs |
+| 26 | `0x42eff0` | **ItemManager — `item_prios`** |
+| 27 | `0x438eb0` | Gui |
+| 29 | `0x42fea0` | LaserManager |
+| 31 | `0x40e7b0` | BulletManager |
+| 35..37 | L16, `0x40a2b0`, L17 | effects, hit markers |
+| 38..42 | `0x43c6a0` `0x43c920` `0x43c740` `0x43c9d0` | Stage: world → stage target → world (effects), fullscreen copies |
+| 44..71 | | interface, into the back buffer (`0x43c7e0`/`0x43ca50` at 52/53 do the final copy) |
+
 ## 5. Object layouts
 
 **Player** (`0x4c22c4`): position `+0x5b8/+0x5bc`, state `+0x65c`, state timer

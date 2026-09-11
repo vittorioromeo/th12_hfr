@@ -52,7 +52,10 @@ detection, the crash reporter, and the conflict guard's module check.
 
 Not free, because each needs an address: the scheduler and sub-stepping (the UpdateFunc class
 table), replay extension, sub-tick input, the screenshot stub (`screenshot_fn` /
-`screenshot_call`), and the conflict guard's byte check.
+`screenshot_call`), the conflict guard's byte check, the internal resolution's
+`sprite_round_sites`, and the dimming's `draw` description (the draw runner's dispatch, the
+sprite batch flush, and two priorities; DEVNOTES_RUNTIME §3b says how a `debug=1` trace
+yields all of them in one stage).
 
 Anything a profile leaves out degrades rather than breaks. A game with no `screenshot_fn` logs
 that its screenshots are unsupported and runs; a game with no conflict sites keeps the module

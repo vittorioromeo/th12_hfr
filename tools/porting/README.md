@@ -6,7 +6,7 @@ aids, not part of the build; they expect files you produce yourself and never sh
 decompilation dump (`// ==== FUNCTION FUN_xxx @ addr size=n` headers, one function each).
 No game executable, listing or decompilation belongs in the repository.
 
-- `dis.py <exe> <start> <end>` — disassemble a code range straight from the executable
+- `disasm.py <exe> <start> <end>` — disassemble a code range straight from the executable
   (objdump on the raw bytes, VA-adjusted). The everyday tool.
 - `scan_registrations.py <exe> <helper VA>` — every UpdateFunc registration with priority and
   callback: the node table for a profile's `classes[]`.

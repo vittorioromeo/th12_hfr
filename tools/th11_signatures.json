@@ -295,6 +295,10 @@
     "description": "sub esp, 8; test dword ptr [0x4c3810], 0x8000"
   },
   {
+    "address": "0x456e81",
+    "bytes": "8b 4e 20 8b 46 08 ff d0"
+  },
+  {
     "address": "0x457080",
     "bytes": "5733ff3bcf",
     "description": "push edi; xor edi, edi; cmp ecx, edi"

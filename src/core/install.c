@@ -115,6 +115,8 @@ static int install(void) {
             patch_bytes(g_game->sprite_round_sites[i], nop2, 2, site_expected(g_game->sprite_round_sites[i], 2));
         LOG("internal resolution: sprite corners no longer snapped to whole pixels (%u sites)", (unsigned)g_game->sprite_round_count);
     } else if (cfg.internal_scale > 1) LOG("internal resolution: this game's sprite snapping is not known; sprites stay on whole pixels");
+    /* Dimming needs to know which draw callback each draw call belongs to (dimming.c). */
+    if (g_game->draw.dispatch) dim_install(); else LOG("dimming: this game's draw runner is not described; dim_background/dim_items are inert");
     if (sim) {
         for (int i=0;i<4;++i) if (g_game->addr.replay_saves[i]) site_call(g_game->addr.replay_saves[i],hfr_replay_save);
         if (g_game->addr.replay_load_call) site_call(g_game->addr.replay_load_call,hfr_replay_load);

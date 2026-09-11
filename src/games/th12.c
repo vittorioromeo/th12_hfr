@@ -349,6 +349,7 @@ static const struct GameProfile th12_profile = {
     .classes = th12_classes, .class_count = sizeof th12_classes / sizeof *th12_classes,
     .mask_minor_player_edges = 0, .d3dx = "d3dx9_40.dll",
     .native_size_cycle = 1,
+    .draw = { .dispatch = 0x462691, .dispatch_len = 8, .node_reg = R_ESI, .prio_off = 0, .flush_fn = 0x45a3c0, .flush_reg = R_ESI, .flush_this = 0x4ce8cc, .world_prio = 12, .item_prios = { 27, -1, -1, -1 } },
     .install_sites = th12_install_sites,
     .place_enemy = th12_place_enemy,
 };

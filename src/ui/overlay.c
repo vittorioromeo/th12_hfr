@@ -31,6 +31,9 @@ int hfr_ui_get(int id) {
     case UI_D3D9EX:             return g_using_ex;
     case UI_OWN_PRESENT:        return g_own_present;
     case UI_BORDERLESS_ACTIVE:  return g_borderless_active;
+    case UI_DIM_BACKGROUND:     return cfg.dim_background;
+    case UI_DIM_ITEMS:          return cfg.dim_items;
+    case UI_DIM_AVAILABLE:      return g_dim_available && g_game && g_game->draw.world_prio > 0;
     default:                    return 0;
     }
 }
@@ -56,6 +59,8 @@ void hfr_ui_set(int id, int value) {
     case UI_SUBTICK_INPUT:   cfg.subtick_input = !!value; break;
     case UI_ENEMY_INTERP:    cfg.enemy_interp = !!value; break;
     case UI_DEBUG:           cfg.debug = !!value; break;
+    case UI_DIM_BACKGROUND:  cfg.dim_background = value < 0 ? 0 : (value > 100 ? 100 : value); break;
+    case UI_DIM_ITEMS:       cfg.dim_items = value < 0 ? 0 : (value > 100 ? 100 : value); break;
     case UI_MAX_FRAME_LATENCY:
         cfg.max_frame_latency = value < 0 ? 0 : (value > 16 ? 16 : value);
         if (g_using_ex && g_dev && cfg.max_frame_latency > 0) {
@@ -121,6 +126,8 @@ void hfr_ui_save(void) {
     ini_put_int("video", "window_scale", cfg.window_scale);
     ini_put_int("video", "snap_aspect", cfg.snap_aspect);
     ini_put_int("video", "fullscreen_mode", cfg.fullscreen_mode);
+    ini_put_int("video", "dim_background", cfg.dim_background);
+    ini_put_int("video", "dim_items", cfg.dim_items);
     ini_put_int("hfr", "max_frame_latency", cfg.max_frame_latency);
     ini_put_int("hfr", "fps", cfg.fps);
     ini_put_int("hfr", "vsync", cfg.vsync);

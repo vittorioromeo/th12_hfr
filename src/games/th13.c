@@ -284,5 +284,13 @@ static const struct GameProfile th13_profile = {
     .mask_minor_player_edges = 0, .d3dx = "d3dx9_43.dll",
     .native_size_cycle = 1,
     .sprite_round_sites = th13_sprite_round_sites, .sprite_round_count = 4,
+    /* Draw runner 0x470c30: for each node (ESI) `mov ecx,[esi+0x24]; mov edx,[esi+8]; call edx`.
+       Sprite batch flush 0x4679a0 wants the AnmManager (pointer at 0x4dc688) in ESI. Draw
+       priorities: 1..10 stage 3D, sprite layers 0..3 and the spell background, all into the stage
+       target; 12/14 copy that into the world target; 15 on is the world (enemies 21, items 26,
+       lasers 29, bullets 31 ...); 44 on the interface (TH13_DEVNOTES has the table). */
+    .draw = { .dispatch = 0x470c9e, .dispatch_len = 8, .node_reg = R_ESI, .prio_off = 0,
+              .flush_fn = 0x4679a0, .flush_reg = R_ESI, .flush_this = 0x4dc688,
+              .world_prio = 12, .item_prios = { 26, -1, -1, -1 } },
     .install_sites = th13_install_sites, .place_enemy = th13_place_enemy,
 };

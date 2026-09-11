@@ -125,6 +125,7 @@ static const struct GameProfile th10_profile = {
     .speed_sites=th10_speed_sites,.speed_site_count=sizeof th10_speed_sites/sizeof *th10_speed_sites,
     .classes=th10_classes,.class_count=sizeof th10_classes/sizeof *th10_classes,
     .runner_stack_arg=1,.mask_minor_player_edges=1,.d3dx="d3dx9_31.dll",
+    .draw = { .dispatch = 0x449da3, .dispatch_len = 6, .node_reg = R_ESI, .prio_off = 0, .flush_fn = 0x442f50, .flush_reg = R_ESI, .flush_this = 0x491c10, .world_prio = 11, .item_prios = { 25, -1, -1, -1 } },
     .install_sites=th10_install_sites,
     .provisional=0, /* validated: full patch plan in the harness, and a live run under Wine
                        that boots, plays gameplay at 240 Hz with 0 repeated frames, records and
