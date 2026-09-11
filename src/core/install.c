@@ -137,6 +137,12 @@ static int install(void) {
     if (cfg.internal_scale > 1 &&
         !hook_iat(g_game->d3dx,"D3DXLoadSurfaceFromSurface",hook_D3DXLoadSurfaceFromSurface,(void**)&orig_D3DXLoadSurfaceFromSurface))
         LOG("internal resolution: D3DXLoadSurfaceFromSurface not imported; screen captures will show the top-left quarter");
+    if (cfg.texture_scale > 1) {
+        hook_iat(g_game->d3dx,"D3DXLoadSurfaceFromMemory",hook_D3DXLoadSurfaceFromMemory,(void**)&orig_D3DXLoadSurfaceFromMemory);
+        hook_iat(g_game->d3dx,"D3DXLoadSurfaceFromFileInMemory",hook_D3DXLoadSurfaceFromFileInMemory,(void**)&orig_D3DXLoadSurfaceFromFileInMemory);
+        if (!orig_D3DXLoadSurfaceFromSurface)
+            hook_iat(g_game->d3dx,"D3DXLoadSurfaceFromSurface",hook_D3DXLoadSurfaceFromSurface,(void**)&orig_D3DXLoadSurfaceFromSurface);
+    }
     /* Sub-tick input feeds the simulation, so it belongs with the rest of it. */
     if (sim && cfg.subtick_input) hook_iat("winmm.dll","joyGetPosEx",hook_joyGetPosEx,(void**)&orig_joyGetPosEx);
     FlushInstructionCache(GetCurrentProcess(),g_stub_mem,g_stub_used);

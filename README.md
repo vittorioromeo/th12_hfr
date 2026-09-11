@@ -8,7 +8,7 @@ per-game records are [TH10_DEVNOTES.md](TH10_DEVNOTES.md), [TH11_DEVNOTES.md](TH
 High refresh rate gameplay and presentation for Touhou. One DLL detects the game
 and selects its adapter; the scheduler, input, replay and Direct3D code are shared.
 
-**Current build: v0.4.2-test.** Supported executable layouts:
+**Current build: v0.4.3-test.** Supported executable layouts:
 
 | Game | Version | Executables | State |
 | --- | --- | --- | --- |
@@ -45,7 +45,10 @@ is offered alongside them, including multi-pass ones. `shaders/README.md` descri
 instead of 640x480 while keeping every coordinate it has: sprites land on real sub-pixel
 positions instead of snapping to 640x480 pixels — a slow bullet at 360 Hz glides instead of
 stepping — and the 3D backgrounds gain real detail. Supported fully on TH13; other games get
-the sharper rasterisation until their sprite snapping is mapped.
+the sharper rasterisation until their sprite snapping is mapped. `texture_scale=2` with
+`texture_filter=xbr-lv2` (or `mmpx`, `super-xbr`, `scalefx`) then magnifies every texture the
+game loads with that filter, once, at load time — the pixel-art upscaling applied to the art
+itself rather than to the finished frame, alpha edges included.
 
 **An in-game menu.** F11 by default. Every setting in the INI is there, in four tabs, and changes
 apply immediately; saving makes them the default. Settings that cannot take effect in the current
@@ -62,7 +65,7 @@ every supported title; it still needs full-run replay testing before a stable re
 
 ## Install
 
-Download/extract `touhou_hfr_v0.4.2-test.zip` and close the game.
+Download/extract `touhou_hfr_v0.4.3-test.zip` and close the game.
 
 For a fresh installation, copy these four files next to the game executable:
 
@@ -138,6 +141,8 @@ refresh and enable sub-stepping, sub-tick movement/focus input and D3D9Ex.
 | `warn_wrapper` | `1` | Say at startup when a d3d9 wrapper is presenting the game |
 | `own_present` | `-1` | Which swap chain reaches the screen; `-1` decides automatically |
 | `internal_scale` | `1` | Draw the game at N times 640x480 (sub-pixel sprite positions; restart to apply) |
+| `texture_scale` | `0` | Magnify every loaded texture N times with `texture_filter` at load time (pair with `internal_scale`) |
+| `texture_filter` | `xbr-lv2` | The filter for that: `xbr-lv2`, `mmpx`, `super-xbr`, `scalefx`, or a `.hlsl` from `shaders/` |
 
 `[systems]` contains per-system switches for troubleshooting. Their defaults
 follow the adapter's audited classification. Turning a switch on does not make

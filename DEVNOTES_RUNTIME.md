@@ -173,6 +173,23 @@ the pixel-art upscalers to the *textures* at load time (the `D3DXCreateTextureFr
 hook already exists), which with N× rasterisation and sub-pixel placement is an HD mode rather
 than a smoothing filter.
 
+**Texture upscaling, the other half** (`video.texture_scale = N`, `texture_filter`;
+`src/core/texscale.c`). Every texture the game creates goes through the device's
+`CreateTexture` — D3DX's loaders included — so that hook registers them. On a texture's first
+`SetTexture` a render-target copy N times its size is made and the pixel-art filter runs into
+it on the GPU; the bind then substitutes the copy, and because UVs are relative the game is
+none the wiser. The bundled filters write alpha = 1 and reason about colour only, and a
+sprite sheet is mostly alpha, so each texture is run twice: once as colour premultiplied by
+alpha (transparent texels read as black rather than whatever the sheet left there), once as
+alpha spread to grey; a final pass divides one by the other and writes the alpha. The
+silhouette thereby gets the same treatment as the colours. Textures the game rewrites — the
+stage title, dialogue text (GDI into a DIB, then `D3DXLoadSurfaceFromMemory`) — are marked
+stale by the surface-load and `LockRect` hooks and redone on their next bind; the class
+`Release` hook drops the copy with the texture. Excluded: render targets, mipmapped and
+oversize textures, and everything past a 512 MB budget. Our own draws (the presentation blit,
+the menu) run with substitution off. Verified in the rig at 2×+2× with xBR-lv2: title art,
+gameplay, stage title, trance background, HUD, all clean, ~17 MB of copies in stage 1.
+
 **The one mistake, recorded because it was cheap to make and expensive to see.** Turning the
 experiment into the feature, a text splice dropped the three D3D9Ex managed-pool hooks that sat
 next to it; every managed vertex buffer creation then failed and the game crashed at startup in

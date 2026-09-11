@@ -129,7 +129,9 @@ static void client_size(HWND h, int* w, int* t) {
     else { *w = 0; *t = 0; }
 }
 static void scaler_release_output(void) { SAFE_RELEASE(g_real_bb); SAFE_RELEASE(g_swap); g_out_w = g_out_h = 0; g_own_present = 0; }
+static void texscale_release(void);
 static void scaler_release(void) {
+    texscale_release();
     g_scaler_ok = 0;
     g_pass_w = g_pass_h = 0;
     scaler_release_output();
@@ -474,8 +476,10 @@ static int  hfr_housekeeping(void);                        /* window and menu up
 static int  g_frame_hook_installed;                        /* whether hfr_frame runs for this game */
 
 /* Called from the Present hook, after the game's EndScene and before the real Present. */
+static int g_tex_generating;   /* texscale.c: no texture substitution while we draw ourselves */
 static void scaler_blit(IDirect3DDevice9* dev) {
     if (!g_scaler_ok || !g_real_bb || g_out_w <= 0 || g_out_h <= 0) return;
+    g_tex_generating++;
     if (g_state) g_state->lpVtbl->Capture(g_state);
     struct ScaleRect dst = scale_rect(g_native_w, g_native_h, g_out_w, g_out_h, cfg.scaling);
     if (FAILED(dev->lpVtbl->BeginScene(dev))) { if (g_state) g_state->lpVtbl->Apply(g_state); return; }
@@ -510,6 +514,7 @@ static void scaler_blit(IDirect3DDevice9* dev) {
        state block has to be applied afterwards for the game to find its own viewport. */
     scaler_rebind(dev);
     if (g_state) g_state->lpVtbl->Apply(g_state);
+    g_tex_generating--;
     g_stat_blits++;
 }
 

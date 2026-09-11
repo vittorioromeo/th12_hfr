@@ -8,6 +8,7 @@ static float  g_dt = 1.0f;         /* game frames per tick for SUB nodes */
 static unsigned g_tick = 0;        /* sub-tick counter */
 static float g_ptf_prev, g_ptf_cur;   /* player state timer (float) before/after the last Player node call */
 static float g_move_residual[2];
+static unsigned g_stat_tex_done, g_stat_tex_redone; static size_t g_tex_bytes;   /* texscale.c */
 static double g_t0 = 0;            /* wall-clock origin of the tick schedule */
 static unsigned g_stat_skipped;
 static unsigned g_last_units = 0;  /* units of the previous tick */

@@ -35,8 +35,13 @@ typedef HRESULT (__stdcall *CreateIndexBufferFn)(IDirect3DDevice9*, UINT, DWORD,
 static CreateTextureFn orig_CreateTexture; static CreateVertexBufferFn orig_CreateVertexBuffer; static CreateIndexBufferFn orig_CreateIndexBuffer;
 static unsigned g_stat_managed_conv;
 static inline void unmanage(D3DPOOL* pool, DWORD* usage) { if (*pool == D3DPOOL_MANAGED) { *pool = D3DPOOL_DEFAULT; *usage |= D3DUSAGE_DYNAMIC; g_stat_managed_conv++; } }
+static void tex_register(IDirect3DTexture9* t);
+static void tex_hook_class(IDirect3DTexture9* t);
 static HRESULT __stdcall hook_CreateTexture(IDirect3DDevice9* dev, UINT w, UINT h, UINT levels, DWORD usage, D3DFORMAT fmt, D3DPOOL pool, IDirect3DTexture9** out, HANDLE* sh) {
-    unmanage(&pool, &usage); return orig_CreateTexture(dev, w, h, levels, usage, fmt, pool, out, sh);
+    if (g_using_ex) unmanage(&pool, &usage);
+    HRESULT hr = orig_CreateTexture(dev, w, h, levels, usage, fmt, pool, out, sh);
+    if (SUCCEEDED(hr) && out && *out && cfg.texture_scale > 1) { tex_hook_class(*out); tex_register(*out); }
+    return hr;
 }
 static HRESULT __stdcall hook_CreateVertexBuffer(IDirect3DDevice9* dev, UINT len, DWORD usage, DWORD fvf, D3DPOOL pool, IDirect3DVertexBuffer9** out, HANDLE* sh) {
     unmanage(&pool, &usage); return orig_CreateVertexBuffer(dev, len, usage, fvf, pool, out, sh);
@@ -110,8 +115,10 @@ static void warn_if_wrapper_presents(void) {
     show_notice(text);
 }
 
+static void texscale_init(IDirect3DDevice9* dev);
 static void after_device(IDirect3DDevice9* dev) {
     warn_if_wrapper_presents();    /* g_own_present is settled by now, however it turned out */
+    texscale_init(dev);
     int hz = detect_refresh(dev);
     g_display_hz = hz;
     LOG("display refresh detected: %d Hz", hz);
@@ -174,6 +181,45 @@ static HRESULT __stdcall hook_DrawPrimitiveUP(IDirect3DDevice9* dev, D3DPRIMITIV
     }
     return orig_DrawPrimitiveUP(dev, type, prims, data, stride);
 }
+/* Texture upscaling (texscale.c): the bind is where the copy is substituted, and the
+   texture class's Release/LockRect and the D3DX surface loaders are where a copy is dropped
+   or marked stale. The class vtable is shared by every texture of the device, so it is
+   patched once, from the first texture the game creates. */
+typedef HRESULT (__stdcall *SetTextureFn)(IDirect3DDevice9*, DWORD, IDirect3DBaseTexture9*);
+static SetTextureFn orig_SetTexture;
+static IDirect3DBaseTexture9* tex_substitute(IDirect3DDevice9* dev, DWORD stage, IDirect3DBaseTexture9* t);
+static HRESULT __stdcall hook_SetTexture(IDirect3DDevice9* dev, DWORD stage, IDirect3DBaseTexture9* t) {
+    return orig_SetTexture(dev, stage, tex_substitute(dev, stage, t));
+}
+typedef ULONG (__stdcall *TexReleaseFn)(IDirect3DTexture9*);
+typedef HRESULT (__stdcall *TexLockRectFn)(IDirect3DTexture9*, UINT, D3DLOCKED_RECT*, const RECT*, DWORD);
+static TexReleaseFn orig_TexRelease; static TexLockRectFn orig_TexLockRect;
+static void tex_released(IDirect3DTexture9* t); static void tex_dirty_texture(IDirect3DTexture9* t); static void tex_dirty_surface(IDirect3DSurface9* s);
+static ULONG __stdcall hook_TexRelease(IDirect3DTexture9* t) {
+    ULONG n = orig_TexRelease(t);
+    if (n == 0) tex_released(t);
+    return n;
+}
+static HRESULT __stdcall hook_TexLockRect(IDirect3DTexture9* t, UINT level, D3DLOCKED_RECT* lr, const RECT* r, DWORD flags) {
+    if (!(flags & D3DLOCK_READONLY)) tex_dirty_texture(t);
+    return orig_TexLockRect(t, level, lr, r, flags);
+}
+static void tex_hook_class(IDirect3DTexture9* t) {
+    void** vt = *(void***)t;
+    patch_vtable(vt, 2, (void*)hook_TexRelease, (void**)&orig_TexRelease);
+    patch_vtable(vt, 19, (void*)hook_TexLockRect, (void**)&orig_TexLockRect);
+}
+typedef HRESULT (__stdcall *D3DXLoadSurfaceFromMemoryFn)(IDirect3DSurface9*, const PALETTEENTRY*, const RECT*, LPCVOID, D3DFORMAT, UINT, const PALETTEENTRY*, const RECT*, DWORD, D3DCOLOR);
+typedef HRESULT (__stdcall *D3DXLoadSurfaceFromFileInMemoryFn)(IDirect3DSurface9*, const PALETTEENTRY*, const RECT*, LPCVOID, UINT, const RECT*, DWORD, D3DCOLOR, void*);
+static D3DXLoadSurfaceFromMemoryFn orig_D3DXLoadSurfaceFromMemory; static D3DXLoadSurfaceFromFileInMemoryFn orig_D3DXLoadSurfaceFromFileInMemory;
+static HRESULT __stdcall hook_D3DXLoadSurfaceFromMemory(IDirect3DSurface9* dst, const PALETTEENTRY* dp, const RECT* dr, LPCVOID mem, D3DFORMAT fmt, UINT pitch, const PALETTEENTRY* sp, const RECT* sr, DWORD filter, D3DCOLOR key) {
+    tex_dirty_surface(dst);
+    return orig_D3DXLoadSurfaceFromMemory(dst, dp, dr, mem, fmt, pitch, sp, sr, filter, key);
+}
+static HRESULT __stdcall hook_D3DXLoadSurfaceFromFileInMemory(IDirect3DSurface9* dst, const PALETTEENTRY* dp, const RECT* dr, LPCVOID mem, UINT size, const RECT* sr, DWORD filter, D3DCOLOR key, void* info) {
+    tex_dirty_surface(dst);
+    return orig_D3DXLoadSurfaceFromFileInMemory(dst, dp, dr, mem, size, sr, filter, key, info);
+}
 /* The engine's screen capture (pause backdrop, spell backgrounds) copies a 640x480-coordinate
    rectangle of the back buffer into one of its textures with D3DX. The back buffer is ours and
    N times larger, so the source rectangle is scaled; D3DX then filters it down to the
@@ -181,6 +227,7 @@ static HRESULT __stdcall hook_DrawPrimitiveUP(IDirect3DDevice9* dev, D3DPRIMITIV
 typedef HRESULT (__stdcall *D3DXLoadSurfaceFromSurfaceFn)(IDirect3DSurface9*, const PALETTEENTRY*, const RECT*, IDirect3DSurface9*, const PALETTEENTRY*, const RECT*, DWORD, D3DCOLOR);
 static D3DXLoadSurfaceFromSurfaceFn orig_D3DXLoadSurfaceFromSurface;
 static HRESULT __stdcall hook_D3DXLoadSurfaceFromSurface(IDirect3DSurface9* dst, const PALETTEENTRY* dp, const RECT* dr, IDirect3DSurface9* src, const PALETTEENTRY* sp, const RECT* sr, DWORD filter, D3DCOLOR key) {
+    tex_dirty_surface(dst);
     if (g_iscale > 1 && sr && src == g_src_surf) {
         RECT r = { sr->left * g_iscale, sr->top * g_iscale, sr->right * g_iscale, sr->bottom * g_iscale };
         return orig_D3DXLoadSurfaceFromSurface(dst, dp, dr, src, sp, &r, filter, key);
@@ -255,8 +302,10 @@ static HRESULT __stdcall hook_CreateDevice(IDirect3D9* d3d, UINT adapter, D3DDEV
         patch_vtable(vt, 16, (void*)hook_Reset, (void**)&orig_Reset);
         patch_vtable(vt, 17, (void*)hook_Present, (void**)&orig_Present);
         patch_vtable(vt, 18, (void*)hook_GetBackBuffer, (void**)&orig_GetBackBuffer);
-        if (g_using_ex) {
+        if (g_using_ex || cfg.texture_scale > 1)
             patch_vtable(vt, 23, (void*)hook_CreateTexture, (void**)&orig_CreateTexture);
+        if (cfg.texture_scale > 1) patch_vtable(vt, 65, (void*)hook_SetTexture, (void**)&orig_SetTexture);
+        if (g_using_ex) {
             patch_vtable(vt, 26, (void*)hook_CreateVertexBuffer, (void**)&orig_CreateVertexBuffer);
             patch_vtable(vt, 27, (void*)hook_CreateIndexBuffer, (void**)&orig_CreateIndexBuffer);
         }

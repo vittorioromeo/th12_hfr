@@ -36,6 +36,9 @@ static void read_config(void) {
     cfg.window_scale = GetPrivateProfileIntA("video", "window_scale", 0, ini);
     cfg.snap_aspect = GetPrivateProfileIntA("video", "snap_aspect", 0, ini);
     cfg.internal_scale = GetPrivateProfileIntA("video", "internal_scale", 1, ini);
+    cfg.texture_scale = GetPrivateProfileIntA("video", "texture_scale", 0, ini);
+    GetPrivateProfileStringA("video", "texture_filter", "xbr-lv2", cfg.texture_filter_name, sizeof cfg.texture_filter_name, ini);
+    ini_trim(cfg.texture_filter_name);
     cfg.fullscreen_mode = GetPrivateProfileIntA("video", "fullscreen_mode", 1, ini);
     cfg.menu_key = GetPrivateProfileIntA("video", "menu_key", VK_F11, ini);
     cfg.size_cycle_key = GetPrivateProfileIntA("video", "size_cycle_key", VK_F10, ini);
@@ -78,10 +81,10 @@ BOOL WINAPI DllMain(HINSTANCE h, DWORD reason, LPVOID res) {
         if (nt) select_game(base,nt->OptionalHeader.SizeOfImage);
         read_config();
         if (cfg.log) { char path[MAX_PATH]; GetModuleFileNameA(NULL, path, MAX_PATH); char* p = strrchr(path, '\\'); if (p) strcpy(p + 1, "touhou_hfr.log"); g_log = fopen(path, "w"); }
-        LOG("Touhou HFR v0.4.2-test loading; fps=%d vsync=%d substep=%d subtick_input=%d d3d9ex=%d max_frame_latency=%d flipex=%d enemy_interp=%d",
+        LOG("Touhou HFR v0.4.3-test loading; fps=%d vsync=%d substep=%d subtick_input=%d d3d9ex=%d max_frame_latency=%d flipex=%d enemy_interp=%d",
             cfg.fps, cfg.vsync, cfg.substep, cfg.subtick_input, cfg.d3d9ex, cfg.max_frame_latency, cfg.flipex, cfg.enemy_interp);
-        LOG("video: scaling=%d filter=%s resizable=%d window_scale=%d snap_aspect=%d fullscreen_mode=%d internal_scale=%d",
-            cfg.scaling, cfg.filter_name, cfg.resizable, cfg.window_scale, cfg.snap_aspect, cfg.fullscreen_mode, cfg.internal_scale);
+        LOG("video: scaling=%d filter=%s resizable=%d window_scale=%d snap_aspect=%d fullscreen_mode=%d internal_scale=%d texture_scale=%d (%s)",
+            cfg.scaling, cfg.filter_name, cfg.resizable, cfg.window_scale, cfg.snap_aspect, cfg.fullscreen_mode, cfg.internal_scale, cfg.texture_scale, cfg.texture_filter_name);
         if (!g_game || !install()) LOG("Unsupported/modified executable or installation failure; HFR inactive (proxy forwarding available)");
     }
     return TRUE;

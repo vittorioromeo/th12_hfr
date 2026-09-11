@@ -61,6 +61,7 @@ static void limiter_stats(double now) {
                 g_stat_ticks / (now - g_stat_last), g_refresh, g_stat_catchup, g_stat_skipped, g_stat_sub_calls, g_stat_frame_calls, g_logical, g_stat_long, g_stat_vlong,
                 tick_rate_since(now), g_stat_subtick_polls, g_stat_subtick_applied,
                 g_stat_repeat_frames, g_stat_ticks);
+        { static unsigned last_done, last_redone; if (g_stat_tex_done != last_done || g_stat_tex_redone != last_redone) { LOG("textures: %u upscaled, %u redone after a rewrite, %u MB", g_stat_tex_done, g_stat_tex_redone, (unsigned)(g_tex_bytes >> 20)); last_done = g_stat_tex_done; last_redone = g_stat_tex_redone; } }
         g_stat_last = now; g_stat_ticks = 0; g_stat_sub_calls = g_stat_frame_calls = g_stat_long = g_stat_vlong = g_stat_catchup = g_stat_skipped = 0; g_stat_ticks_run_last = g_ticks_run;
         g_stat_subtick_polls = g_stat_subtick_applied = 0; g_stat_repeat_frames = 0;
         if (cfg.debug) {
