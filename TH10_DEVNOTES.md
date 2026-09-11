@@ -223,11 +223,22 @@ layer 12, 29 BulletManager, 32 Spellcard, 33 layer 13, 34 Bomb, 35 `0x42b9b0`, 3
 37 `0x409270`, 38/48 `0x401520`/`0x401510` (the Effects object; 48 draws a constant nine
 quads of text), 40..47 interface. bullet.anm: items layer 7, bullets 13, effects elsewhere.
 
-**The spell backgrounds above the world.** Stage 1's card backgrounds set no layer and draw
-under everything; stage 2's are 23 tiles on layers 4 and 5 of `stgenm02.anm`, i.e. sprite
-layers drawn at priorities 16-17, *after* the quad. The profile's rule `{16,17,"stgenm*.anm",
-4,5, DIM_BACKGROUND}` fades their colour towards black instead. Layer 3 of the same files is
-the boss portrait cut-in (`face01ct.png`) and is left alone.
+**The spell backgrounds above the world.** The card backgrounds (`cdbg0Xa/b.png`, scripts
+with no layer) are not drawn by the sprite layers at all: `0x409230`, the callback at
+priority 14, draws them itself — a playfield-sized quad and a rotating second one — *after*
+the dim quad. The rule `{14,14,"stgenm*.anm",-1,-1, DIM_BACKGROUND}` fades their colour
+towards black instead. (A first guess put the rule on layers 4-5 of `stgenm02.anm`; those
+turned out to be Hina's spinning body, and the report "boss sprites are dimmed" followed
+within the day. Layer 3 is the portrait cut-in, 14 the boss name.)
+
+**Enemy deaths.** The coloured bursts are `enemy.anm`'s own lowest layer — 16 one-sprite
+additive scripts on layer 4 (row 224 of enemy.png), the enemies proper on layer 5. The rule
+puts layer 4 in the effects class and leaves the rest alone; TH11 (layer 6 of 7/8) and TH12
+(7 of 8/9) have the same shape.
+
+**Hitches.** `hitch:` lines in the log record any gap between presents over 40 ms with what
+that frame did — draw calls, forced batch flushes, sprite VM draws, textures upscaled — for
+stutter reports.
 
 ## 7. Harness and rig notes specific to TH10
 

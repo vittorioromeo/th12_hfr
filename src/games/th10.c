@@ -104,9 +104,10 @@ static const struct node_class th10_classes[] = {
 static const struct DimRule th10_dim_rules[] = {
     { 25, 25, NULL,          -1, -1, DIM_ITEMS },
     { 27, 29, NULL,          -1, -1, DIM_NONE },
-    { 16, 17, "stgenm*.anm",  4,  5, DIM_BACKGROUND },   /* spell backgrounds drawn as sprites above the world (stage 2's) */
+    { 14, 14, "stgenm*.anm", -1, -1, DIM_BACKGROUND },   /* the spell-card backgrounds, drawn by 0x409230 above the world */
     { 11, 40, "pl*.anm",      8, 13, DIM_PLAYER_SHOTS },
     { 11, 40, "pl*.anm",     -1, -1, DIM_NONE },
+    { 11, 40, "enemy.anm",    4,  4, DIM_EFFECTS },      /* enemy deaths: the coloured bursts on enemy.anm's lowest layer */
     { 11, 40, "enemy.anm",   -1, -1, DIM_NONE },
     { 11, 40, "bullet.anm",   7,  7, DIM_NONE },
     { 11, 40, "bullet.anm",  13, 13, DIM_NONE },

@@ -287,6 +287,12 @@ rules. The background class fades colour rather than alpha in both paths: TH10 d
 spell backgrounds as sprites *above* the world (stage 2's, on layers 4-5 → priority 16-17), and
 a rule can now name them `DIM_BACKGROUND` so they darken like the rest.
 
+**Where the deaths are.** TH13 keeps the enemy-death bursts in `effect.anm`; TH10-12 keep
+them in `enemy.anm`, on its lowest layer (TH10 4, TH11 6, TH12 7: sixteen one-sprite
+additive scripts), with the enemies on the layers above — so a rule per game names that
+layer, and the file-wide "never touch enemy.anm" comes after it. The tell in a thanm listing:
+a block of single-sprite scripts sharing a texture row, with `ins_67(1)`/`ins_303(1)`.
+
 **Known imprecision.** The options orbit the player on the shot layer, so they fade with the
 shots. TH13's trance overlay brightens the dimmed stage back towards its texture (its blend
 is DESTCOLOR/INVDESTCOLOR); rare and short, left alone.

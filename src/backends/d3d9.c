@@ -171,7 +171,7 @@ static HRESULT __stdcall hook_Clear(IDirect3DDevice9* dev, DWORD n, const D3DREC
     return orig_Clear(dev, n, r, flags, c, z, st);
 }
 static HRESULT __stdcall hook_DrawPrimitiveUP(IDirect3DDevice9* dev, D3DPRIMITIVETYPE type, UINT prims, const void* data, UINT stride) {
-    DWORD fvf = 0;
+    DWORD fvf = 0; g_frame_draws++;
     if (g_dim_trace_frames > 0 && !g_dim_drawing) {
         DWORD f = 0; dev->lpVtbl->GetFVF(dev, &f); dim_trace(dev, "UP", prims, f, g_iscale_active, __builtin_return_address(0));
         if (cfg.debug && prims == 2 && stride >= 24 && (f & D3DFVF_XYZRHW) && data)
@@ -200,6 +200,7 @@ static HRESULT __stdcall hook_DrawPrimitiveUP(IDirect3DDevice9* dev, D3DPRIMITIV
 typedef HRESULT (__stdcall *DrawPrimitiveFn)(IDirect3DDevice9*, D3DPRIMITIVETYPE, UINT, UINT);
 static DrawPrimitiveFn orig_DrawPrimitive;
 static HRESULT __stdcall hook_DrawPrimitive(IDirect3DDevice9* dev, D3DPRIMITIVETYPE type, UINT start, UINT prims) {
+    g_frame_draws++;
     if (g_dim_trace_frames > 0) { DWORD f = 0; dev->lpVtbl->GetFVF(dev, &f); dim_trace(dev, "VB", prims, f, g_iscale_active, __builtin_return_address(0)); }
     int fade = dim_draw_fade();
     if (fade != 256) {

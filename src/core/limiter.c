@@ -47,7 +47,16 @@ static void limiter_stats(double now) {
     g_stat_ticks++;
     if (g_ticks_run == g_stat_ticks_run_prev) g_stat_repeat_frames++;
     g_stat_ticks_run_prev = g_ticks_run;
-    { static double last = 0; double period = 1.0 / (double)g_refresh; if (last > 0) { double gap = now - last; if (gap > 1.5 * period) g_stat_long++; if (gap > 3 * period) g_stat_vlong++; } last = now; }
+    { static double last = 0; static unsigned hitches_logged; double period = 1.0 / (double)g_refresh;
+      if (last > 0) { double gap = now - last; if (gap > 1.5 * period) g_stat_long++;
+          if (gap > 3 * period) { g_stat_vlong++;
+              /* A hitch: say how long, and what this frame did, so a stutter report carries its own evidence. */
+              if (gap > 0.04 && hitches_logged < 40) { hitches_logged++;
+                  static unsigned last_tex_done, last_tex_redone;
+                  LOG("hitch: %.1f ms between presents (target %.1f); this frame: %u draw calls, %u forced batch flushes, %u sprite VM draws, textures upscaled +%u redone +%u",
+                      gap * 1000.0, period * 1000.0, g_frame_draws, g_frame_flushes, g_frame_vms, g_stat_tex_done - last_tex_done, g_stat_tex_redone - last_tex_redone);
+                  last_tex_done = g_stat_tex_done; last_tex_redone = g_stat_tex_redone; } } }
+      last = now; g_frame_draws = g_frame_flushes = g_frame_vms = 0; }
     g_rate_win_ticks++;
     if (g_rate_win_start == 0) g_rate_win_start = now;
     else if (now - g_rate_win_start >= 1.0) {

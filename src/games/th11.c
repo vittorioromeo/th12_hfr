@@ -153,6 +153,7 @@ static const struct DimRule th11_dim_rules[] = {
     { 27, 29, NULL,          -1, -1, DIM_NONE },
     { 11, 43, "pl*.anm",     10, 10, DIM_PLAYER_SHOTS },
     { 11, 43, "pl*.anm",     -1, -1, DIM_NONE },
+    { 11, 43, "enemy.anm",    6,  6, DIM_EFFECTS },      /* enemy deaths: the coloured bursts on enemy.anm's lowest layer */
     { 11, 43, "enemy.anm",   -1, -1, DIM_NONE },
     { 11, 43, "bullet.anm",   9,  9, DIM_NONE },
     { 11, 43, "bullet.anm",  15, 15, DIM_NONE },

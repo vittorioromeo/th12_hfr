@@ -9,7 +9,8 @@ static unsigned g_tick = 0;        /* sub-tick counter */
 static float g_ptf_prev, g_ptf_cur;   /* player state timer (float) before/after the last Player node call */
 static float g_move_residual[2];
 static unsigned g_stat_tex_done, g_stat_tex_redone; static size_t g_tex_bytes;   /* texscale.c */
-static int g_dim_frame_done, g_dim_ingame_frames, g_dim_available, g_dim_trace_frames, g_dim_trace_n;   /* dimming.c: the background quad has been drawn this frame */
+static int g_dim_frame_done, g_dim_ingame_frames, g_dim_available, g_dim_trace_frames, g_dim_trace_n;
+static unsigned g_frame_draws, g_frame_flushes, g_frame_vms;   /* this frame's draw calls, our batch flushes, sprite VM draws (hitch log) */   /* dimming.c: the background quad has been drawn this frame */
 static double g_t0 = 0;            /* wall-clock origin of the tick schedule */
 static unsigned g_stat_skipped;
 static unsigned g_last_units = 0;  /* units of the previous tick */

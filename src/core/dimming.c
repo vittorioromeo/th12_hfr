@@ -200,16 +200,16 @@ static void __cdecl __attribute__((force_align_arg_pointer)) dim_vm_enter(uint32
     const char* anm = NULL; int layer = -1;
     if (g_game->draw.vm_anm_off) { const uint8_t* al = *(const uint8_t* const*)(g_vm + g_game->draw.vm_anm_off); if (al) anm = (const char*)al + 4; }
     if (g_game->draw.vm_layer_off) layer = *(const int*)(g_vm + g_game->draw.vm_layer_off);
-    dim_vm_trace(anm, layer);
+    dim_vm_trace(anm, layer); g_frame_vms++;
     int cls = dim_classify(anm, layer);
     if (cls == g_batch_class) return;
-    g_dim_flush();
+    g_dim_flush(); g_frame_flushes++;
     g_batch_class = cls;
 }
 static uint32_t __cdecl __attribute__((force_align_arg_pointer)) dim_vm_exit(void) {
     uint32_t caller = g_vm_depth > 0 && g_vm_depth <= 32 ? g_vm_callers[g_vm_depth - 1] : 0;
     if (g_vm_depth > 0) g_vm_depth--;
-    if (g_vm_depth == 0 && g_batch_class != DIM_NONE) { g_dim_flush(); g_batch_class = DIM_NONE; }
+    if (g_vm_depth == 0 && g_batch_class != DIM_NONE) { g_dim_flush(); g_frame_flushes++; g_batch_class = DIM_NONE; }
     return caller;
 }
 /* Called by the wrap before every draw callback. At the first callback of the world, blend the
