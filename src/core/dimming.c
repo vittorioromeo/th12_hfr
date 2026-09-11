@@ -38,6 +38,7 @@ static volatile uint8_t* g_draw_node;      /* its node, for the debug trace */
 static int g_dim_drawing;                  /* our own quad is going through the hooked draw */
 static IDirect3DStateBlock9* g_dim_state;
 static volatile int g_batch_class = DIM_NONE;   /* the class of whatever is in the sprite batch / being drawn */
+static char g_vm_since[400]; static int g_vm_since_n;   /* debug: VMs entered since the last traced draw */
 /* debug: g_dim_trace_frames frames have every draw logged */
 static void dim_trace(IDirect3DDevice9* dev, const char* what, UINT prims, DWORD fvf, int active, void* caller) {
     if (g_dim_trace_frames <= 0 || !cfg.debug) return;
@@ -47,6 +48,7 @@ static void dim_trace(IDirect3DDevice9* dev, const char* what, UINT prims, DWORD
     dev->lpVtbl->GetTexture(dev, 0, &t); if (t) { tex = (DWORD)(uintptr_t)t; t->lpVtbl->Release(t); }
     LOG("draw %3d: %-6s prio %2d class %2d fvf 0x%03x prims %3u vp %u,%u %ux%u blend %lu/%lu tex %08lx from %p%s", g_dim_trace_n++, what, g_draw_prio, g_batch_class, (unsigned)fvf, prims,
         vp.X, vp.Y, vp.Width, vp.Height, (unsigned long)src, (unsigned long)dst, (unsigned long)tex, caller, active ? "" : " (not the game RT)");
+    if (g_vm_since_n) { LOG("draw        vms:%s", g_vm_since); g_vm_since_n = 0; g_vm_since[0] = 0; }
 }
 
 /* Wrap the draw runner's dispatch:
@@ -61,8 +63,12 @@ static void dim_trace(IDirect3DDevice9* dev, const char* what, UINT prims, DWORD
  * C call keep everything but EAX/ECX/EDX, which the copied bytes reload; every supported
  * game's dispatch has that shape. */
 static void __cdecl __attribute__((force_align_arg_pointer)) dim_at_callback(void);
-static int  __cdecl __attribute__((force_align_arg_pointer)) dim_vm_enter(void);
+static void __cdecl __attribute__((force_align_arg_pointer)) dim_vm_enter(uint32_t caller);
+static uint32_t __cdecl __attribute__((force_align_arg_pointer)) dim_vm_exit(void);
 static volatile const uint8_t* g_vm;       /* the sprite VM being drawn */
+static volatile uint32_t g_vm_return;      /* where the exit stub sends the VM draw's caller */
+static void (*g_dim_flush)(void);          /* the batch flush, callable from C (keeps the callee-saved registers) */
+static uint32_t g_vm_callers[32]; static int g_vm_depth;   /* the wrapped VM draws in progress (children re-enter it) */
 static void dim_vm_trace(const char* anm, int layer);
 static int dim_classify(const char* anm, int layer);
 static void dim_install(void) {
@@ -87,19 +93,30 @@ static void dim_install(void) {
     EJMP(at + n);
     stub_end();
     site_hook(at, n);
-    /* The VM draw: record the VM, ask C whether its class differs from the batch's (then flush),
-       carry the prologue. Everything but the flags is preserved for the function. */
+    /* The VM draw is wrapped at both ends. Entry: record the VM, hand C the caller's return
+       address, replace it on the stack with the exit stub, carry the prologue. Exit (the function
+       returns to the exit stub, its own stack argument already popped): C flushes a classified
+       VM's quads as their own draw call and gives back the caller's address. Everything but the
+       flags is preserved for the function and its caller. */
     const uintptr_t vd = g_game->draw.vm_draw; const size_t vn = g_game->draw.vm_draw_len; const uint8_t vreg = g_game->draw.vm_reg;
     if (vd && vn >= 5 && vn <= 16 && vreg != 4 && site_expected(vd, vn)) {
+        uint8_t* exit = g_p;
+        E(0x50, 0x51, 0x52);                                                                     /* push eax; push ecx; push edx */
+        ECALL((uintptr_t)dim_vm_exit);                                                           /* eax = the caller's address */
+        E(0xA3); E32((uint32_t)(uintptr_t)&g_vm_return);                                         /* mov [g_vm_return],eax */
+        E(0x5A, 0x59, 0x58);                                                                     /* pop edx; pop ecx; pop eax */
+        E(0xFF, 0x25); E32((uint32_t)(uintptr_t)&g_vm_return);                                   /* jmp [g_vm_return] */
         STUB_BEGIN();
         E(0x89, 0x05 | (vreg << 3)); E32((uint32_t)(uintptr_t)&g_vm);                           /* mov [g_vm],reg */
         E(0x50, 0x51, 0x52);                                                                     /* push eax; push ecx; push edx */
-        ECALL((uintptr_t)dim_vm_enter); E(0x85, 0xC0); E(0x74, 0x05);                             /* test eax,eax; jz +5 */
-        ECALL((uintptr_t)flush);
+        E(0xFF, 0x74, 0x24, 0x0C);                                                               /* push [esp+12]: the caller's address */
+        ECALL((uintptr_t)dim_vm_enter); E(0x83, 0xC4, 0x04);                                     /* call; add esp,4 */
         E(0x5A, 0x59, 0x58);                                                                     /* pop edx; pop ecx; pop eax */
+        E(0xC7, 0x04, 0x24); E32((uint32_t)(uintptr_t)exit);                                     /* mov dword [esp],exit */
         ECOPY(vd, vn); EJMP(vd + vn);
         stub_end();
         site_hook(vd, vn);
+        g_dim_flush = (void (*)(void))flush;
     }
     g_dim_available = 1;
     LOG("dimming: draws attributed at the runner @%08x (world from priority %d, %u rules%s)",
@@ -109,7 +126,7 @@ static void dim_install(void) {
    the profile's vm_anm_off/vm_layer_off and the rules were found. */
 static void dim_vm_trace(const char* anm, int layer) {
     if (g_dim_trace_frames <= 0 || !cfg.debug) return;
-    LOG("draw      vm %p prio %d anm %s layer %d", (const void*)g_vm, g_draw_prio, anm ? anm : "?", layer);
+    if (g_vm_since_n < (int)sizeof g_vm_since - 40) g_vm_since_n += snprintf(g_vm_since + g_vm_since_n, sizeof g_vm_since - g_vm_since_n, " %s:%d", anm ? anm : "?", layer);
     static int per_prio, last_prio = -2; if (g_draw_prio != last_prio) { last_prio = g_draw_prio; per_prio = 0; }
     if (per_prio++ < 3) {
         const uint32_t* w = (const uint32_t*)g_vm; char line[3000]; int n = 0;
@@ -128,12 +145,24 @@ static void dim_vm_trace(const char* anm, int layer) {
 static int dim_in_game(void) {
     return !g_game->addr.enemy_manager || *(void**)g_game->addr.enemy_manager != NULL;
 }
-/* 256 = leave the draw alone; otherwise the alpha multiplier (0..255) for the current draw. */
+/* 256 = leave the draw alone; otherwise the multiplier (0..255) for the current draw, of its
+   alpha for most classes, of its colour for the background class (a spell background drawn as
+   a sprite fades towards black like the rest of the background, not towards transparent). */
 static int dim_draw_fade(void) {
     int cls = g_batch_class;
-    if (!g_dim_available || g_dim_drawing || cls <= DIM_BACKGROUND || cls >= DIM_COUNT || cfg.dim[cls] <= 0) return 256;
+    if (!g_dim_available || g_dim_drawing || cls < 0 || cls >= DIM_COUNT || cfg.dim[cls] <= 0) return 256;
     int pct = cfg.dim[cls] > 100 ? 100 : cfg.dim[cls];
     return (100 - pct) * 255 / 100;
+}
+static int dim_fade_is_colour(int additive) { return additive || g_batch_class == DIM_BACKGROUND; }
+/* The 3D-mode sprites are drawn from a vertex buffer with their colour in TEXTUREFACTOR; fade that. */
+static DWORD dim_fade_factor(DWORD factor, int fade, int additive) {
+    DWORD a = ((factor >> 24) * (DWORD)fade) >> 8;
+    if (dim_fade_is_colour(additive)) {
+        DWORD r = (((factor >> 16) & 0xFF) * (DWORD)fade) >> 8, g = (((factor >> 8) & 0xFF) * (DWORD)fade) >> 8, b = ((factor & 0xFF) * (DWORD)fade) >> 8;
+        return (g_batch_class == DIM_BACKGROUND ? (factor & 0xFF000000) : (a << 24)) | (r << 16) | (g << 8) | b;
+    }
+    return (a << 24) | (factor & 0x00FFFFFF);
 }
 /* --- classification: g_batch_class is the class of whatever is in the sprite batch / being drawn */
 static int dim_glob(const char* pat, const char* name) {   /* "pl*.anm": one '*' matching anything */
@@ -154,17 +183,28 @@ static int dim_classify(const char* anm, int layer) {
     }
     return DIM_NONE;
 }
-/* The sprite VM draw wrap asks, before the VM draws, whether the batch must be flushed first. */
-static int __cdecl __attribute__((force_align_arg_pointer)) dim_vm_enter(void) {
-    if (!g_vm || g_draw_prio < 0) return 0;
+/* Around one VM draw. A classified VM's quads become their own draw call: the batch is
+   flushed before it if something else is pending, and after it always, so that quads from
+   draw paths the wrap does not see (a manager building quads itself, a VM drawn through
+   another entry) can never share a faded draw call. Unclassified VMs batch as the game likes. */
+static void __cdecl __attribute__((force_align_arg_pointer)) dim_vm_enter(uint32_t caller) {
+    if (g_vm_depth < 32) g_vm_callers[g_vm_depth] = caller;
+    g_vm_depth++;
+    if (!g_vm || g_draw_prio < 0) return;
     const char* anm = NULL; int layer = -1;
     if (g_game->draw.vm_anm_off) { const uint8_t* al = *(const uint8_t* const*)(g_vm + g_game->draw.vm_anm_off); if (al) anm = (const char*)al + 4; }
     if (g_game->draw.vm_layer_off) layer = *(const int*)(g_vm + g_game->draw.vm_layer_off);
     dim_vm_trace(anm, layer);
     int cls = dim_classify(anm, layer);
-    if (cls == g_batch_class) return 0;
+    if (cls == g_batch_class) return;
+    g_dim_flush();
     g_batch_class = cls;
-    return 1;
+}
+static uint32_t __cdecl __attribute__((force_align_arg_pointer)) dim_vm_exit(void) {
+    uint32_t caller = g_vm_depth > 0 && g_vm_depth <= 32 ? g_vm_callers[g_vm_depth - 1] : 0;
+    if (g_vm_depth > 0) g_vm_depth--;
+    if (g_vm_depth == 0 && g_batch_class != DIM_NONE) { g_dim_flush(); g_batch_class = DIM_NONE; }
+    return caller;
 }
 /* Called by the wrap before every draw callback. At the first callback of the world, blend the
    black quad over what has been drawn: at that point the background is complete and the world
@@ -223,14 +263,7 @@ static void dim_fade_vertices(uint8_t* verts, UINT count, UINT stride, DWORD fvf
     if (!(fvf & D3DFVF_DIFFUSE)) return;
     UINT off = 16 + ((fvf & D3DFVF_PSIZE) ? 4 : 0);
     if (off + 4 > stride) return;
-    for (UINT i = 0; i < count; ++i) {
-        DWORD* c = (DWORD*)(verts + i * stride + off);
-        DWORD a = ((*c >> 24) * (DWORD)fade) >> 8;
-        if (additive) {
-            DWORD r = (((*c >> 16) & 0xFF) * (DWORD)fade) >> 8, g = (((*c >> 8) & 0xFF) * (DWORD)fade) >> 8, b = ((*c & 0xFF) * (DWORD)fade) >> 8;
-            *c = (a << 24) | (r << 16) | (g << 8) | b;
-        } else *c = (a << 24) | (*c & 0x00FFFFFF);
-    }
+    for (UINT i = 0; i < count; ++i) { DWORD* c = (DWORD*)(verts + i * stride + off); *c = dim_fade_factor(*c, fade, additive); }
 }
 static void dim_release(void) { SAFE_RELEASE(g_dim_state); }
 static void dim_init(IDirect3DDevice9* dev) {

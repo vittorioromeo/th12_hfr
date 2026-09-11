@@ -267,6 +267,26 @@ The sprite id is also there (TH13/TH11 keep `slot << 16 | sprite` next to the po
 a plain id at +0x3e0) but no rule has needed it. The cost is two words stored and a table
 walk per VM draw, and a flush where classes alternate — a few per frame.
 
+**Why a classified VM is flushed on its own.** The first version set the class at VM entry
+and let the batch run on. Field reports showed boss sprites and spell-card portraits fading
+"in certain animations": quads from paths the wrap does not see — a manager building quads
+itself (TH13's Effects manager calls the quad builder directly), a VM drawn through another
+entry — landed in a batch whose class an earlier effect VM had set. So the VM draw is now
+wrapped at both ends (the entry stub swaps the caller's return address for an exit stub and
+keeps the real one on a small stack, since children re-enter the draw): a classified VM's
+quads are flushed before it if something else is pending and after it always, so no faded
+draw call ever carries a stranger's quads. Unclassified VMs batch as before; the cost is one
+draw call per faded sprite, which is what 3D-mode sprites cost the game anyway.
+
+**The two ways a sprite gets its colour.** 2D-mode sprites carry it in the vertices, so the
+copy the internal-resolution path already makes is faded there. 3D-mode sprites (`ins_302(1)`;
+TH13's petals, enemy deaths in TH10-12) are drawn from a static unit-quad vertex buffer with
+the colour in `D3DRS_TEXTUREFACTOR`; the `DrawPrimitive` hook fades that and puts it back.
+Missing the second path was why "the death explosions do not fade" — nothing to do with the
+rules. The background class fades colour rather than alpha in both paths: TH10 draws some
+spell backgrounds as sprites *above* the world (stage 2's, on layers 4-5 → priority 16-17), and
+a rule can now name them `DIM_BACKGROUND` so they darken like the rest.
+
 **Known imprecision.** The options orbit the player on the shot layer, so they fade with the
 shots. TH13's trance overlay brightens the dimmed stage back towards its texture (its blend
 is DESTCOLOR/INVDESTCOLOR); rare and short, left alone.

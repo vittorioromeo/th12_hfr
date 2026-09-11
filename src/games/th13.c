@@ -230,7 +230,10 @@ static const struct node_class th13_classes[] = {
 static const struct DimRule th13_dim_rules[] = {
     { 26, 26, NULL,          -1, -1, DIM_ITEMS },
     { 29, 31, NULL,          -1, -1, DIM_NONE },          /* lasers, bullets */
+    {  8,  8, "effect.anm",   2,  2, DIM_EFFECTS },       /* petals, the stage's and the enemies' deaths', drawn under the world */
     { 12, 43, "astral.anm",  -1, -1, DIM_SPECIAL },
+    { 12, 43, "pl*.anm",     12, 12, DIM_NONE },          /* the hitbox */
+    { 12, 43, "effect.anm",  12, 12, DIM_NONE },          /* the focus ring */
     { 12, 43, "pl*.anm",     10, 13, DIM_PLAYER_SHOTS },
     { 12, 43, "pl*.anm",     -1, -1, DIM_NONE },
     { 12, 43, "enemy.anm",   -1, -1, DIM_NONE },

@@ -201,6 +201,15 @@ typedef HRESULT (__stdcall *DrawPrimitiveFn)(IDirect3DDevice9*, D3DPRIMITIVETYPE
 static DrawPrimitiveFn orig_DrawPrimitive;
 static HRESULT __stdcall hook_DrawPrimitive(IDirect3DDevice9* dev, D3DPRIMITIVETYPE type, UINT start, UINT prims) {
     if (g_dim_trace_frames > 0) { DWORD f = 0; dev->lpVtbl->GetFVF(dev, &f); dim_trace(dev, "VB", prims, f, g_iscale_active, __builtin_return_address(0)); }
+    int fade = dim_draw_fade();
+    if (fade != 256) {
+        DWORD factor = 0xFFFFFFFF, dst = D3DBLEND_INVSRCALPHA;
+        dev->lpVtbl->GetRenderState(dev, D3DRS_TEXTUREFACTOR, &factor); dev->lpVtbl->GetRenderState(dev, D3DRS_DESTBLEND, &dst);
+        dev->lpVtbl->SetRenderState(dev, D3DRS_TEXTUREFACTOR, dim_fade_factor(factor, fade, dst == D3DBLEND_ONE));
+        HRESULT hr = orig_DrawPrimitive(dev, type, start, prims);
+        dev->lpVtbl->SetRenderState(dev, D3DRS_TEXTUREFACTOR, factor);
+        return hr;
+    }
     return orig_DrawPrimitive(dev, type, start, prims);
 }
 typedef HRESULT (__stdcall *DrawIndexedPrimitiveFn)(IDirect3DDevice9*, D3DPRIMITIVETYPE, INT, UINT, UINT, UINT, UINT);

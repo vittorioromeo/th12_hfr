@@ -524,7 +524,7 @@ static HRESULT __stdcall hook_Present(IDirect3DDevice9* dev, const RECT* src, co
     if (!g_frame_hook_installed) hfr_housekeeping();
     g_dim_frame_done = 0;
     if (g_dim_trace_frames > 0) { LOG("draw ---- present"); g_dim_trace_frames--; g_dim_trace_n = 0; }
-    else if (cfg.debug && g_dim_available && dim_in_game() && (++g_dim_ingame_frames % 600) == 0 && g_dim_ingame_frames <= 1800) g_dim_trace_frames = 1;   /* three frames of a stage, for the draw table */
+    else if (cfg.debug && g_dim_available && dim_in_game() && (++g_dim_ingame_frames % 600) == 0 && g_dim_ingame_frames <= 36000) g_dim_trace_frames = 1;   /* one frame every ten seconds of a stage, for the first ten minutes: the draw table */
     scaler_blit(dev);
     /* Our chain carries the picture; the device's own chain is never shown. */
     if (g_own_present && g_swap) return g_swap->lpVtbl->Present(g_swap, NULL, NULL, wnd, NULL, 0);
