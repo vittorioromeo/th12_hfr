@@ -11,7 +11,10 @@ static float g_move_residual[2];
 static unsigned g_stat_tex_done, g_stat_tex_redone; static size_t g_tex_bytes;   /* texscale.c */
 static int g_dim_frame_done, g_dim_ingame_frames, g_dim_available, g_dim_trace_frames, g_dim_trace_n;
 static unsigned g_frame_draws, g_frame_flushes, g_frame_vms;
-static double g_frame_out_at, g_gap_inside_max, g_gap_outside_max; static unsigned g_gap_inside_long, g_gap_outside_long;   /* frame.c: time inside/outside the game's frame function */   /* this frame's draw calls, our batch flushes, sprite VM draws (hitch log) */   /* dimming.c: the background quad has been drawn this frame */
+static double g_frame_out_at, g_gap_inside_max, g_gap_outside_max; static unsigned g_gap_inside_long, g_gap_outside_long;   /* frame.c: time inside/outside the game's frame function */
+/* Where a long frame's inside time went (frame.c, scaler.c, d3d9.c): first draw call, Present entry and exit, per frame */
+static double g_t_first_draw, g_t_present_in, g_t_present_out;
+static double g_span_max[4];   /* longest, over the stats window, of: before the first draw, drawing, in Present, after Present */   /* this frame's draw calls, our batch flushes, sprite VM draws (hitch log) */   /* dimming.c: the background quad has been drawn this frame */
 static double g_t0 = 0;            /* wall-clock origin of the tick schedule */
 static unsigned g_stat_skipped;
 static unsigned g_last_units = 0;  /* units of the previous tick */

@@ -287,11 +287,28 @@ rules. The background class fades colour rather than alpha in both paths: TH10 d
 spell backgrounds as sprites *above* the world (stage 2's, on layers 4-5 → priority 16-17), and
 a rule can now name them `DIM_BACKGROUND` so they darken like the rest.
 
-**Where the deaths are.** TH13 keeps the enemy-death bursts in `effect.anm`; TH10-12 keep
-them in `enemy.anm`, on its lowest layer (TH10 4, TH11 6, TH12 7: sixteen one-sprite
-additive scripts), with the enemies on the layers above — so a rule per game names that
-layer, and the file-wide "never touch enemy.anm" comes after it. The tell in a thanm listing:
-a block of single-sprite scripts sharing a texture row, with `ins_67(1)`/`ins_303(1)`.
+**Where the deaths are — found by watching, not reading.** TH13 keeps the enemy-death
+bursts in `effect.anm`. For TH10-12 two readings of the ANM listings were wrong in turn: the
+sixteen one-sprite additive scripts on `enemy.anm`'s lowest layer (TH10 4, TH11 6, TH12 7)
+are spawn-in flashes and auras (effects, so the rule stays right by accident), and the small
+circles of `bullet.anm` script 164 never draw at all. The bursts the reports meant — TH12's
+coloured disc with a rotating ring, TH10/11's rings and sparks — are `bullet.anm` scripts
+that set the *bullet* layer themselves (TH12 76-152 `ins_68(16)`, TH11 73-188 layer 15,
+TH10 351-442 layer 13) and draw under the bullet-layer callback (TH12 34, TH11 32, TH10 33).
+That layer had been excluded on the assumption it held the bullets; it does not: the
+BulletManager draws bullets from its own callback (TH10/11 29, TH12 31) with the VM's layer
+left at 0. Dropping the exclusion was the whole fix. What found it: `debug=2` (a draw table
+every half second) over the title demo, which kills things on its own, and a burst of `xwd`
+screenshots (an `import` takes two seconds, `xwd -root` 90 ms) to see the burst; the
+per-quad `uv` in the table then names the sprite, and thanm names the script.
+
+**Script ranges.** The only layer a game really shares between classes so far is TH12's
+`enemy.anm` layer 7, where the UFOs (scripts 135-138, enemies the player shoots) sit among the
+spawn flashes. Rules therefore carry an optional script range, read from the VM's 16-bit
+script index (TH10 +0x38a, TH11 +0x3a2, TH12 +0x3ea, TH13 +0x4aa; found at the VM-init
+function, the one that stores the loaded-ANM pointer: `mov word [vm+X], bx` with bx the
+script parameter, next to `mov word [vm+X-4], cx` for the slot). The trace prints
+`anm:layer/script` per VM so a rule can be written from the table without a listing.
 
 **Known imprecision.** The options orbit the player on the shot layer, so they fade with the
 shots. TH13's trance overlay brightens the dimmed stage back towards its texture (its blend
@@ -302,9 +319,16 @@ is DESTCOLOR/INVDESTCOLOR); rare and short, left alone.
 flushes, sprite VM draws and texture upscales; and `frame time:` with the longest time spent
 *inside* the game's frame function (its draw and the present, vsync included) and *outside*
 it (its loop and its own waits), each with a count of frames over 8 ms. A stutter report
-with these two lines already says which side of the boundary to look at. First user logs
-(TH10-12, 360 Hz, vsync) showed exactly 64 long gaps a second — the Windows timer's 15.6 ms
-rhythm — where TH13 showed none; which side they fall on is the next thing to read.
+with these two lines already says which side of the boundary to look at, and a span
+breakdown (before the first draw, drawing, in Present, after Present) says where inside.
+First user logs (TH10-12, 360 Hz, vsync) showed exactly 64 long gaps a second — the Windows
+timer's 15.6 ms rhythm — where TH13 showed none; a TH12 log with the breakdown put the long
+frames inside the frame function, before the first draw. Still open for TH10.
+
+**Debug levels.** `debug=1`: state dumps, a draw table every ten seconds of a stage with VM
+word dumps. `debug=2`: the table every half second, no word dumps. `debug=3`: every other
+frame for the first minute, the log flushed once per frame instead of per line (per-line
+flushing under Wine halved the frame rate), and the first vertex of every batched draw.
 
 ## 4. Bugs met, and what they taught
 

@@ -102,16 +102,15 @@ static const struct node_class th10_classes[] = {
    world's sprite layers run from 11 to 40. bullet.anm carries items (layer 7), bullets (13) and
    the effects; the player's shots are pl0X.anm layers 8 and 13. */
 static const struct DimRule th10_dim_rules[] = {
-    { 25, 25, NULL,          -1, -1, DIM_ITEMS },
-    { 27, 29, NULL,          -1, -1, DIM_NONE },
-    { 14, 14, "stgenm*.anm", -1, -1, DIM_BACKGROUND },   /* the spell-card backgrounds, drawn by 0x409230 above the world */
-    { 11, 40, "pl*.anm",      8, 13, DIM_PLAYER_SHOTS },
-    { 11, 40, "pl*.anm",     -1, -1, DIM_NONE },
-    { 11, 40, "enemy.anm",    4,  4, DIM_EFFECTS },      /* enemy deaths: the coloured bursts on enemy.anm's lowest layer */
-    { 11, 40, "enemy.anm",   -1, -1, DIM_NONE },
-    { 11, 40, "bullet.anm",   7,  7, DIM_NONE },
-    { 11, 40, "bullet.anm",  13, 13, DIM_NONE },
-    { 11, 40, "bullet.anm",  -1, -1, DIM_EFFECTS },
+    { 25, 25, NULL,          -1, -1, -1, -1, DIM_ITEMS },
+    { 27, 29, NULL,          -1, -1, -1, -1, DIM_NONE },
+    { 14, 14, "stgenm*.anm", -1, -1, -1, -1, DIM_BACKGROUND },   /* the spell-card backgrounds, drawn by 0x409230 above the world */
+    { 11, 40, "pl*.anm",      8, 13, -1, -1, DIM_PLAYER_SHOTS },
+    { 11, 40, "pl*.anm",     -1, -1, -1, -1, DIM_NONE },
+    { 11, 40, "enemy.anm",    4,  4, -1, -1, DIM_EFFECTS },      /* enemy.anm's effect layer under the enemies: spawn-in flashes, auras */
+    { 11, 40, "enemy.anm",   -1, -1, -1, -1, DIM_NONE },
+    { 11, 40, "bullet.anm",   7,  7, -1, -1, DIM_NONE },
+    { 11, 40, "bullet.anm",  -1, -1, -1, -1, DIM_EFFECTS },
 };
 static const struct GameProfile th10_profile = {
     .identity=&game_identities[GI_TH10],
@@ -141,7 +140,7 @@ static const struct GameProfile th10_profile = {
     .classes=th10_classes,.class_count=sizeof th10_classes/sizeof *th10_classes,
     .runner_stack_arg=1,.mask_minor_player_edges=1,.d3dx="d3dx9_31.dll",
     .draw = { .dispatch = 0x449da3, .dispatch_len = 6, .node_reg = R_ESI, .prio_off = 0, .flush_fn = 0x442f50, .flush_reg = R_ESI, .flush_this = 0x491c10, .world_prio = 11, .rules = th10_dim_rules, .rule_count = sizeof th10_dim_rules / sizeof *th10_dim_rules, .special_name = NULL,
-              .vm_draw = 0x4451c0, .vm_draw_len = 6, .vm_reg = R_EAX, .vm_anm_off = 0x308, .vm_layer_off = 0x20 },
+              .vm_draw = 0x4451c0, .vm_draw_len = 6, .vm_reg = R_EAX, .vm_anm_off = 0x308, .vm_layer_off = 0x20, .vm_script_off = 0x38a },
     .install_sites=th10_install_sites,
     .provisional=0, /* validated: full patch plan in the harness, and a live run under Wine
                        that boots, plays gameplay at 240 Hz with 0 repeated frames, records and

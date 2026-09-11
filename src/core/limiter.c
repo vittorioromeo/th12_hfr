@@ -71,9 +71,10 @@ static void limiter_stats(double now) {
                 tick_rate_since(now), g_stat_subtick_polls, g_stat_subtick_applied,
                 g_stat_repeat_frames, g_stat_ticks);
         if (g_stat_last > 0 && (g_gap_inside_long || g_gap_outside_long))
-            LOG("frame time: inside the game's frame function max %.1f ms (%u over 8 ms), outside it max %.1f ms (%u over 8 ms)",
-                g_gap_inside_max * 1000.0, g_gap_inside_long, g_gap_outside_max * 1000.0, g_gap_outside_long);
-        g_gap_inside_max = g_gap_outside_max = 0; g_gap_inside_long = g_gap_outside_long = 0;
+            LOG("frame time: inside the game's frame function max %.1f ms (%u over 8 ms), outside it max %.1f ms (%u over 8 ms); longest spans: before first draw %.1f, drawing %.1f, in Present %.1f, after Present %.1f",
+                g_gap_inside_max * 1000.0, g_gap_inside_long, g_gap_outside_max * 1000.0, g_gap_outside_long,
+                g_span_max[0] * 1000.0, g_span_max[1] * 1000.0, g_span_max[2] * 1000.0, g_span_max[3] * 1000.0);
+        g_gap_inside_max = g_gap_outside_max = 0; g_gap_inside_long = g_gap_outside_long = 0; memset(g_span_max, 0, sizeof g_span_max);
         { static unsigned last_done, last_redone; if (g_stat_tex_done != last_done || g_stat_tex_redone != last_redone) { LOG("textures: %u upscaled, %u redone after a rewrite, %u MB", g_stat_tex_done, g_stat_tex_redone, (unsigned)(g_tex_bytes >> 20)); last_done = g_stat_tex_done; last_redone = g_stat_tex_redone; } }
         g_stat_last = now; g_stat_ticks = 0; g_stat_sub_calls = g_stat_frame_calls = g_stat_long = g_stat_vlong = g_stat_catchup = g_stat_skipped = 0; g_stat_ticks_run_last = g_ticks_run;
         g_stat_subtick_polls = g_stat_subtick_applied = 0; g_stat_repeat_frames = 0;

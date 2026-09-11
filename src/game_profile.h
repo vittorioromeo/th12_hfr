@@ -6,8 +6,11 @@ struct node_class { uint32_t func; int mode; const char* name; };
 enum SpeedOp { SPEED_ONE_PERM, SPEED_ONE_TEMP, SPEED_PAUSE_SET, SPEED_PAUSE_RESTORE, SPEED_ECL };
 struct SpeedSite { uintptr_t addr; unsigned char size, op, pop_float; };
 /* One dimming classification rule (game_profile.h `draw`): draws under callbacks with priority in
-   [prio_lo, prio_hi], from VMs of the named ANM on the given layers, belong to `category`. */
-struct DimRule { int prio_lo, prio_hi; const char* anm; int layer_lo, layer_hi; int category; };
+   [prio_lo, prio_hi], from VMs of the named ANM on the given layers running the given scripts,
+   belong to `category`. The script range is for layers a game shares between things of
+   different classes (TH12's UFOs are enemies drawn on enemy.anm's effects layer): the ANM's
+   script list (`thanm -l`) gives the numbers. */
+struct DimRule { int prio_lo, prio_hi; const char* anm; int layer_lo, layer_hi; int script_lo, script_hi; int category; };
 struct GameProfile {
     const struct GameIdentity* identity;
     struct {
@@ -100,14 +103,15 @@ struct GameProfile {
        holds the node whose priority sits at +prio_off. `flush_fn` is the batch flush, taking the
        sprite manager (read from the pointer at `flush_this`) in `flush_reg`. `vm_draw` draws one
        VM (in `vm_reg`; the first `vm_draw_len` bytes are carried); the VM holds a pointer to its
-       loaded ANM (slot index, then the file name) at +vm_anm_off and its sprite layer at
-       +vm_layer_off. Draws before the first callback of priority `world_prio` are background;
+       loaded ANM (slot index, then the file name) at +vm_anm_off, its sprite layer at
+       +vm_layer_off and its script index (16-bit) at +vm_script_off (0: unknown, script rules
+       never match). Draws before the first callback of priority `world_prio` are background;
        `rules` classify the rest (first match wins; anm NULL matches any VM and non-VM draws too,
        an anm pattern may end in '*'; -1 bounds are open). dispatch == 0: dimming unavailable. */
     struct {
         uintptr_t dispatch; unsigned char dispatch_len, node_reg; uint32_t prio_off;
         uintptr_t flush_fn; unsigned char flush_reg; uintptr_t flush_this;
-        uintptr_t vm_draw; unsigned char vm_draw_len, vm_reg; uint32_t vm_anm_off, vm_layer_off;
+        uintptr_t vm_draw; unsigned char vm_draw_len, vm_reg; uint32_t vm_anm_off, vm_layer_off, vm_script_off;
         int world_prio;
         const struct DimRule* rules; size_t rule_count;
         const char* special_name;     /* what DIM_SPECIAL fades in this game, for the menu; NULL = nothing */

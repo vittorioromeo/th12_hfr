@@ -75,8 +75,8 @@ static volatile const uint8_t* g_vm;       /* the sprite VM being drawn */
 static volatile uint32_t g_vm_return;      /* where the exit stub sends the VM draw's caller */
 static void (*g_dim_flush)(void);          /* the batch flush, callable from C (keeps the callee-saved registers) */
 static uint32_t g_vm_callers[32]; static int g_vm_depth;   /* the wrapped VM draws in progress (children re-enter it) */
-static void dim_vm_trace(const char* anm, int layer);
-static int dim_classify(const char* anm, int layer);
+static void dim_vm_trace(const char* anm, int layer, int script);
+static int dim_classify(const char* anm, int layer, int script);
 static void dim_install(void) {
     const uintptr_t at = g_game->draw.dispatch; const size_t n = g_game->draw.dispatch_len;
     const uint8_t node = g_game->draw.node_reg, freg = g_game->draw.flush_reg;
@@ -130,11 +130,11 @@ static void dim_install(void) {
 }
 /* Debug (debug=1, traced frames): every VM's ANM and layer, and the first VMs' raw words -- how
    the profile's vm_anm_off/vm_layer_off and the rules were found. */
-static void dim_vm_trace(const char* anm, int layer) {
+static void dim_vm_trace(const char* anm, int layer, int script) {
     if (g_dim_trace_frames <= 0 || !cfg.debug) return;
-    if (g_vm_since_n < (int)sizeof g_vm_since - 40) g_vm_since_n += snprintf(g_vm_since + g_vm_since_n, sizeof g_vm_since - g_vm_since_n, " %s:%d", anm ? anm : "?", layer);
+    if (g_vm_since_n < (int)sizeof g_vm_since - 40) g_vm_since_n += snprintf(g_vm_since + g_vm_since_n, sizeof g_vm_since - g_vm_since_n, " %s:%d/%d", anm ? anm : "?", layer, script);
     static int per_prio, last_prio = -2; if (g_draw_prio != last_prio) { last_prio = g_draw_prio; per_prio = 0; }
-    if (per_prio++ < 3) {
+    if (per_prio++ < 3 && cfg.debug < 2) {   /* debug=2 traces often and skips the word dumps */
         const uint32_t* w = (const uint32_t*)g_vm; char line[3000]; int n = 0;
         for (int i = 0; i < 300; ++i) n += snprintf(line + n, sizeof line - n, " %08x", (unsigned)w[i]);
         LOG("draw      vm words:%s", line);
@@ -178,13 +178,14 @@ static int dim_glob(const char* pat, const char* name) {   /* "pl*.anm": one '*'
     return n >= pre + suf && memcmp(pat, name, pre) == 0 && memcmp(star + 1, name + n - suf, suf) == 0;
 }
 /* The class of a VM (anm name and layer given) or of a non-VM draw (anm NULL) under the running callback. */
-static int dim_classify(const char* anm, int layer) {
+static int dim_classify(const char* anm, int layer, int script) {
     for (size_t i = 0; i < g_game->draw.rule_count; ++i) {
         const struct DimRule* r = &g_game->draw.rules[i];
         if (r->prio_lo >= 0 && g_draw_prio < r->prio_lo) continue;
         if (r->prio_hi >= 0 && g_draw_prio > r->prio_hi) continue;
         if (r->anm) { if (!anm || !dim_glob(r->anm, anm)) continue; }
         if (r->layer_lo >= 0 && (layer < r->layer_lo || layer > r->layer_hi)) continue;
+        if (r->script_lo >= 0 && (script < r->script_lo || script > r->script_hi)) continue;
         return r->category;
     }
     return DIM_NONE;
@@ -197,11 +198,12 @@ static void __cdecl __attribute__((force_align_arg_pointer)) dim_vm_enter(uint32
     if (g_vm_depth < 32) g_vm_callers[g_vm_depth] = caller;
     g_vm_depth++;
     if (!g_vm || g_draw_prio < 0) return;
-    const char* anm = NULL; int layer = -1;
+    const char* anm = NULL; int layer = -1, script = -1;
     if (g_game->draw.vm_anm_off) { const uint8_t* al = *(const uint8_t* const*)(g_vm + g_game->draw.vm_anm_off); if (al) anm = (const char*)al + 4; }
     if (g_game->draw.vm_layer_off) layer = *(const int*)(g_vm + g_game->draw.vm_layer_off);
-    dim_vm_trace(anm, layer); g_frame_vms++;
-    int cls = dim_classify(anm, layer);
+    if (g_game->draw.vm_script_off) script = *(const uint16_t*)(g_vm + g_game->draw.vm_script_off);
+    dim_vm_trace(anm, layer, script); g_frame_vms++;
+    int cls = dim_classify(anm, layer, script);
     if (cls == g_batch_class) return;
     g_dim_flush(); g_frame_flushes++;
     g_batch_class = cls;
@@ -220,7 +222,7 @@ static uint32_t __cdecl __attribute__((force_align_arg_pointer)) dim_vm_exit(voi
 static void __cdecl __attribute__((force_align_arg_pointer)) dim_at_callback(void) {
     if (g_dim_trace_frames > 0 && cfg.debug && g_draw_node)
         LOG("draw      callback prio %d fn %08x", g_draw_prio, (unsigned)*(const uint32_t*)((const uint8_t*)g_draw_node + 8));
-    g_batch_class = g_draw_prio >= 0 ? dim_classify(NULL, -1) : DIM_NONE;   /* the batch was just flushed */
+    g_batch_class = g_draw_prio >= 0 ? dim_classify(NULL, -1, -1) : DIM_NONE;   /* the batch was just flushed */
     if (cfg.dim[DIM_BACKGROUND] <= 0 || !g_dim_available || g_dim_frame_done || !g_dev) return;
     if (g_draw_prio < g_game->draw.world_prio || !dim_in_game()) return;
     IDirect3DDevice9* dev = g_dev;

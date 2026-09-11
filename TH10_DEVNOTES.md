@@ -221,7 +221,9 @@ EnemyManager (`0x40d820`), 21 layer 8 (the player's shots, pl0X.anm layer 8), 22
 body, 23/24 layers 9/10, **25 ItemManager `0x41ba30`**, 26 layer 11, 27 LaserManager, 28
 layer 12, 29 BulletManager, 32 Spellcard, 33 layer 13, 34 Bomb, 35 `0x42b9b0`, 36 layer 14,
 37 `0x409270`, 38/48 `0x401520`/`0x401510` (the Effects object; 48 draws a constant nine
-quads of text), 40..47 interface. bullet.anm: items layer 7, bullets 13, effects elsewhere.
+quads of text), 40..47 interface. bullet.anm: items on layer 7; the bullets are drawn by the
+BulletManager (29) with their VMs' layer left at 0; layer 13 (priority 33) is the enemy death
+bursts — scripts 351-442, the ones that set `ins_68(13)` themselves — and other effects.
 
 **The spell backgrounds above the world.** The card backgrounds (`cdbg0Xa/b.png`, scripts
 with no layer) are not drawn by the sprite layers at all: `0x409230`, the callback at
@@ -231,10 +233,12 @@ towards black instead. (A first guess put the rule on layers 4-5 of `stgenm02.an
 turned out to be Hina's spinning body, and the report "boss sprites are dimmed" followed
 within the day. Layer 3 is the portrait cut-in, 14 the boss name.)
 
-**Enemy deaths.** The coloured bursts are `enemy.anm`'s own lowest layer — 16 one-sprite
-additive scripts on layer 4 (row 224 of enemy.png), the enemies proper on layer 5. The rule
-puts layer 4 in the effects class and leaves the rest alone; TH11 (layer 6 of 7/8) and TH12
-(7 of 8/9) have the same shape.
+**Enemy deaths.** Not, as first read, the 16 one-sprite additive scripts on `enemy.anm`'s
+lowest layer (4; row 224 of enemy.png) — those are spawn-in flashes and auras, effects too,
+under the enemies on layer 5. The bursts are `bullet.anm` scripts on the bullet layer 13 (see
+the priority list); the rule table simply lets `bullet.anm` fall through to the effects class
+except for its item layer. TH11 (enemy.anm 6 of 7/8, bullet.anm 15) and TH12 (7 of 8/9, 16)
+have the same shape. VM script index at +0x38a (16-bit), for rules that need one.
 
 **Hitches.** `hitch:` lines in the log record any gap between presents over 40 ms with what
 that frame did — draw calls, forced batch flushes, sprite VM draws, textures upscaled — for

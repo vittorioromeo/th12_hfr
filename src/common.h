@@ -12,10 +12,11 @@
 
 /* ------------------------------------------------------------------ logging */
 static FILE* g_log;
+static int g_log_lazy;   /* debug>=3: flushed once per frame instead of per line (the per-frame draw traces are big) */
 static void logf_(const char* fmt, ...) {
     if (!g_log) return;
     va_list ap; va_start(ap, fmt); vfprintf(g_log, fmt, ap); va_end(ap);
-    fputc('\n', g_log); fflush(g_log);
+    fputc('\n', g_log); if (!g_log_lazy) fflush(g_log);
 }
 #define LOG(...) logf_(__VA_ARGS__)
 

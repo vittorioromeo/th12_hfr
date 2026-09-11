@@ -171,11 +171,11 @@ static HRESULT __stdcall hook_Clear(IDirect3DDevice9* dev, DWORD n, const D3DREC
     return orig_Clear(dev, n, r, flags, c, z, st);
 }
 static HRESULT __stdcall hook_DrawPrimitiveUP(IDirect3DDevice9* dev, D3DPRIMITIVETYPE type, UINT prims, const void* data, UINT stride) {
-    DWORD fvf = 0; g_frame_draws++;
+    DWORD fvf = 0; if (g_frame_draws++ == 0) g_t_first_draw = now_s();
     if (g_dim_trace_frames > 0 && !g_dim_drawing) {
         DWORD f = 0; dev->lpVtbl->GetFVF(dev, &f); dim_trace(dev, "UP", prims, f, g_iscale_active, __builtin_return_address(0));
-        if (cfg.debug && prims == 2 && stride >= 24 && (f & D3DFVF_XYZRHW) && data)
-            for (UINT i = 0; i < 4; ++i) { const float* q = (const float*)((const uint8_t*)data + i * stride); LOG("draw        v%u %.1f,%.1f uv %.3f,%.3f", i, q[0], q[1], q[(stride / 4) - 2], q[(stride / 4) - 1]); }
+        if (cfg.debug && (prims == 2 || cfg.debug >= 3) && stride >= 24 && (f & D3DFVF_XYZRHW) && data)
+            for (UINT i = 0; i < (prims == 2 ? 4u : 1u); ++i) { const float* q = (const float*)((const uint8_t*)data + i * stride); LOG("draw        v%u %.1f,%.1f uv %.3f,%.3f%s%08lx", i, q[0], q[1], q[(stride / 4) - 2], q[(stride / 4) - 1], (f & D3DFVF_DIFFUSE) ? " colour " : "", (f & D3DFVF_DIFFUSE) ? (unsigned long)((const DWORD*)q)[4] : 0UL); }
     }
     int scale = g_iscale_active && g_iscale > 1 && !g_dim_drawing, fade = dim_draw_fade();
     if ((scale || fade != 256) && data && stride >= 16 && SUCCEEDED(dev->lpVtbl->GetFVF(dev, &fvf)) && (fvf & D3DFVF_XYZRHW)) {
@@ -191,7 +191,14 @@ static HRESULT __stdcall hook_DrawPrimitiveUP(IDirect3DDevice9* dev, D3DPRIMITIV
         }
         if (fade != 256) {
             DWORD dst = D3DBLEND_INVSRCALPHA; dev->lpVtbl->GetRenderState(dev, D3DRS_DESTBLEND, &dst);
-            dim_fade_vertices(buf, verts, stride, fvf, fade, dst == D3DBLEND_ONE);
+            if (fvf & D3DFVF_DIFFUSE) dim_fade_vertices(buf, verts, stride, fvf, fade, dst == D3DBLEND_ONE);
+            else {   /* no colour in the vertices: it comes from TEXTUREFACTOR, as for the vertex-buffer sprites */
+                DWORD factor = 0xFFFFFFFF; dev->lpVtbl->GetRenderState(dev, D3DRS_TEXTUREFACTOR, &factor);
+                dev->lpVtbl->SetRenderState(dev, D3DRS_TEXTUREFACTOR, dim_fade_factor(factor, fade, dst == D3DBLEND_ONE));
+                HRESULT hr = orig_DrawPrimitiveUP(dev, type, prims, buf, stride);
+                dev->lpVtbl->SetRenderState(dev, D3DRS_TEXTUREFACTOR, factor);
+                return hr;
+            }
         }
         return orig_DrawPrimitiveUP(dev, type, prims, buf, stride);
     }
@@ -200,7 +207,7 @@ static HRESULT __stdcall hook_DrawPrimitiveUP(IDirect3DDevice9* dev, D3DPRIMITIV
 typedef HRESULT (__stdcall *DrawPrimitiveFn)(IDirect3DDevice9*, D3DPRIMITIVETYPE, UINT, UINT);
 static DrawPrimitiveFn orig_DrawPrimitive;
 static HRESULT __stdcall hook_DrawPrimitive(IDirect3DDevice9* dev, D3DPRIMITIVETYPE type, UINT start, UINT prims) {
-    g_frame_draws++;
+    if (g_frame_draws++ == 0) g_t_first_draw = now_s();
     if (g_dim_trace_frames > 0) { DWORD f = 0; dev->lpVtbl->GetFVF(dev, &f); dim_trace(dev, "VB", prims, f, g_iscale_active, __builtin_return_address(0)); }
     int fade = dim_draw_fade();
     if (fade != 256) {

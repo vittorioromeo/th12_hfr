@@ -8,7 +8,7 @@ per-game records are [TH10_DEVNOTES.md](TH10_DEVNOTES.md), [TH11_DEVNOTES.md](TH
 High refresh rate gameplay and presentation for Touhou. One DLL detects the game
 and selects its adapter; the scheduler, input, replay and Direct3D code are shared.
 
-**Current build: v0.4.7-test.** Supported executable layouts:
+**Current build: v0.4.8-test.** Supported executable layouts:
 
 | Game | Version | Executables | State |
 | --- | --- | --- | --- |
@@ -75,7 +75,7 @@ every supported title; it still needs full-run replay testing before a stable re
 
 ## Install
 
-Download/extract `touhou_hfr_v0.4.7-test.zip` and close the game.
+Download/extract `touhou_hfr_v0.4.8-test.zip` and close the game.
 
 For a fresh installation, copy these four files next to the game executable:
 
@@ -136,7 +136,7 @@ refresh and enable sub-stepping, sub-tick movement/focus input and D3D9Ex.
 | `fullscreen_refresh` | `0` | Exclusive fullscreen rate; `0` follows automatic/explicit fps |
 | `flipex` | `0` | Experimental windowed flip presentation |
 | `log` | `1` | Write `touhou_hfr.log` beside the game |
-| `debug` | `0` | Include periodic state diagnostics |
+| `debug` | `0` | Include periodic state diagnostics; `2` and `3` add denser draw tables (DEVNOTES_RUNTIME §3b) |
 
 | `[video]` setting | Default | Meaning |
 | --- | --- | --- |

@@ -44,10 +44,14 @@ static int __stdcall hfr_frame(void* ctx) {
     /* Where a frame's time goes: inside the game's frame function (its draw and the present,
        vsync included) or outside it (its loop, its own waits). The stats line reports both. */
     if (g_frame_out_at > 0) { double outside = now - g_frame_out_at; if (outside > g_gap_outside_max) g_gap_outside_max = outside; if (outside > 0.008) g_gap_outside_long++; }
-    double t_in = now_s();
+    double t_in = now_s(); g_t_first_draw = g_t_present_in = g_t_present_out = 0;
     int r = orig_frame_vsync(ctx);
     g_frame_out_at = now_s();
-    { double inside = g_frame_out_at - t_in; if (inside > g_gap_inside_max) g_gap_inside_max = inside; if (inside > 0.008) g_gap_inside_long++; }
+    { double inside = g_frame_out_at - t_in; if (inside > g_gap_inside_max) g_gap_inside_max = inside; if (inside > 0.008) g_gap_inside_long++;
+      if (g_t_first_draw > 0 && g_t_present_in > 0 && g_t_present_out > 0) {
+          double span[4] = { g_t_first_draw - t_in, g_t_present_in - g_t_first_draw, g_t_present_out - g_t_present_in, g_frame_out_at - g_t_present_out };
+          for (int i = 0; i < 4; ++i) if (span[i] > g_span_max[i]) g_span_max[i] = span[i];
+      } }
     g_skip_update = 0;
     return r;
 }

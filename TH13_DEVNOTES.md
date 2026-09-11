@@ -116,7 +116,7 @@ Player (`0x12`) runs before EnemyManager (`0x15`), which matters for every guard
 
 The draw runner is `0x470c30` (list at manager+0x40, dispatch `0x470c9e`), the sprite batch
 flush `0x4679a0` (ESI = AnmManager), the sprite VM draw `0x46a700` (VM in EAX; loaded-ANM
-pointer at VM+0x30, `slot << 16 | sprite` at +0x34, layer at +0x24; ANM slots: 0 text, 5
+pointer at VM+0x30, `slot << 16 | sprite` at +0x34, layer at +0x24, script index at +0x4aa; ANM slots: 0 text, 5
 front, 7 bullet, 8 effect, 9 the player, 10 enemy, 25 astral). Priorities are decimal here. `L n` is the AnmManager's
 layer thunk for sprite layer *n*; only free-standing VMs live in those lists — the managers
 below draw their own VMs (24 callers of the VM draw `0x46a700`), which is why "bullets are

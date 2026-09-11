@@ -518,13 +518,20 @@ static void scaler_blit(IDirect3DDevice9* dev) {
     g_stat_blits++;
 }
 
+static HRESULT hook_Present_inner(IDirect3DDevice9* dev, const RECT* src, const RECT* dst, HWND wnd, const RGNDATA* dirty);
 static HRESULT __stdcall hook_Present(IDirect3DDevice9* dev, const RECT* src, const RECT* dst, HWND wnd, const RGNDATA* dirty) {
+    g_t_present_in = now_s();
+    HRESULT hr = hook_Present_inner(dev, src, dst, wnd, dirty);
+    g_t_present_out = now_s();
+    return hr;
+}
+static HRESULT hook_Present_inner(IDirect3DDevice9* dev, const RECT* src, const RECT* dst, HWND wnd, const RGNDATA* dirty) {
     /* A game we only know how to scale has no frame hook, so this is the once-a-frame point.
        Before the blit, so a rebuilt swap chain is the one we then draw into. */
     if (!g_frame_hook_installed) hfr_housekeeping();
     g_dim_frame_done = 0;
-    if (g_dim_trace_frames > 0) { LOG("draw ---- present"); g_dim_trace_frames--; g_dim_trace_n = 0; }
-    else if (cfg.debug && g_dim_available && dim_in_game() && (++g_dim_ingame_frames % 600) == 0 && g_dim_ingame_frames <= 36000) g_dim_trace_frames = 1;   /* one frame every ten seconds of a stage, for the first ten minutes: the draw table */
+    if (g_dim_trace_frames > 0) { LOG("draw ---- present"); g_dim_trace_frames--; g_dim_trace_n = 0; if (g_log_lazy && g_log) fflush(g_log); }
+    else if (cfg.debug && g_dim_available && dim_in_game() && (++g_dim_ingame_frames % (cfg.debug >= 3 ? 1 : cfg.debug >= 2 ? 30 : 600)) == 0 && g_dim_ingame_frames <= (cfg.debug >= 3 ? 3600 : 36000)) g_dim_trace_frames = 1;   /* one frame every ten seconds of a stage (debug=2: every half second), for the first ten minutes: the draw table */
     scaler_blit(dev);
     /* Our chain carries the picture; the device's own chain is never shown. */
     if (g_own_present && g_swap) return g_swap->lpVtbl->Present(g_swap, NULL, NULL, wnd, NULL, 0);

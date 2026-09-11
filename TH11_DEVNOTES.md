@@ -205,7 +205,11 @@ enemy.anm, layer 10 → priority 21, unlike TH13 where they sit on layers 8/9), 
 body, 23/24 layers 11/12, **25 ItemManager `0x4240d0`**, 27 LaserManager, 29 BulletManager,
 31 Spellcard (the name text), 32..34 layers, 35 `0x4292b0` back to the stage target, 37
 `0x429420` copy, 42/43 Gui, 46 `0x429340` back buffer, 47 `0x429470` the final copy, 48 on
-the interface. bullet.anm: items layer 9, bullets 15, effects elsewhere; pl0X.anm shots on
+the interface. bullet.anm: items layer 9; the bullets are the BulletManager's (29), their
+VMs' layer left at 0; layer 15 (priority 32) is the enemy death bursts (scripts 73-94 and
+115-188, the ones setting `ins_68(15)`; 95-114 between them are bullet scripts) and other
+effects, so the whole file bar its item layer falls through to the effects class. enemy.anm's
+layer 6 is spawn flashes and auras, 7/8 the enemies. VM script index at +0x3a2. pl0X.anm shots on
 layer 10; the stage-enemy ANM's layer-5 scripts are the spell-card portraits (never faded)
 and its card backgrounds set no layer (drawn under the world, dimmed by the quad).
 
