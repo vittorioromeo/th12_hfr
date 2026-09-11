@@ -145,6 +145,19 @@ static const struct node_class th11_classes[] = {
     { 0x420840, MODE_FRAME, "GameManager"     },
 };
 
+/* Dimming classes (DEVNOTES_RUNTIME 3b): ItemManager 25, LaserManager 27, BulletManager 29; the
+   world's sprite layers run from 11 to 43. bullet.anm carries items (layer 9), bullets (15) and
+   the effects; the player's shots are pl0X.anm layer 10. */
+static const struct DimRule th11_dim_rules[] = {
+    { 25, 25, NULL,          -1, -1, DIM_ITEMS },
+    { 27, 29, NULL,          -1, -1, DIM_NONE },
+    { 11, 43, "pl*.anm",     10, 10, DIM_PLAYER_SHOTS },
+    { 11, 43, "pl*.anm",     -1, -1, DIM_NONE },
+    { 11, 43, "enemy.anm",   -1, -1, DIM_NONE },
+    { 11, 43, "bullet.anm",   9,  9, DIM_NONE },
+    { 11, 43, "bullet.anm",  15, 15, DIM_NONE },
+    { 11, 43, "bullet.anm",  -1, -1, DIM_EFFECTS },
+};
 static const struct GameProfile th11_profile = {
     .identity = &game_identities[GI_TH11],
     .addr = {
@@ -206,7 +219,8 @@ static const struct GameProfile th11_profile = {
     .classes = th11_classes, .class_count = sizeof th11_classes / sizeof *th11_classes,
     .mask_minor_player_edges = 1, .d3dx = "d3dx9_37.dll",
     .native_size_cycle = 1,
-    .draw = { .dispatch = 0x456e81, .dispatch_len = 8, .node_reg = R_ESI, .prio_off = 0, .flush_fn = 0x44fd10, .flush_reg = R_ESI, .flush_this = 0x4c3268, .world_prio = 11, .item_prios = { 25, -1, -1, -1 } },
+    .draw = { .dispatch = 0x456e81, .dispatch_len = 8, .node_reg = R_ESI, .prio_off = 0, .flush_fn = 0x44fd10, .flush_reg = R_ESI, .flush_this = 0x4c3268, .world_prio = 11, .rules = th11_dim_rules, .rule_count = sizeof th11_dim_rules / sizeof *th11_dim_rules, .special_name = NULL,
+              .vm_draw = 0x451ef0, .vm_draw_len = 6, .vm_reg = R_EAX, .vm_anm_off = 0x3b0, .vm_layer_off = 0x20 },
     .install_sites = th11_install_sites,
     .place_enemy = th11_place_enemy,
 };

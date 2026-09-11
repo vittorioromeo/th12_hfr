@@ -22,6 +22,10 @@ static void logf_(const char* fmt, ...) {
 /* Built-in filters occupy the first indices; shader filters are appended after them. */
 enum { FILTER_NEAREST = 0, FILTER_BILINEAR = 1, FILTER_SHARP = 2, FILTER_BUILTIN_COUNT };
 
+/* Classes of drawing the dimming can fade (dimming.c); the INI keys are dim_<name>. */
+enum { DIM_BACKGROUND = 0, DIM_ITEMS, DIM_EFFECTS, DIM_SPECIAL, DIM_PLAYER_SHOTS, DIM_COUNT, DIM_NONE = -1 };
+static const char* const DIM_NAMES[DIM_COUNT] = { "background", "items", "effects", "special", "player_shots" };
+
 /* ------------------------------------------------------------------ config */
 static struct {
     int fps;            /* 0 = auto from display */
@@ -53,8 +57,8 @@ static struct {
     int internal_scale;     /* the game draws at N times 640x480 (1 = as shipped) */
     int texture_scale;      /* textures magnified N times at load with texture_filter (0/1 = off) */
     char texture_filter_name[32];
-    int dim_background;     /* percent the stage background is faded towards black (0 = off) */
-    int dim_items;          /* percent the pickups (P, point, ...) are faded towards transparent */
+    int dim[5];             /* DIM_*: percent each class of drawing is faded (the background towards black,
+                               everything else towards transparent); 0 = off */
 /* Named, not positional: the old form was a bare list of eighteen numbers that had to stay in
    the same order as the fields above, so inserting a setting anywhere but the end silently
    shifted every default after it. Anything omitted here is zero. */

@@ -31,8 +31,8 @@ int hfr_ui_get(int id) {
     case UI_D3D9EX:             return g_using_ex;
     case UI_OWN_PRESENT:        return g_own_present;
     case UI_BORDERLESS_ACTIVE:  return g_borderless_active;
-    case UI_DIM_BACKGROUND:     return cfg.dim_background;
-    case UI_DIM_ITEMS:          return cfg.dim_items;
+    case UI_DIM_BACKGROUND: case UI_DIM_ITEMS: case UI_DIM_EFFECTS: case UI_DIM_SPECIAL: case UI_DIM_PLAYER_SHOTS:
+        return cfg.dim[id - UI_DIM_BACKGROUND];
     case UI_DIM_AVAILABLE:      return g_dim_available && g_game && g_game->draw.world_prio > 0;
     default:                    return 0;
     }
@@ -59,8 +59,8 @@ void hfr_ui_set(int id, int value) {
     case UI_SUBTICK_INPUT:   cfg.subtick_input = !!value; break;
     case UI_ENEMY_INTERP:    cfg.enemy_interp = !!value; break;
     case UI_DEBUG:           cfg.debug = !!value; break;
-    case UI_DIM_BACKGROUND:  cfg.dim_background = value < 0 ? 0 : (value > 100 ? 100 : value); break;
-    case UI_DIM_ITEMS:       cfg.dim_items = value < 0 ? 0 : (value > 100 ? 100 : value); break;
+    case UI_DIM_BACKGROUND: case UI_DIM_ITEMS: case UI_DIM_EFFECTS: case UI_DIM_SPECIAL: case UI_DIM_PLAYER_SHOTS:
+        cfg.dim[id - UI_DIM_BACKGROUND] = value < 0 ? 0 : (value > 100 ? 100 : value); break;
     case UI_MAX_FRAME_LATENCY:
         cfg.max_frame_latency = value < 0 ? 0 : (value > 16 ? 16 : value);
         if (g_using_ex && g_dev && cfg.max_frame_latency > 0) {
@@ -75,6 +75,7 @@ int         hfr_ui_filter_count(void) { return filter_count(); }
 const char* hfr_ui_filter_name(int index) { struct Filter* f = filter_at(index); return f ? f->name : ""; }
 int         hfr_ui_filter_is_fixed_scale(int index) { struct Filter* f = filter_at(index); return f && f->scale > 0; }
 int         hfr_ui_menu_key(void) { return cfg.menu_key; }
+const char* hfr_ui_dim_special_name(void) { return g_game ? g_game->draw.special_name : NULL; }
 int         hfr_ui_system_count(void) { return g_game ? (int)g_class_count : 0; }
 const char* hfr_ui_system_name(int i) { return (g_game && i >= 0 && i < (int)g_class_count) ? g_classes[i].name : ""; }
 int         hfr_ui_system_get(int i) { return (i >= 0 && i < (int)g_class_count) ? g_sub_enabled[i] : 0; }
@@ -126,8 +127,7 @@ void hfr_ui_save(void) {
     ini_put_int("video", "window_scale", cfg.window_scale);
     ini_put_int("video", "snap_aspect", cfg.snap_aspect);
     ini_put_int("video", "fullscreen_mode", cfg.fullscreen_mode);
-    ini_put_int("video", "dim_background", cfg.dim_background);
-    ini_put_int("video", "dim_items", cfg.dim_items);
+    for (int i = 0; i < DIM_COUNT; ++i) { char key[32]; snprintf(key, sizeof key, "dim_%s", DIM_NAMES[i]); ini_put_int("video", key, cfg.dim[i]); }
     ini_put_int("hfr", "max_frame_latency", cfg.max_frame_latency);
     ini_put_int("hfr", "fps", cfg.fps);
     ini_put_int("hfr", "vsync", cfg.vsync);

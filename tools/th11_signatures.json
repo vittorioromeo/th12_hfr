@@ -280,6 +280,10 @@
     "description": "fstp dword ptr [0x4a7948]"
   },
   {
+    "address": "0x451ef0",
+    "bytes": "8b 90 04 04 00 00"
+  },
+  {
     "address": "0x452420",
     "bytes": "83ec18d905407f4900",
     "description": "sub esp, 0x18; fld dword ptr [0x497f40]"

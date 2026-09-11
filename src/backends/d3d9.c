@@ -177,7 +177,7 @@ static HRESULT __stdcall hook_DrawPrimitiveUP(IDirect3DDevice9* dev, D3DPRIMITIV
         if (cfg.debug && prims == 2 && stride >= 24 && (f & D3DFVF_XYZRHW) && data)
             for (UINT i = 0; i < 4; ++i) { const float* q = (const float*)((const uint8_t*)data + i * stride); LOG("draw        v%u %.1f,%.1f uv %.3f,%.3f", i, q[0], q[1], q[(stride / 4) - 2], q[(stride / 4) - 1]); }
     }
-    int scale = g_iscale_active && g_iscale > 1 && !g_dim_drawing, fade = dim_item_fade();
+    int scale = g_iscale_active && g_iscale > 1 && !g_dim_drawing, fade = dim_draw_fade();
     if ((scale || fade != 256) && data && stride >= 16 && SUCCEEDED(dev->lpVtbl->GetFVF(dev, &fvf)) && (fvf & D3DFVF_XYZRHW)) {
         UINT verts = type == D3DPT_TRIANGLELIST ? prims * 3 : type == D3DPT_TRIANGLESTRIP || type == D3DPT_TRIANGLEFAN ? prims + 2 :
                      type == D3DPT_LINELIST ? prims * 2 : type == D3DPT_LINESTRIP ? prims + 1 : prims;

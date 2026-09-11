@@ -1,7 +1,8 @@
-/* Background and pickup dimming (video.dim_background, video.dim_items).
+/* Dimming (video.dim_*): fade the background, the pickups, the cosmetic effects, the player's
+ * shots and a game's own extra class, each by a percentage.
  *
- * Both exist for one reason: bullets should be the most visible thing on the screen, and
- * neither a busy stage background nor a rain of P and point items should compete with them.
+ * All exist for one reason: bullets should be the most visible thing on the screen, and neither
+ * a busy stage background nor a rain of P items, explosions and one's own shots should compete.
  *
  * What draws what. Every object registers a draw callback with a priority, and each frame the
  * draw runner calls them in that order: the stage's 3D scene first, then the sprite manager's
@@ -15,7 +16,12 @@
  * The profile therefore names the runner's dispatch: the instructions that call one node's
  * callback. They are wrapped (dim_install) to flush the batch, record the node's priority in
  * g_draw_prio, call the callback, flush again and forget the priority. Every draw call then
- * happens under exactly one callback, and the hooks can attribute it.
+ * happens under exactly one callback. Where one callback draws several classes -- the
+ * sprite-layer callbacks draw the player's shots, effects, spirits and more in one list -- the
+ * sprite VM draw is wrapped too: each VM is classified by the profile's rules (its loaded
+ * ANM's file name, its sprite layer, the callback's priority), and when its class differs
+ * from the batch's the batch is flushed first. So every draw call carries one class,
+ * g_batch_class, which is what the Direct3D hooks fade by.
  *
  * Background: before the first callback with priority >= world_prio, a black quad with the
  * configured alpha is blended over the current viewport, on top of everything drawn so far. Doing it there rather than modulating the background's own draws means fog,
@@ -31,6 +37,7 @@ static volatile uint8_t* g_draw_node;      /* its node, for the debug trace */
 /* g_dim_available (timing.c): the profile describes the dispatch and the wrap is in */
 static int g_dim_drawing;                  /* our own quad is going through the hooked draw */
 static IDirect3DStateBlock9* g_dim_state;
+static volatile int g_batch_class = DIM_NONE;   /* the class of whatever is in the sprite batch / being drawn */
 /* debug: g_dim_trace_frames frames have every draw logged */
 static void dim_trace(IDirect3DDevice9* dev, const char* what, UINT prims, DWORD fvf, int active, void* caller) {
     if (g_dim_trace_frames <= 0 || !cfg.debug) return;
@@ -38,7 +45,7 @@ static void dim_trace(IDirect3DDevice9* dev, const char* what, UINT prims, DWORD
     DWORD src = 0, dst = 0, tex = 0; IDirect3DBaseTexture9* t = NULL;
     dev->lpVtbl->GetRenderState(dev, D3DRS_SRCBLEND, &src); dev->lpVtbl->GetRenderState(dev, D3DRS_DESTBLEND, &dst);
     dev->lpVtbl->GetTexture(dev, 0, &t); if (t) { tex = (DWORD)(uintptr_t)t; t->lpVtbl->Release(t); }
-    LOG("draw %3d: %-6s prio %2d fvf 0x%03x prims %3u vp %u,%u %ux%u blend %lu/%lu tex %08lx from %p%s", g_dim_trace_n++, what, g_draw_prio, (unsigned)fvf, prims,
+    LOG("draw %3d: %-6s prio %2d class %2d fvf 0x%03x prims %3u vp %u,%u %ux%u blend %lu/%lu tex %08lx from %p%s", g_dim_trace_n++, what, g_draw_prio, g_batch_class, (unsigned)fvf, prims,
         vp.X, vp.Y, vp.Width, vp.Height, (unsigned long)src, (unsigned long)dst, (unsigned long)tex, caller, active ? "" : " (not the game RT)");
 }
 
@@ -47,13 +54,17 @@ static void dim_trace(IDirect3DDevice9* dev, const char* what, UINT prims, DWORD
  *   call flush ; call dim_at_callback
  *   <the dispatch bytes: load argument, load callback, call it>
  *   push eax ; call flush ; pop eax
- *   mov dword [g_draw_prio],-1
+ *   mov dword [g_draw_prio],-1 ; mov dword [g_batch_class],-1
  *   jmp dispatch+len
  * flush: push reg ; mov reg,[flush_this] ; call flush_fn ; pop reg ; ret
  * EAX is free at the dispatch (the callback's return value replaces it), and the flush and the
  * C call keep everything but EAX/ECX/EDX, which the copied bytes reload; every supported
  * game's dispatch has that shape. */
 static void __cdecl __attribute__((force_align_arg_pointer)) dim_at_callback(void);
+static int  __cdecl __attribute__((force_align_arg_pointer)) dim_vm_enter(void);
+static volatile const uint8_t* g_vm;       /* the sprite VM being drawn */
+static void dim_vm_trace(const char* anm, int layer);
+static int dim_classify(const char* anm, int layer);
 static void dim_install(void) {
     const uintptr_t at = g_game->draw.dispatch; const size_t n = g_game->draw.dispatch_len;
     const uint8_t node = g_game->draw.node_reg, freg = g_game->draw.flush_reg;
@@ -72,25 +83,88 @@ static void dim_install(void) {
     ECOPY(at, n);
     E(0x50); ECALL((uintptr_t)flush); E(0x58);                                                  /* push eax; call flush; pop eax */
     E(0xC7, 0x05); E32((uint32_t)(uintptr_t)&g_draw_prio); E32(0xFFFFFFFFu);                  /* mov dword [g_draw_prio],-1 */
+    E(0xC7, 0x05); E32((uint32_t)(uintptr_t)&g_batch_class); E32((uint32_t)DIM_NONE);         /* mov dword [g_batch_class],DIM_NONE */
     EJMP(at + n);
     stub_end();
     site_hook(at, n);
+    /* The VM draw: record the VM, ask C whether its class differs from the batch's (then flush),
+       carry the prologue. Everything but the flags is preserved for the function. */
+    const uintptr_t vd = g_game->draw.vm_draw; const size_t vn = g_game->draw.vm_draw_len; const uint8_t vreg = g_game->draw.vm_reg;
+    if (vd && vn >= 5 && vn <= 16 && vreg != 4 && site_expected(vd, vn)) {
+        STUB_BEGIN();
+        E(0x89, 0x05 | (vreg << 3)); E32((uint32_t)(uintptr_t)&g_vm);                           /* mov [g_vm],reg */
+        E(0x50, 0x51, 0x52);                                                                     /* push eax; push ecx; push edx */
+        ECALL((uintptr_t)dim_vm_enter); E(0x85, 0xC0); E(0x74, 0x05);                             /* test eax,eax; jz +5 */
+        ECALL((uintptr_t)flush);
+        E(0x5A, 0x59, 0x58);                                                                     /* pop edx; pop ecx; pop eax */
+        ECOPY(vd, vn); EJMP(vd + vn);
+        stub_end();
+        site_hook(vd, vn);
+    }
     g_dim_available = 1;
-    LOG("dimming: draw callbacks attributed at the runner @%08x (world from priority %d; items at %d)",
-        (unsigned)at, g_game->draw.world_prio, g_game->draw.item_prios[0]);
+    LOG("dimming: draws attributed at the runner @%08x (world from priority %d, %u rules%s)",
+        (unsigned)at, g_game->draw.world_prio, (unsigned)g_game->draw.rule_count, vd ? ", per sprite VM" : "");
+}
+/* Debug (debug=1, traced frames): every VM's ANM and layer, and the first VMs' raw words -- how
+   the profile's vm_anm_off/vm_layer_off and the rules were found. */
+static void dim_vm_trace(const char* anm, int layer) {
+    if (g_dim_trace_frames <= 0 || !cfg.debug) return;
+    LOG("draw      vm %p prio %d anm %s layer %d", (const void*)g_vm, g_draw_prio, anm ? anm : "?", layer);
+    static int per_prio, last_prio = -2; if (g_draw_prio != last_prio) { last_prio = g_draw_prio; per_prio = 0; }
+    if (per_prio++ < 3) {
+        const uint32_t* w = (const uint32_t*)g_vm; char line[3000]; int n = 0;
+        for (int i = 0; i < 300; ++i) n += snprintf(line + n, sizeof line - n, " %08x", (unsigned)w[i]);
+        LOG("draw      vm words:%s", line);
+        /* which of its words points at a loaded ANM (slot index, then the file name)? */
+        for (int i = 0; i < 300; ++i) {
+            const uint8_t* al = (const uint8_t*)(uintptr_t)w[i];
+            if ((uintptr_t)al < 0x10000 || IsBadReadPtr(al, 64)) continue;
+            const char* nm = (const char*)al + 4; int ok = 0;
+            for (int k = 0; k < 28; ++k) { if (nm[k] == 0) { ok = k > 4 && nm[k-4] == '.' && nm[k-3] == 'a' && nm[k-2] == 'n' && nm[k-1] == 'm'; break; } if (nm[k] < 32 || nm[k] > 126) break; }
+            if (ok) LOG("draw      vm anm pointer at +0x%x: slot %u %s", i * 4, (unsigned)*(const uint32_t*)al, nm);
+        }
+    }
 }
 static int dim_in_game(void) {
     return !g_game->addr.enemy_manager || *(void**)g_game->addr.enemy_manager != NULL;
 }
-static int dim_is_item_prio(int prio) {
-    for (int i = 0; i < 4; ++i) if (g_game->draw.item_prios[i] >= 0 && g_game->draw.item_prios[i] == prio) return 1;
-    return 0;
-}
 /* 256 = leave the draw alone; otherwise the alpha multiplier (0..255) for the current draw. */
-static int dim_item_fade(void) {
-    if (cfg.dim_items <= 0 || !g_dim_available || g_dim_drawing || g_draw_prio < 0 || !dim_is_item_prio(g_draw_prio)) return 256;
-    int pct = cfg.dim_items > 100 ? 100 : cfg.dim_items;
+static int dim_draw_fade(void) {
+    int cls = g_batch_class;
+    if (!g_dim_available || g_dim_drawing || cls <= DIM_BACKGROUND || cls >= DIM_COUNT || cfg.dim[cls] <= 0) return 256;
+    int pct = cfg.dim[cls] > 100 ? 100 : cfg.dim[cls];
     return (100 - pct) * 255 / 100;
+}
+/* --- classification: g_batch_class is the class of whatever is in the sprite batch / being drawn */
+static int dim_glob(const char* pat, const char* name) {   /* "pl*.anm": one '*' matching anything */
+    const char* star = strchr(pat, '*');
+    if (!star) return strcmp(pat, name) == 0;
+    size_t pre = (size_t)(star - pat), suf = strlen(star + 1), n = strlen(name);
+    return n >= pre + suf && memcmp(pat, name, pre) == 0 && memcmp(star + 1, name + n - suf, suf) == 0;
+}
+/* The class of a VM (anm name and layer given) or of a non-VM draw (anm NULL) under the running callback. */
+static int dim_classify(const char* anm, int layer) {
+    for (size_t i = 0; i < g_game->draw.rule_count; ++i) {
+        const struct DimRule* r = &g_game->draw.rules[i];
+        if (r->prio_lo >= 0 && g_draw_prio < r->prio_lo) continue;
+        if (r->prio_hi >= 0 && g_draw_prio > r->prio_hi) continue;
+        if (r->anm) { if (!anm || !dim_glob(r->anm, anm)) continue; }
+        if (r->layer_lo >= 0 && (layer < r->layer_lo || layer > r->layer_hi)) continue;
+        return r->category;
+    }
+    return DIM_NONE;
+}
+/* The sprite VM draw wrap asks, before the VM draws, whether the batch must be flushed first. */
+static int __cdecl __attribute__((force_align_arg_pointer)) dim_vm_enter(void) {
+    if (!g_vm || g_draw_prio < 0) return 0;
+    const char* anm = NULL; int layer = -1;
+    if (g_game->draw.vm_anm_off) { const uint8_t* al = *(const uint8_t* const*)(g_vm + g_game->draw.vm_anm_off); if (al) anm = (const char*)al + 4; }
+    if (g_game->draw.vm_layer_off) layer = *(const int*)(g_vm + g_game->draw.vm_layer_off);
+    dim_vm_trace(anm, layer);
+    int cls = dim_classify(anm, layer);
+    if (cls == g_batch_class) return 0;
+    g_batch_class = cls;
+    return 1;
 }
 /* Called by the wrap before every draw callback. At the first callback of the world, blend the
    black quad over what has been drawn: at that point the background is complete and the world
@@ -100,7 +174,8 @@ static int dim_item_fade(void) {
 static void __cdecl __attribute__((force_align_arg_pointer)) dim_at_callback(void) {
     if (g_dim_trace_frames > 0 && cfg.debug && g_draw_node)
         LOG("draw      callback prio %d fn %08x", g_draw_prio, (unsigned)*(const uint32_t*)((const uint8_t*)g_draw_node + 8));
-    if (cfg.dim_background <= 0 || !g_dim_available || g_dim_frame_done || !g_dev) return;
+    g_batch_class = g_draw_prio >= 0 ? dim_classify(NULL, -1) : DIM_NONE;   /* the batch was just flushed */
+    if (cfg.dim[DIM_BACKGROUND] <= 0 || !g_dim_available || g_dim_frame_done || !g_dev) return;
     if (g_draw_prio < g_game->draw.world_prio || !dim_in_game()) return;
     IDirect3DDevice9* dev = g_dev;
     g_dim_frame_done = 1;
@@ -108,7 +183,7 @@ static void __cdecl __attribute__((force_align_arg_pointer)) dim_at_callback(voi
        offscreen stage of TH11 on), the playfield when it has (TH10 draws straight into the back
        buffer, with the interface painted around it afterwards). */
     D3DVIEWPORT9 vp; if (FAILED(dev->lpVtbl->GetViewport(dev, &vp))) return;
-    int pct = cfg.dim_background > 100 ? 100 : cfg.dim_background;
+    int pct = cfg.dim[DIM_BACKGROUND] > 100 ? 100 : cfg.dim[DIM_BACKGROUND];
     DWORD colour = (DWORD)(pct * 255 / 100) << 24;
     float x0 = (float)vp.X - 0.5f, y0 = (float)vp.Y - 0.5f, x1 = (float)(vp.X + vp.Width) - 0.5f, y1 = (float)(vp.Y + vp.Height) - 0.5f;
     struct { float x, y, z, rhw; DWORD c; } v[4] = {

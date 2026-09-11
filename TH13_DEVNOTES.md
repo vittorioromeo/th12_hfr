@@ -115,7 +115,9 @@ Player (`0x12`) runs before EnemyManager (`0x15`), which matters for every guard
 ### Draw callbacks (the other list; from a `debug=1` trace, see DEVNOTES_RUNTIME §3b)
 
 The draw runner is `0x470c30` (list at manager+0x40, dispatch `0x470c9e`), the sprite batch
-flush `0x4679a0` (ESI = AnmManager). Priorities are decimal here. `L n` is the AnmManager's
+flush `0x4679a0` (ESI = AnmManager), the sprite VM draw `0x46a700` (VM in EAX; loaded-ANM
+pointer at VM+0x30, `slot << 16 | sprite` at +0x34, layer at +0x24; ANM slots: 0 text, 5
+front, 7 bullet, 8 effect, 9 the player, 10 enemy, 25 astral). Priorities are decimal here. `L n` is the AnmManager's
 layer thunk for sprite layer *n*; only free-standing VMs live in those lists — the managers
 below draw their own VMs (24 callers of the VM draw `0x46a700`), which is why "bullets are
 layer 15" is true of the scripts and useless for attributing draw calls.
@@ -128,11 +130,11 @@ layer 15" is true of the scripts and useless for attributing draw calls.
 | 11 | `0x46ed80` | AnmManager: world frame context |
 | 12 | `0x43c600` | Stage: binds the world target — **`world_prio`**: the dim quad goes just before this, into the finished stage |
 | 14 | `0x43c870` | Stage: copies the stage target into the world target (ONE/ZERO) |
-| 15 | L6 | spirits (additive); in trance, the stage texture re-blended DESTCOLOR/INVDESTCOLOR |
+| 15 | L6 | the divine spirits (`astral.anm`, additive) and bullet cancels; in trance, the stage texture re-blended DESTCOLOR/INVDESTCOLOR |
 | 16 | `0x40e7e0` | BulletManager (back layer) |
 | 21 | `0x418f30` | EnemyManager |
-| 22 | L11 | player VMs |
-| 26 | `0x42eff0` | **ItemManager — `item_prios`** |
+| 22 | L11 | the player's shots and options (`pl0X.anm` layer 11; the body draws at 23 with no layer) |
+| 26 | `0x42eff0` | **ItemManager** (items rule) |
 | 27 | `0x438eb0` | Gui |
 | 29 | `0x42fea0` | LaserManager |
 | 31 | `0x40e7b0` | BulletManager |

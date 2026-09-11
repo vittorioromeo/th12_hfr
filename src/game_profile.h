@@ -5,6 +5,9 @@ enum { MODE_FRAME = 0, MODE_SUB = 1, MAX_NODE_CLASSES = 32 };
 struct node_class { uint32_t func; int mode; const char* name; };
 enum SpeedOp { SPEED_ONE_PERM, SPEED_ONE_TEMP, SPEED_PAUSE_SET, SPEED_PAUSE_RESTORE, SPEED_ECL };
 struct SpeedSite { uintptr_t addr; unsigned char size, op, pop_float; };
+/* One dimming classification rule (game_profile.h `draw`): draws under callbacks with priority in
+   [prio_lo, prio_hi], from VMs of the named ANM on the given layers, belong to `category`. */
+struct DimRule { int prio_lo, prio_hi; const char* anm; int layer_lo, layer_hi; int category; };
 struct GameProfile {
     const struct GameIdentity* identity;
     struct {
@@ -86,21 +89,28 @@ struct GameProfile {
     /* Two-byte "frndint" sites in the sprite quad builder that snap every corner to a whole pixel;
        NOPed when the game draws at a higher internal resolution (video.internal_scale). */
     const uintptr_t* sprite_round_sites; size_t sprite_round_count;
-    /* Dimming (video.dim_background / dim_items, dimming.c). Every object draws from the game's
-       draw list, one callback per node in priority order, and the callbacks do not touch Direct3D
-       directly: sprites go through the sprite manager's batch, flushed whenever the texture or
-       blend changes. So the draw runner's dispatch (the instructions that load a node's argument
-       and callback and call it) is wrapped: it records the node's priority for the Direct3D hooks
-       and flushes the batch before and after, so every draw call belongs to exactly one callback.
+    /* Dimming (video.dim_*, dimming.c). Every object draws from the game's draw list, one callback
+       per node in priority order, and the callbacks do not touch Direct3D directly: sprites go
+       through the sprite manager's batch, flushed whenever the texture or blend changes. So the
+       draw runner's dispatch (the instructions that load a node's argument and callback and call
+       it) is wrapped: it records the node's priority for the Direct3D hooks and flushes the batch
+       before and after, so every draw call belongs to exactly one callback; and the sprite VM draw
+       is wrapped so that a batch never mixes VMs of different classes.
        `dispatch` is those instructions (position-independent, `dispatch_len` bytes), `node_reg`
        holds the node whose priority sits at +prio_off. `flush_fn` is the batch flush, taking the
-       sprite manager (read from the pointer at `flush_this`) in `flush_reg`. Draws before the
-       first callback of priority `world_prio` are background; `item_prios` are the pickups'
-       callbacks. dispatch == 0: dimming unavailable for this game. */
+       sprite manager (read from the pointer at `flush_this`) in `flush_reg`. `vm_draw` draws one
+       VM (in `vm_reg`; the first `vm_draw_len` bytes are carried); the VM holds a pointer to its
+       loaded ANM (slot index, then the file name) at +vm_anm_off and its sprite layer at
+       +vm_layer_off. Draws before the first callback of priority `world_prio` are background;
+       `rules` classify the rest (first match wins; anm NULL matches any VM and non-VM draws too,
+       an anm pattern may end in '*'; -1 bounds are open). dispatch == 0: dimming unavailable. */
     struct {
         uintptr_t dispatch; unsigned char dispatch_len, node_reg; uint32_t prio_off;
         uintptr_t flush_fn; unsigned char flush_reg; uintptr_t flush_this;
-        int world_prio; int item_prios[4];
+        uintptr_t vm_draw; unsigned char vm_draw_len, vm_reg; uint32_t vm_anm_off, vm_layer_off;
+        int world_prio;
+        const struct DimRule* rules; size_t rule_count;
+        const char* special_name;     /* what DIM_SPECIAL fades in this game, for the menu; NULL = nothing */
     } draw;
     void (*install_sites)(void);
     void (*place_enemy)(uint8_t* enemy, uint8_t* anm, uint32_t flags, const float* position);

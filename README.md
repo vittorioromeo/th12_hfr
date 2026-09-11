@@ -8,7 +8,7 @@ per-game records are [TH10_DEVNOTES.md](TH10_DEVNOTES.md), [TH11_DEVNOTES.md](TH
 High refresh rate gameplay and presentation for Touhou. One DLL detects the game
 and selects its adapter; the scheduler, input, replay and Direct3D code are shared.
 
-**Current build: v0.4.4-test.** Supported executable layouts:
+**Current build: v0.4.5-test.** Supported executable layouts:
 
 | Game | Version | Executables | State |
 | --- | --- | --- | --- |
@@ -50,12 +50,15 @@ the sharper rasterisation until their sprite snapping is mapped. `texture_scale=
 game loads with that filter, once, at load time — the pixel-art upscaling applied to the art
 itself rather than to the finished frame, alpha edges included.
 
-**Readability.** `dim_background` fades the stage background towards black and `dim_items`
-fades the P and point pickups towards transparent, each by a percentage, so the bullets are
-the brightest things on the playfield. The background is dimmed once per frame at the point
-where the game finishes drawing it, so fog, additive layers and TH11-13's offscreen stage
-compositing fade together; the pickups are faded by their own draw call. Both are sliders in
-the menu's Display tab and take effect at once, in-stage only. Supported on all four games.
+**Readability.** Five sliders in the menu's Display tab (and `dim_*` keys) fade what competes
+with the enemy's bullets: the stage background towards black; the P and point pickups, the
+cosmetic effects (explosions, hit sparks, bullet cancels, particles), your own shots, and a
+game's own extra class (TH13's divine spirits) towards transparent. Enemies, bullets, lasers,
+the player and the interface are never touched. The background is dimmed once per frame at
+the point where the game finishes drawing it, so fog, additive layers and TH11-13's offscreen
+compositing fade together; everything else is classified per sprite by which ANM file it came
+from and which draw callback drew it, and faded in its own draw call. Supported on all four
+games; a new game needs two addresses and a short rule table (DEVNOTES_RUNTIME §3b).
 
 **An in-game menu.** F11 by default. Every setting in the INI is there, in four tabs, and changes
 apply immediately; saving makes them the default. Settings that cannot take effect in the current
@@ -72,7 +75,7 @@ every supported title; it still needs full-run replay testing before a stable re
 
 ## Install
 
-Download/extract `touhou_hfr_v0.4.4-test.zip` and close the game.
+Download/extract `touhou_hfr_v0.4.5-test.zip` and close the game.
 
 For a fresh installation, copy these four files next to the game executable:
 
@@ -152,6 +155,9 @@ refresh and enable sub-stepping, sub-tick movement/focus input and D3D9Ex.
 | `texture_filter` | `xbr-lv2` | The filter for that: `xbr-lv2`, `mmpx`, `super-xbr`, `scalefx`, or a `.hlsl` from `shaders/` |
 | `dim_background` | `0` | Fade the stage background towards black by this percentage, in-stage (menu slider too) |
 | `dim_items` | `0` | Fade the P/point pickups towards transparent by this percentage |
+| `dim_effects` | `0` | Fade explosions, hit sparks, bullet cancels and particles |
+| `dim_special` | `0` | Fade the game's own extra class: TH13's divine spirits (nothing in TH10-TH12) |
+| `dim_player_shots` | `0` | Fade your own shots and options |
 
 `[systems]` contains per-system switches for troubleshooting. Their defaults
 follow the adapter's audited classification. Turning a switch on does not make

@@ -247,14 +247,29 @@ draws have their vertex alpha scaled in the copy the internal-resolution path al
 or their colour when the destination blend is ONE. Draws that lack a diffuse component are
 left alone; none of the four games' item draws do.
 
-**How the tables were found, for the next game.** With `debug=1` the runtime logs three
-frames of a stage: every draw with its callback priority, FVF, blend, texture and calling
-address, every `SetRenderTarget`/`SetViewport`, and the callback table (`callback prio N fn
-X`). Match `fn` against the class table (the ItemManager's draw callback sits a few bytes
-after its update callback: `0x427380` → `0x4273c0` in TH12) and look for the first
-`SetRenderTarget` after the stage draws. Texture creation is logged with sizes, which
-identifies the sheets by their known dimensions (bullet3.png is 256x256, eff_base.png too;
-the copies made by texture upscaling are 2× that, so trace with `texture_scale=0`).
+**Finer than a callback: the sprite VM.** The next request — fade effects, the player's
+shots, TH13's spirits — broke the callback as the unit: the sprite-layer callbacks draw the
+player's shots, the spirits, the bullet cancels and the hit sparks from one list, and TH11
+even draws the enemies through it. So the sprite VM draw is wrapped as well (TH13 `0x46a700`,
+TH12 `0x45c900`, TH11 `0x451ef0`, TH10 `0x4451c0`; VM in EAX, six carried bytes). Before a VM
+draws, C classifies it and, when its class differs from the batch's, the batch is flushed
+first; the class then rides with the batch to its draw call. What identifies a VM: a pointer
+to its *loaded ANM* — a struct that begins with the slot index and the file name, the same in
+all four games — and its sprite layer. Dumping the first 300 words of a few VMs per callback
+under `debug=1` (the trace still does it) found the pointer at +0x30 (TH13), +0x3f8 (TH12),
++0x3b0 (TH11), +0x308 (TH10) by looking for words that point at "n.anm", and the layer at
++0x24 / +0x20 by matching the layer-thunk numbers. A profile's rules are then readable:
+`pl*.anm` on layers 10..13 are the player's shots (the body scripts set no layer, in every
+game and every character), `astral.anm` is TH13's spirits, `effect.anm` the effects,
+`bullet.anm` on anything but its item and bullet layers the bullet cancels, `enemy.anm`
+never touched; and the manager callbacks (lasers, bullets) are excluded by priority first.
+The sprite id is also there (TH13/TH11 keep `slot << 16 | sprite` next to the pointer, TH12
+a plain id at +0x3e0) but no rule has needed it. The cost is two words stored and a table
+walk per VM draw, and a flush where classes alternate — a few per frame.
+
+**Known imprecision.** The options orbit the player on the shot layer, so they fade with the
+shots. TH13's trance overlay brightens the dimmed stage back towards its texture (its blend
+is DESTCOLOR/INVDESTCOLOR); rare and short, left alone.
 
 ## 4. Bugs met, and what they taught
 

@@ -234,16 +234,26 @@ void draw_display_section(void) {
     /* Readability: fade what competes with the bullets. Applied immediately, in-stage only. */
     ImGui::Separator();
     bool dim_ok = hfr_ui_get(UI_DIM_AVAILABLE) != 0;
-    if (!dim_ok) ImGui::TextDisabled("This game's sprite layers are not described by the patch yet; dimming is inert.");
+    if (!dim_ok) ImGui::TextDisabled("This game's draw order is not described by the patch yet; dimming is inert.");
     ImGui::BeginDisabled(!dim_ok);
-    int dim_bg = hfr_ui_get(UI_DIM_BACKGROUND);
-    if (ImGui::SliderInt("Dim background", &dim_bg, 0, 100, "%d%%")) hfr_ui_set(UI_DIM_BACKGROUND, dim_bg);
-    help("Fades the stage background towards black so bullets stand out.\n"
-         "Enemies, bullets, items, the player and the interface are untouched.");
-    int dim_items = hfr_ui_get(UI_DIM_ITEMS);
-    if (ImGui::SliderInt("Fade items", &dim_items, 0, 100, "%d%%")) hfr_ui_set(UI_DIM_ITEMS, dim_items);
-    help("Fades the P, point and other pickups towards transparent so they are\n"
-         "not mistaken for bullets. 100%% hides them entirely.");
+    const char* special = hfr_ui_dim_special_name();
+    struct { int id; const char* label; const char* tip; } dims[] = {
+        { UI_DIM_BACKGROUND,   "Dim background",   "Fades the stage background towards black so bullets stand out.\n"
+                                                   "Enemies, bullets, items, the player and the interface are untouched." },
+        { UI_DIM_ITEMS,        "Fade items",       "Fades the P, point and other pickups towards transparent so they are\n"
+                                                   "not mistaken for bullets. 100%% hides them entirely." },
+        { UI_DIM_EFFECTS,      "Fade effects",     "Fades the cosmetic effects: explosions, hit sparks, bullet cancels,\n"
+                                                   "particles. Bullets and lasers are never touched." },
+        { UI_DIM_PLAYER_SHOTS, "Fade player shots","Fades your own shots (and options) so the enemy's are what you see." },
+        { UI_DIM_SPECIAL,      special,            "This game's own extra class of thing that competes with bullets." },
+    };
+    for (auto& d : dims) {
+        if (!d.label) continue;
+        int v = hfr_ui_get(d.id);
+        char label[64]; snprintf(label, sizeof label, d.id == UI_DIM_SPECIAL ? "Fade %s" : "%s", d.label);
+        if (ImGui::SliderInt(label, &v, 0, 100, "%d%%")) hfr_ui_set(d.id, v);
+        help(d.tip);
+    }
     ImGui::EndDisabled();
 }
 

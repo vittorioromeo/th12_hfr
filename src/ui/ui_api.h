@@ -27,7 +27,10 @@ enum {
     UI_BORDERLESS_ACTIVE,    /* read-only: the window is currently covering the monitor */
     UI_DIM_BACKGROUND,       /* percent the stage background fades towards black */
     UI_DIM_ITEMS,            /* percent the pickups fade towards transparent */
-    UI_DIM_AVAILABLE,        /* read-only: this game's sprite layers are known to the patch */
+    UI_DIM_EFFECTS,          /* ... the cosmetic effects: explosions, particles, hit sparks */
+    UI_DIM_SPECIAL,          /* ... the game's own extra class (hfr_ui_dim_special_name says which) */
+    UI_DIM_PLAYER_SHOTS,     /* ... the player's own shots */
+    UI_DIM_AVAILABLE,        /* read-only: this game's draw order is known to the patch */
     UI_SETTING_COUNT
 };
 
@@ -41,6 +44,7 @@ void        hfr_ui_save(void);
 void        hfr_ui_status(char* buf, int len);
 void        hfr_ui_scale_info(char* buf, int len);
 int         hfr_ui_menu_key(void);
+const char* hfr_ui_dim_special_name(void);   /* what UI_DIM_SPECIAL fades in this game; NULL when it has nothing */
 /* Settings that only take effect on the next run, so the menu can say so rather than
    pretending a change did something. */
 /* True while the simulation must not be reconfigured: a stage is running, or a replay is

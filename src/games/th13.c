@@ -224,6 +224,20 @@ static const struct node_class th13_classes[] = {
     { 0x42cb90, MODE_FRAME, "GameManager"     },
 };
 
+/* Dimming classes (DEVNOTES_RUNTIME 3b). The ItemManager draws at 26; the world's free-standing
+   VMs are drawn by the sprite-layer callbacks between 12 and 43. astral.anm is the divine spirits.
+   The player's own shots sit on sprite layers 10..13 of pl0X.anm, the body has none. */
+static const struct DimRule th13_dim_rules[] = {
+    { 26, 26, NULL,          -1, -1, DIM_ITEMS },
+    { 29, 31, NULL,          -1, -1, DIM_NONE },          /* lasers, bullets */
+    { 12, 43, "astral.anm",  -1, -1, DIM_SPECIAL },
+    { 12, 43, "pl*.anm",     10, 13, DIM_PLAYER_SHOTS },
+    { 12, 43, "pl*.anm",     -1, -1, DIM_NONE },
+    { 12, 43, "enemy.anm",   -1, -1, DIM_NONE },
+    { 12, 43, "effect.anm",  -1, -1, DIM_EFFECTS },
+    { 12, 43, "bullet.anm",   6,  6, DIM_EFFECTS },       /* bullet cancels */
+    { 12, 43, "bullet.anm",  16, 16, DIM_EFFECTS },
+};
 static const struct GameProfile th13_profile = {
     .identity = &game_identities[GI_TH13],
     .addr = {
@@ -291,6 +305,7 @@ static const struct GameProfile th13_profile = {
        lasers 29, bullets 31 ...); 44 on the interface (TH13_DEVNOTES has the table). */
     .draw = { .dispatch = 0x470c9e, .dispatch_len = 8, .node_reg = R_ESI, .prio_off = 0,
               .flush_fn = 0x4679a0, .flush_reg = R_ESI, .flush_this = 0x4dc688,
-              .world_prio = 12, .item_prios = { 26, -1, -1, -1 } },
+              .world_prio = 12, .rules = th13_dim_rules, .rule_count = sizeof th13_dim_rules / sizeof *th13_dim_rules, .special_name = "spirits",
+              .vm_draw = 0x46a700, .vm_draw_len = 6, .vm_reg = R_EAX, .vm_anm_off = 0x30, .vm_layer_off = 0x24 },
     .install_sites = th13_install_sites, .place_enemy = th13_place_enemy,
 };
