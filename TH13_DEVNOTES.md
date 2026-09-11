@@ -73,7 +73,7 @@ All addresses are absolute for v1.00c. Fields named as in `GameProfile`.
 | Score / difficulty | `0x4be7c0` / `0x4be7c4` |
 | Data directory / game directory strings | `0x4dd0d1` / `0x4de0d1` |
 
-Identity: magic `t13r`, no legacy INI, 92 frozen signatures (`tools/th13_signatures.json`).
+Identity: magic `t13r`, no legacy INI, 96 frozen signatures (`tools/th13_signatures.json`).
 
 ### vpatch conflict sites (`src/games/th13_conflicts.h`)
 
@@ -149,6 +149,16 @@ with position `in+0x44` (= enemy `+0x1230`), VM ids `in+0x120` (14 slots), sprit
 one field. Sprite placement (`0x41a8a0`) is `vm.pos(+0x574) = pos + offset[i] (+ parent
 vm+0x3c)` with **no** (224,16) playfield offset — TH13 keeps enemies in playfield coordinates.
 
+**AnmManager sprite quad builder** (`0x467350`, `this` = AnmManager, EAX = VM, stack arg =
+mode): adds the VM position to the four corner vertices at `0x4e47d8..0x4e4830`, and when the
+mode argument has bit 0 (`0x467d80`, the plain 2D draw — nearly every sprite) rounds each corner
+with `frndint` at `0x4673f9`, `0x467407`, `0x467415`, `0x467423` before subtracting the half
+texel. The AnmVm draw dispatch (`0x46a700`) selects the builder by `flags >> 25 & 0x1f`; modes
+that pass 0 or 2 (rotated, 3D) never round; the vertex-list mode (`0x46a8b0`, lasers and
+meshes) draws a strip from `vm+0x58c` with `vm+0x4ac` quads. Batches flush through
+`0x4679a0` as a `DrawPrimitiveUP` triangle list, stride `0x1c` (`XYZRHW|DIFFUSE|TEX1`). These
+are the `sprite_round_sites` for `video.internal_scale` (DEVNOTES_RUNTIME §3a).
+
 **Timer** (16 bytes): `prev, int, float, speed*`. The inline tick is
 `mov edx,[+4]; mov ecx,[+0xc]; mov [+0],edx; fld [ecx]; fcomp 0.99; ...; fcomp 1.01; ...` —
 integer path (`int++`, `float += 1`) when the speed is within 1%, otherwise `float += speed;
@@ -188,6 +198,10 @@ int = ftol(float)`. Grep for that shape to find every per-object timer.
 - **Constant `Timer::add` sites** `0x44647c` (player shot cycle `-14`) and `0x4629ef` (the ANM
   `wait N`, inlined into `AnmVm::update` — TH12 had a helper): `value × logical` instead of
   `value × logical × dt`. The other 18 `Timer::add` callers pass `-1.0` (rates) and are left alone.
+- **Sprite corner rounding** `0x4673f9`/`0x467407`/`0x467415`/`0x467423` (`frndint` → NOP, only
+  with `internal_scale > 1`): lets sprites sit on sub-pixel positions at the higher internal
+  resolution. Screen captures go through `D3DXLoadSurfaceFromSurface` with a 640x480 source
+  rect, scaled by the D3DX import hook.
 - **Enemy death ring** `0x415e59`: shrink/fade once per frame on the effect's `+0xc/+0x10` timer.
 - **Scrolling mesh VM callback** `0x46b9d0`: UV scroll once per frame on the VM's `+0x538/+0x53c`.
 

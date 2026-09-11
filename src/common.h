@@ -50,6 +50,7 @@ static struct {
     int menu_key;           /* virtual-key code that opens the in-game menu */
     int size_cycle_key;     /* cycles the window size, for games without their own F10 (0 = off) */
     int own_present;        /* -1 auto, 0 present through the game's chain, 1 through ours */
+    int internal_scale;     /* the game draws at N times 640x480 (1 = as shipped) */
 /* Named, not positional: the old form was a bare list of eighteen numbers that had to stay in
    the same order as the fields above, so inserting a setting anywhere but the end silently
    shifted every default after it. Anything omitted here is zero. */
@@ -60,5 +61,5 @@ static struct {
     .max_frame_latency = 1, .flipex = 0,
     .scaling = 1, .filter = FILTER_SHARP, .filter_name = "",
     .resizable = 1, .window_scale = 0, .snap_aspect = 0, .fullscreen_mode = 1,
-    .menu_key = VK_F11, .size_cycle_key = VK_F10, .own_present = -1,
+    .menu_key = VK_F11, .size_cycle_key = VK_F10, .own_present = -1, .internal_scale = 1,
 };

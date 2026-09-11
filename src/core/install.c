@@ -108,6 +108,13 @@ static int install(void) {
         stub_end();          /* account for these bytes: they are flushed from the I-cache below */
         site_call(g_game->addr.screenshot_call,stub);
     } else LOG("screenshot routine not known for this game; its screenshots are unsupported");
+    /* Higher internal resolution: the sprite builder's whole-pixel snapping goes (d3d9.c says why). */
+    if (cfg.internal_scale > 1 && g_game->sprite_round_count) {
+        static const uint8_t nop2[2] = {0x90,0x90};
+        for (size_t i = 0; i < g_game->sprite_round_count; ++i)
+            patch_bytes(g_game->sprite_round_sites[i], nop2, 2, site_expected(g_game->sprite_round_sites[i], 2));
+        LOG("internal resolution: sprite corners no longer snapped to whole pixels (%u sites)", (unsigned)g_game->sprite_round_count);
+    } else if (cfg.internal_scale > 1) LOG("internal resolution: this game's sprite snapping is not known; sprites stay on whole pixels");
     if (sim) {
         for (int i=0;i<4;++i) if (g_game->addr.replay_saves[i]) site_call(g_game->addr.replay_saves[i],hfr_replay_save);
         if (g_game->addr.replay_load_call) site_call(g_game->addr.replay_load_call,hfr_replay_load);
@@ -127,6 +134,9 @@ static int install(void) {
         int b=hook_iat(g_game->d3dx,"D3DXCreateTextureFromFileInMemoryEx",hook_D3DXCreateTextureFromFileInMemoryEx,(void**)&orig_D3DXCreateTextureFromFileInMemoryEx);
         if (!a || !b) {cfg.d3d9ex=0;LOG("D3DX hooks unavailable (%d,%d): using D3D9",a,b);}
     }
+    if (cfg.internal_scale > 1 &&
+        !hook_iat(g_game->d3dx,"D3DXLoadSurfaceFromSurface",hook_D3DXLoadSurfaceFromSurface,(void**)&orig_D3DXLoadSurfaceFromSurface))
+        LOG("internal resolution: D3DXLoadSurfaceFromSurface not imported; screen captures will show the top-left quarter");
     /* Sub-tick input feeds the simulation, so it belongs with the rest of it. */
     if (sim && cfg.subtick_input) hook_iat("winmm.dll","joyGetPosEx",hook_joyGetPosEx,(void**)&orig_joyGetPosEx);
     FlushInstructionCache(GetCurrentProcess(),g_stub_mem,g_stub_used);

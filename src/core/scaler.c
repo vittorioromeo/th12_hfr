@@ -59,6 +59,7 @@ static IDirect3DTexture9*    g_src_tex;      /* the game's render target, native
 static IDirect3DSurface9*    g_src_surf;
 static IDirect3DSurface9*    g_src_ds;       /* our own depth stencil, native size */
 static IDirect3DSurface9*    g_lockable;     /* lockable copy, for the screenshot path only */
+static IDirect3DSurface9*    g_shot_rt;      /* game-sized target the scaled surface is reduced into first */
 static unsigned              g_stat_backbuffer;
 int                          g_in_screenshot; /* set by a stub around the game's screenshot routine */
 static IDirect3DSwapChain9*  g_swap;         /* our presentation chain, sized to the window */
@@ -88,6 +89,7 @@ static int g_float_rt_state;      /* 0 unknown, 1 available, -1 not supported by
 #define PASS_FORMAT D3DFMT_A8R8G8B8
 static IDirect3DStateBlock9* g_state;
 static int g_native_w, g_native_h;           /* the size the game believes it renders at */
+static int g_iscale = 1;                     /* internal resolution factor (video.internal_scale), see d3d9.c */
 static int g_out_w, g_out_h;                 /* the real swap chain size */
 static int g_scaler_ok;                      /* redirection is live */
 static int g_display_hz = 60;                /* the display's own rate, for "auto" */
@@ -132,7 +134,7 @@ static void scaler_release(void) {
     g_pass_w = g_pass_h = 0;
     scaler_release_output();
     SAFE_RELEASE(g_state); scaler_release_pass();
-    SAFE_RELEASE(g_lockable);
+    SAFE_RELEASE(g_lockable); SAFE_RELEASE(g_shot_rt);
     SAFE_RELEASE(g_src_ds); SAFE_RELEASE(g_src_surf); SAFE_RELEASE(g_src_tex);
 }
 
@@ -183,7 +185,11 @@ static int window_override_pp(D3DPRESENT_PARAMETERS* out, HWND hwnd);
 static void scaler_adjust_pp(D3DPRESENT_PARAMETERS* out, const D3DPRESENT_PARAMETERS* game, HWND hwnd, int want_w, int want_h) {
     *out = *game;
     if (!g_scaler_enabled) return;
-    if (g_native_w <= 0) { g_native_w = (int)game->BackBufferWidth; g_native_h = (int)game->BackBufferHeight; }
+    if (g_native_w <= 0) {
+        g_native_w = (int)game->BackBufferWidth; g_native_h = (int)game->BackBufferHeight;
+        g_iscale = cfg.internal_scale < 1 ? 1 : cfg.internal_scale > 4 ? 4 : cfg.internal_scale;
+        g_native_w *= g_iscale; g_native_h *= g_iscale;   /* the surface the game draws on */
+    }
     window_override_pp(out, hwnd);
     if (!out->Windowed) {
         LOG("scaler: keeping the device windowed instead of taking an exclusive %ux%u mode",
@@ -532,17 +538,27 @@ static HRESULT __stdcall hook_Present(IDirect3DDevice9* dev, const RECT* src, co
  * and put everything back, including the viewport, which binding a target resets. Only the
  * screenshot path pays for this, and it is welcome to be slow. */
 static IDirect3DSurface9* lockable_copy(IDirect3DDevice9* dev) {
+    int nw = g_native_w / g_iscale, nh = g_native_h / g_iscale;   /* the size the screenshot code assumes */
     if (!g_lockable &&
-        FAILED(dev->lpVtbl->CreateOffscreenPlainSurface(dev, (UINT)g_native_w, (UINT)g_native_h,
+        FAILED(dev->lpVtbl->CreateOffscreenPlainSurface(dev, (UINT)nw, (UINT)nh,
                                                         g_bb_format, D3DPOOL_SYSTEMMEM, &g_lockable, NULL))) {
         LOG("scaler: no lockable copy for the screenshot path");
+        return NULL;
+    }
+    if (g_iscale > 1 && !g_shot_rt &&
+        FAILED(dev->lpVtbl->CreateRenderTarget(dev, (UINT)nw, (UINT)nh, g_bb_format, D3DMULTISAMPLE_NONE, 0, FALSE, &g_shot_rt, NULL))) {
+        LOG("scaler: no reduction target for the screenshot path");
         return NULL;
     }
     D3DVIEWPORT9 vp;
     int have_vp = SUCCEEDED(dev->lpVtbl->GetViewport(dev, &vp));
     dev->lpVtbl->SetRenderTarget(dev, 0, g_real_bb);
     dev->lpVtbl->SetDepthStencilSurface(dev, NULL);
-    HRESULT hr = dev->lpVtbl->GetRenderTargetData(dev, g_src_surf, g_lockable);
+    HRESULT hr;
+    if (g_iscale > 1) {
+        hr = dev->lpVtbl->StretchRect(dev, g_src_surf, NULL, g_shot_rt, NULL, D3DTEXF_LINEAR);
+        if (SUCCEEDED(hr)) hr = dev->lpVtbl->GetRenderTargetData(dev, g_shot_rt, g_lockable);
+    } else hr = dev->lpVtbl->GetRenderTargetData(dev, g_src_surf, g_lockable);
     dev->lpVtbl->SetRenderTarget(dev, 0, g_src_surf);
     dev->lpVtbl->SetDepthStencilSurface(dev, g_src_ds);
     if (have_vp) dev->lpVtbl->SetViewport(dev, &vp);

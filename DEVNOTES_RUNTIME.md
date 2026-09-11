@@ -132,6 +132,55 @@ None of this stops anyone using them: a filter dropped into `shaders/` can be un
 
 ---
 
+## 3a. Internal resolution, and where the whole pixels came from
+
+The complaint that led here: at 360 Hz a slow bullet still stepped from pixel to pixel. The
+simulation was never the limit — positions are floats, TH12/TH13 round `MotionState` positions
+to 1/100 px — the rasteriser was: the game drew into a 640x480 target and we magnified the
+result. Sub-pixel information existed in the data and was thrown away at rasterisation.
+
+**`video.internal_scale = N`** hands the game a target N times its own size and scales what it
+submits to that target (d3d9.c): viewports, clear rectangles, and every pre-transformed
+`XYZRHW` vertex in `DrawPrimitiveUP`, keeping the D3D9 half-texel rule
+(`x' = (x + 0.5)·N − 0.5`). Draws to any other target — the game's own render-to-texture
+surfaces, our presentation chain — are untouched, which the `SetRenderTarget` hook decides.
+Anything drawn through a real projection needs nothing. The screenshot path reduces the
+big surface back to 640x480 first, because the game writes its BMP from the locked surface
+with sizes from its own present parameters; and the engine's screen capture
+(`D3DXLoadSurfaceFromSurface` with a 640x480-coordinate source rect: the pause backdrop,
+spell backgrounds) has its source rectangle scaled, or it shows the top-left quarter.
+
+**That alone only sharpens.** With the target at 2× and the vertices scaled, the vertex stream
+still carried no fractions other than 0 and ½ — every 2D vertex sat on a whole 640x480 pixel.
+The ANM quad builder (`0x467350` in TH13) rounds the four corners with `frndint` before the
+half-texel offset whenever the VM's flag bit 0 is set, which is nearly every sprite; the other
+draw modes (rotated, 3D) never round. Four two-byte NOPs, kept as frozen `sprite_round_sites`
+in the profile and applied only when `internal_scale > 1`, and the stream carried 0.85, 0.52,
+0.30 … during gameplay. The game's sampler is bilinear, so a bullet at x = 100.3 now really
+sits between pixels. Games without known sites get the sharper raster and the log says so.
+
+**How it was verified, since screenshots cannot show it.** The rig presents at ~25 fps, so two
+captures are many frames apart; instead the `DrawPrimitiveUP` hook counted vertices off the
+pixel grid and kept the set of distinct fractions seen, before and after the NOPs. Counting
+inside the hook is the right instrument for a question about what the game submits.
+
+**What it changes elsewhere.** The upscaling filters now see an N× source: they still run, but
+with sprites already magnified by the game's bilinear sampler there is little for MMPX or xBR
+to do, and "nearest" or "bilinear" is the natural pairing. "Pixel perfect" is relative to the
+N× surface. The device is created at N× once; changing it needs a restart, so it is an INI
+setting and not a menu item. The obvious next step is the one this makes attractive: apply
+the pixel-art upscalers to the *textures* at load time (the `D3DXCreateTextureFromFileInMemoryEx`
+hook already exists), which with N× rasterisation and sub-pixel placement is an HD mode rather
+than a smoothing filter.
+
+**The one mistake, recorded because it was cheap to make and expensive to see.** Turning the
+experiment into the feature, a text splice dropped the three D3D9Ex managed-pool hooks that sat
+next to it; every managed vertex buffer creation then failed and the game crashed at startup in
+its supervisor init. It presented as "the feature crashes after a screenshot" for an hour
+because the crash coincided with a key press. `git diff` on the file, not the log, found it.
+
+---
+
 ## 4. Bugs met, and what they taught
 
 ### The menu key that stopped working

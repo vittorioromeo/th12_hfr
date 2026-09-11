@@ -124,6 +124,69 @@ static void after_device(IDirect3DDevice9* dev) {
         LOG("SetMaximumFrameLatency(%d) -> 0x%08lx (now %u)", cfg.max_frame_latency, (long)hr, got);
     }
 }
+
+/* ---- Internal resolution (video.internal_scale = N). The game's render target is N times its
+   own 640x480, and everything it submits to that target is scaled by N: viewports, clear rects
+   and every pre-transformed (XYZRHW) vertex, with the D3D9 half-texel rule kept
+   (x' = (x + 0.5) N - 0.5). Draws to any other target -- the game's own render-to-texture
+   surfaces, our presentation chain -- are left alone. Anything drawn through a real projection
+   (the 3D stage) needs nothing: the rasteriser simply has N times the pixels.
+   On its own this only sharpens; the sprite builder rounds every corner to a whole pixel before
+   the half-texel offset, so the profile's sprite_round_sites are NOPed as well (install.c),
+   which is what lets a bullet at x = 100.3 land on a different screen pixel than one at 100.0. */
+static int g_iscale_active;                  /* the current render target is the game's big one */
+typedef HRESULT (__stdcall *SetRenderTargetFn)(IDirect3DDevice9*, DWORD, IDirect3DSurface9*);
+typedef HRESULT (__stdcall *SetViewportFn)(IDirect3DDevice9*, const D3DVIEWPORT9*);
+typedef HRESULT (__stdcall *ClearFn)(IDirect3DDevice9*, DWORD, const D3DRECT*, DWORD, D3DCOLOR, float, DWORD);
+typedef HRESULT (__stdcall *DrawPrimitiveUPFn)(IDirect3DDevice9*, D3DPRIMITIVETYPE, UINT, const void*, UINT);
+static SetRenderTargetFn orig_SetRenderTarget; static SetViewportFn orig_SetViewport; static ClearFn orig_Clear; static DrawPrimitiveUPFn orig_DrawPrimitiveUP;
+static HRESULT __stdcall hook_SetRenderTarget(IDirect3DDevice9* dev, DWORD i, IDirect3DSurface9* s) {
+    if (i == 0) g_iscale_active = (s != NULL && s == g_src_surf);
+    return orig_SetRenderTarget(dev, i, s);
+}
+static HRESULT __stdcall hook_SetViewport(IDirect3DDevice9* dev, const D3DVIEWPORT9* vp) {
+    if (g_iscale_active && vp) {
+        D3DVIEWPORT9 v = *vp; v.X *= g_iscale; v.Y *= g_iscale; v.Width *= g_iscale; v.Height *= g_iscale;
+        return orig_SetViewport(dev, &v);
+    }
+    return orig_SetViewport(dev, vp);
+}
+static HRESULT __stdcall hook_Clear(IDirect3DDevice9* dev, DWORD n, const D3DRECT* r, DWORD flags, D3DCOLOR c, float z, DWORD st) {
+    if (g_iscale_active && n && r && n <= 16) {
+        D3DRECT rr[16];
+        for (DWORD i = 0; i < n; ++i) { rr[i].x1 = r[i].x1 * g_iscale; rr[i].y1 = r[i].y1 * g_iscale; rr[i].x2 = r[i].x2 * g_iscale; rr[i].y2 = r[i].y2 * g_iscale; }
+        return orig_Clear(dev, n, rr, flags, c, z, st);
+    }
+    return orig_Clear(dev, n, r, flags, c, z, st);
+}
+static HRESULT __stdcall hook_DrawPrimitiveUP(IDirect3DDevice9* dev, D3DPRIMITIVETYPE type, UINT prims, const void* data, UINT stride) {
+    DWORD fvf = 0;
+    if (g_iscale_active && data && stride >= 16 && SUCCEEDED(dev->lpVtbl->GetFVF(dev, &fvf)) && (fvf & D3DFVF_XYZRHW)) {
+        UINT verts = type == D3DPT_TRIANGLELIST ? prims * 3 : type == D3DPT_TRIANGLESTRIP || type == D3DPT_TRIANGLEFAN ? prims + 2 :
+                     type == D3DPT_LINELIST ? prims * 2 : type == D3DPT_LINESTRIP ? prims + 1 : prims;
+        static uint8_t* buf; static UINT cap;
+        UINT need = verts * stride;
+        if (need > cap) { uint8_t* nb = (uint8_t*)realloc(buf, need); if (!nb) return orig_DrawPrimitiveUP(dev, type, prims, data, stride); buf = nb; cap = need; }
+        memcpy(buf, data, need);
+        float n = (float)g_iscale;
+        for (UINT i = 0; i < verts; ++i) { float* v = (float*)(buf + i * stride); v[0] = (v[0] + 0.5f) * n - 0.5f; v[1] = (v[1] + 0.5f) * n - 0.5f; }
+        return orig_DrawPrimitiveUP(dev, type, prims, buf, stride);
+    }
+    return orig_DrawPrimitiveUP(dev, type, prims, data, stride);
+}
+/* The engine's screen capture (pause backdrop, spell backgrounds) copies a 640x480-coordinate
+   rectangle of the back buffer into one of its textures with D3DX. The back buffer is ours and
+   N times larger, so the source rectangle is scaled; D3DX then filters it down to the
+   destination the game asked for. */
+typedef HRESULT (__stdcall *D3DXLoadSurfaceFromSurfaceFn)(IDirect3DSurface9*, const PALETTEENTRY*, const RECT*, IDirect3DSurface9*, const PALETTEENTRY*, const RECT*, DWORD, D3DCOLOR);
+static D3DXLoadSurfaceFromSurfaceFn orig_D3DXLoadSurfaceFromSurface;
+static HRESULT __stdcall hook_D3DXLoadSurfaceFromSurface(IDirect3DSurface9* dst, const PALETTEENTRY* dp, const RECT* dr, IDirect3DSurface9* src, const PALETTEENTRY* sp, const RECT* sr, DWORD filter, D3DCOLOR key) {
+    if (g_iscale > 1 && sr && src == g_src_surf) {
+        RECT r = { sr->left * g_iscale, sr->top * g_iscale, sr->right * g_iscale, sr->bottom * g_iscale };
+        return orig_D3DXLoadSurfaceFromSurface(dst, dp, dr, src, sp, &r, filter, key);
+    }
+    return orig_D3DXLoadSurfaceFromSurface(dst, dp, dr, src, sp, sr, filter, key);
+}
 /* The game resets the device to change mode or window size. Both are ours now, and an
    actual reset would destroy every texture it owns (see scaler_set_output), so when we are
    presenting through our own chain the reset is answered without touching the device: the
@@ -196,6 +259,13 @@ static HRESULT __stdcall hook_CreateDevice(IDirect3D9* d3d, UINT adapter, D3DDEV
             patch_vtable(vt, 23, (void*)hook_CreateTexture, (void**)&orig_CreateTexture);
             patch_vtable(vt, 26, (void*)hook_CreateVertexBuffer, (void**)&orig_CreateVertexBuffer);
             patch_vtable(vt, 27, (void*)hook_CreateIndexBuffer, (void**)&orig_CreateIndexBuffer);
+        }
+        if (g_iscale > 1) {
+            patch_vtable(vt, 37, (void*)hook_SetRenderTarget, (void**)&orig_SetRenderTarget);
+            patch_vtable(vt, 43, (void*)hook_Clear, (void**)&orig_Clear);
+            patch_vtable(vt, 47, (void*)hook_SetViewport, (void**)&orig_SetViewport);
+            patch_vtable(vt, 83, (void*)hook_DrawPrimitiveUP, (void**)&orig_DrawPrimitiveUP);
+            LOG("internal resolution x%d: the game draws at %dx%d", g_iscale, g_native_w, g_native_h);
         }
         window_attach(g_device_window);
         scaler_create(dev, &use, g_device_window);

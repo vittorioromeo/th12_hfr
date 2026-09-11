@@ -83,6 +83,9 @@ struct GameProfile {
     int native_size_cycle;          /* the game cycles its own window sizes on F10 (TH11 on) */
     int remove_node_runner_first;   /* remove_node(runner, node) rather than (node, runner) (TH13) */
     const char* d3dx;
+    /* Two-byte "frndint" sites in the sprite quad builder that snap every corner to a whole pixel;
+       NOPed when the game draws at a higher internal resolution (video.internal_scale). */
+    const uintptr_t* sprite_round_sites; size_t sprite_round_count;
     void (*install_sites)(void);
     void (*place_enemy)(uint8_t* enemy, uint8_t* anm, uint32_t flags, const float* position);
 };

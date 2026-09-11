@@ -204,6 +204,10 @@ static void th13_place_enemy(uint8_t* e, uint8_t* am, uint32_t flags, const floa
     }
 }
 
+/* AnmManager sprite quad builder (0x467350): with the VM's flag bit 0 set -- nearly every
+   sprite -- the four corners go through frndint before the half-texel offset. */
+static const uintptr_t th13_sprite_round_sites[] = { 0x4673f9, 0x467407, 0x467415, 0x467423 };
+
 static const struct node_class th13_classes[] = {
     { 0x40e780, MODE_SUB,   "BulletManager"   },
     { 0x443de0, MODE_SUB,   "Player"          },
@@ -279,5 +283,6 @@ static const struct GameProfile th13_profile = {
     .classes = th13_classes, .class_count = sizeof th13_classes / sizeof *th13_classes,
     .mask_minor_player_edges = 0, .d3dx = "d3dx9_43.dll",
     .native_size_cycle = 1,
+    .sprite_round_sites = th13_sprite_round_sites, .sprite_round_count = 4,
     .install_sites = th13_install_sites, .place_enemy = th13_place_enemy,
 };
