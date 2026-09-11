@@ -10,7 +10,8 @@ static float g_ptf_prev, g_ptf_cur;   /* player state timer (float) before/after
 static float g_move_residual[2];
 static unsigned g_stat_tex_done, g_stat_tex_redone; static size_t g_tex_bytes;   /* texscale.c */
 static int g_dim_frame_done, g_dim_ingame_frames, g_dim_available, g_dim_trace_frames, g_dim_trace_n;
-static unsigned g_frame_draws, g_frame_flushes, g_frame_vms;   /* this frame's draw calls, our batch flushes, sprite VM draws (hitch log) */   /* dimming.c: the background quad has been drawn this frame */
+static unsigned g_frame_draws, g_frame_flushes, g_frame_vms;
+static double g_frame_out_at, g_gap_inside_max, g_gap_outside_max; static unsigned g_gap_inside_long, g_gap_outside_long;   /* frame.c: time inside/outside the game's frame function */   /* this frame's draw calls, our batch flushes, sprite VM draws (hitch log) */   /* dimming.c: the background quad has been drawn this frame */
 static double g_t0 = 0;            /* wall-clock origin of the tick schedule */
 static unsigned g_stat_skipped;
 static unsigned g_last_units = 0;  /* units of the previous tick */

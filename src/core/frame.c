@@ -41,7 +41,13 @@ static int __stdcall hfr_frame(void* ctx) {
     for (int i = 0; i + 1 < n; i++) { advance_tick(); int r = update_only_tick(); if (r) return r; }
     if (n >= 1) { advance_tick(); g_skip_update = 0; } else g_skip_update = 1;
     g_ticks_run += n;
+    /* Where a frame's time goes: inside the game's frame function (its draw and the present,
+       vsync included) or outside it (its loop, its own waits). The stats line reports both. */
+    if (g_frame_out_at > 0) { double outside = now - g_frame_out_at; if (outside > g_gap_outside_max) g_gap_outside_max = outside; if (outside > 0.008) g_gap_outside_long++; }
+    double t_in = now_s();
     int r = orig_frame_vsync(ctx);
+    g_frame_out_at = now_s();
+    { double inside = g_frame_out_at - t_in; if (inside > g_gap_inside_max) g_gap_inside_max = inside; if (inside > 0.008) g_gap_inside_long++; }
     g_skip_update = 0;
     return r;
 }

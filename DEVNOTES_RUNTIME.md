@@ -297,6 +297,15 @@ a block of single-sprite scripts sharing a texture row, with `ins_67(1)`/`ins_30
 shots. TH13's trance overlay brightens the dimmed stage back towards its texture (its blend
 is DESTCOLOR/INVDESTCOLOR); rare and short, left alone.
 
+**Frame-time diagnostics.** Two lines accompany the five-second stats when a frame ran long:
+`hitch:` for any gap over 40 ms between presents, with that frame's draw calls, forced batch
+flushes, sprite VM draws and texture upscales; and `frame time:` with the longest time spent
+*inside* the game's frame function (its draw and the present, vsync included) and *outside*
+it (its loop and its own waits), each with a count of frames over 8 ms. A stutter report
+with these two lines already says which side of the boundary to look at. First user logs
+(TH10-12, 360 Hz, vsync) showed exactly 64 long gaps a second — the Windows timer's 15.6 ms
+rhythm — where TH13 showed none; which side they fall on is the next thing to read.
+
 ## 4. Bugs met, and what they taught
 
 ### The menu key that stopped working
