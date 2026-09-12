@@ -12,10 +12,10 @@ and selects its adapter; the scheduler, input, replay and Direct3D code are shar
 
 | Game | Version | Executables | State |
 | --- | --- | --- | --- |
-| Touhou 10 — Mountain of Faith | v1.00a | `th10.exe`, English `th10e.exe` | supported |
-| Touhou 11 — Subterranean Animism | v1.00a | `th11.exe`, static English `th11e.exe` | supported |
-| Touhou 12 — Undefined Fantastic Object | v1.00b | `th12.exe`, static English `th12e.exe` | supported |
-| Touhou 13 — Ten Desires | v1.00c | `th13.exe`, static English `th13e.exe` | supported |
+| Touhou 10 — Mountain of Faith | v1.00a | `th10.exe`, `th10e.exe` | supported |
+| Touhou 11 — Subterranean Animism | v1.00a | `th11.exe`, `th11e.exe` | supported |
+| Touhou 12 — Undefined Fantastic Object | v1.00b | `th12.exe`, `th12e.exe` | supported |
+| Touhou 13 — Ten Desires | v1.00c | `th13.exe`, `th13e.exe` | supported |
 
 The current source fixes TH10's recurring HFR hitches accompanied by a brief
 `0.0fps` reading: its native FPS watchdog mistook rates above 65 FPS for a broken
