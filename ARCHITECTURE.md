@@ -41,7 +41,7 @@ are not assumptions that every Touhou title uses this ABI or renderer.
 
 Detection requires x86 PE32 at image base `0x400000`, the expected image size
 (TH13 accepts two, since `th13e.exe` carries an extra section), and every frozen
-signature (82 for TH10, 66 for TH11, 62 for TH12, 98 for TH13). These cover all
+signature (83 for TH10, 66 for TH11, 62 for TH12, 98 for TH13). These cover all
 overwritten code ranges and selected native function entries. This is code-layout
 verification, not a whole-file checksum: resources and English text may differ.
 It does not establish compatibility with arbitrary third-party runtime patches.

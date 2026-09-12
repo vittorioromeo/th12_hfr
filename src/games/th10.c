@@ -33,6 +33,14 @@ static void th10_install_sites(void) {
     const uint8_t nops[6]={0x90,0x90,0x90,0x90,0x90,0x90};
     patch_bytes(0x4393b7,nops,6,site_expected(0x4393b7,6));
     patch_bytes(0x439488,nops,6,site_expected(0x439488,6));
+    /* The FPS counter treats >65 FPS as a faulty clock: after two samples it
+       rebases the native timer, after four it disables QPC. At HFR this produces
+       clock jumps, 0.0 FPS readings and huge catch-up loops in 0x4393d0. Keep the
+       measured FPS/slowdown accounting, but always take the watchdog's reset
+       branch (EDI is already zero). This concerns presentation even at 60 Hz
+       logic, so it must also apply with substep=0 and during stock replays. */
+    const uint8_t skip_clock_watchdog[2]={0xeb,0x5b};
+    patch_bytes(0x413508,skip_clock_watchdog,2,site_expected(0x413508,2));
     site_call(0x423f16,th10_replay_save); site_call(0x43399d,th10_replay_save);
     site_call(0x429257,th10_replay_load_entry); site_call(0x42948c,th10_replay_load_entry);
     site_call(0x429765,th10_replay_load_entry);
@@ -87,7 +95,7 @@ static void th10_install_sites(void) {
     E(0x89,0x46,0x04,0xc2,0x04,0x00);
     site_call(0x428243,constant);site_call(0x440e3d,constant);
     stub_end();
-    LOG("TH10 site patches installed (%u bytes of stubs)",(unsigned)g_stub_used);
+    LOG("TH10 site patches installed (%u bytes of stubs); >65 FPS clock-reset watchdog disabled",(unsigned)g_stub_used);
 }
 static const struct node_class th10_classes[] = {
     {0x406770,MODE_SUB,"BulletManager"}, {0x426500,MODE_SUB,"Player"},

@@ -323,7 +323,12 @@ with these two lines already says which side of the boundary to look at, and a s
 breakdown (before the first draw, drawing, in Present, after Present) says where inside.
 First user logs (TH10-12, 360 Hz, vsync) showed exactly 64 long gaps a second — the Windows
 timer's 15.6 ms rhythm — where TH13 showed none; a TH12 log with the breakdown put the long
-frames inside the frame function, before the first draw. Still open for TH10.
+frames inside the frame function, before the first draw. TH10's recurring hitches
+with a brief `0.0fps` reading were subsequently reproduced in its native FPS
+watchdog: >65 FPS triggers clock rebasing and disables QPC, sending the retained
+deadline loop through huge catch-up runs. The adapter now bypasses that recovery
+branch; see TH10_DEVNOTES §6b for the exact code, TH13 comparison and regression.
+This identifies that specific failure, not every source of presentation jitter.
 
 **Debug levels.** `debug=1`: state dumps, a draw table every ten seconds of a stage with VM
 word dumps. `debug=2`: the table every half second, no word dumps. `debug=3`: every other

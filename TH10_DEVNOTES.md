@@ -244,6 +244,61 @@ have the same shape. VM script index at +0x38a (16-bit), for rules that need one
 that frame did — draw calls, forced batch flushes, sprite VM draws, textures upscaled — for
 stutter reports.
 
+## 6b. HFR hitches and the FPS counter briefly reading zero (2026-09-12)
+
+The cause is in the **native FPS counter**, not just the frame limiter. `0x4134b0`
+samples the draw count every half second. A reading above **65 FPS** increments
+`FpsCounter+0x1c`; on the second consecutive high reading it rebases the native clock,
+and on the fourth it zeros the QPC frequency at `0x492508/0x49250c`. The native
+clock (`0x439540`) then falls back to `timeGetTime`. HFR presentation makes this
+stock broken-clock recovery trigger even with 60 Hz simulation or a stock replay.
+
+The fallback and rebasing mix clock origins: `timeGetTime` measures machine uptime,
+while the QPC path had returned time relative to the game's origin. The resulting
+forward/backward jumps also contaminate the FPS measurement, which can round to
+`0.0fps`. Removing the early-return branch at `0x4393b7` did **not** remove the
+native deadline catch-up loop at `0x4393d0`: it still adds `1/60` second repeatedly
+until its deadline catches up with the clock. A jump of one hour takes 216,000
+iterations before any update or draw; larger uptimes mean more work. This matches
+the diagnostic logs' long spans before drawing with no long update callback or
+Present call.
+
+TH13's corresponding FPS update at `0x424990` still counts high readings, but
+contains neither the timer rebasing nor the QPC-disable action. Its draw callback
+at `0x424a90` only displays the result. This is the relevant TH10/TH13 difference.
+
+**Fix:** change `75 5b` (`jne 0x413565`) at `0x413508` to `eb 5b` (`jmp`), always
+taking the branch that clears the watchdog count. The already-computed FPS, its
+display, and the slowdown accounting remain intact. The two original bytes are
+frozen in both signature tables and validated in the normal patch transaction.
+The change is unconditional when the TH10 adapter installs: presentation can be
+above 65 FPS independently of the logic rate. No native clock replacement is needed.
+
+**Reproduction and regression:** `tools/test_th10_stubs.py` executes the actual
+installed game-code fixture in Unicorn with deterministic Win32 clock imports.
+Its negative control restores the original branch. At 360 FPS over eight simulated
+seconds, with one hour of synthetic uptime, the control disables QPC, jumps by
+3599 seconds, moves backwards three times, and reports 0.0 FPS for 540 frames.
+The patched code keeps QPC enabled and time monotonic at 60, 64, 65, 66, 120, 144,
+240, 360 and 1000 FPS. The 60 FPS result, including slowdown accounting, is identical
+to the original. The test also executes the retained deadline loop and counts its
+216,000 iterations for the one-hour jump. Japanese and English TH10 fixtures pass;
+the shared native harness also passes for TH11, TH12 and TH13, and the existing
+TH11/TH12 machine-code tests pass.
+
+**Native timing and live confirmation:** copying only the original 25-byte
+deadline loop into a small native x86 benchmark (relocating its constant address)
+reproduced a 28.27–28.37 ms stall on the owner's machine at 64.677 hours of uptime:
+about 13,970,321 iterations. The ordinary 1/360-second increment took one iteration.
+The previous diagnostic log reported recurring 30.1–30.8 ms frames before drawing,
+with no slow update callback, sound update or Present. After building the fix from
+the repository and installing it as `dinput8.dll` in the clean TH10 folder, the owner
+tested at 360 Hz and confirmed that **both the hitches and the zero-FPS readings
+were gone**. The previous DLL/log are backed up in that folder's
+`hfr-backups/20260912-030752-before-clock-fix/`; the executable and INI hashes were
+verified unchanged. Local benchmark source/results and full regression logs are
+under ignored `build/tests/`.
+
 ## 7. Harness and rig notes specific to TH10
 
 - The harness validates a provisional profile's patch plan when `HFR_VALIDATE_PROVISIONAL` is

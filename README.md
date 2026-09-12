@@ -17,6 +17,10 @@ and selects its adapter; the scheduler, input, replay and Direct3D code are shar
 | Touhou 12 — Undefined Fantastic Object | v1.00b | `th12.exe`, static English `th12e.exe` | supported |
 | Touhou 13 — Ten Desires | v1.00c | `th13.exe`, static English `th13e.exe` | supported |
 
+The current source fixes TH10's recurring HFR hitches accompanied by a brief
+`0.0fps` reading: its native FPS watchdog mistook rates above 65 FPS for a broken
+clock and reset the timer. See [TH10 development notes, §6b](TH10_DEVNOTES.md#6b-hfr-hitches-and-the-fps-counter-briefly-reading-zero-2026-09-12).
+
 TH10 predates the single game-speed float that TH11 and TH12 hang their sub-stepping off, so its
 speed model is described on its own terms; how that was done is in
 [DEVNOTES_RUNTIME.md](DEVNOTES_RUNTIME.md) §7. Everything the other games have works on it.
