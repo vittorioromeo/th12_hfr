@@ -8,7 +8,7 @@ per-game records are [TH10_DEVNOTES.md](TH10_DEVNOTES.md), [TH11_DEVNOTES.md](TH
 High refresh rate gameplay and presentation for Touhou. One DLL detects the game
 and selects its adapter; the scheduler, input, replay and Direct3D code are shared.
 
-**Current build: v0.4.8-test.** Supported executable layouts:
+**Current build: v0.4.9-test.** Supported executable layouts:
 
 | Game | Version | Executables | State |
 | --- | --- | --- | --- |
@@ -79,7 +79,7 @@ every supported title; it still needs full-run replay testing before a stable re
 
 ## Install
 
-Download/extract `touhou_hfr_v0.4.8-test.zip` and close the game.
+Download/extract `touhou_hfr_v0.4.9-test.zip` and close the game.
 
 For a fresh installation, copy these four files next to the game executable:
 

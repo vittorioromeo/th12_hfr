@@ -70,7 +70,7 @@ static void apply_pp(D3DPRESENT_PARAMETERS* pp) {
         pp->FullScreen_RefreshRateInHz = hz > 0 ? hz : D3DPRESENT_RATE_DEFAULT;
     }
     if (g_using_ex) {
-        if (pp->Windowed && cfg.flipex) { pp->SwapEffect = D3DSWAPEFFECT_FLIPEX; if (pp->BackBufferCount < 2) pp->BackBufferCount = 2; }
+        if (pp->Windowed && cfg.flipex) { pp->SwapEffect = D3DSWAPEFFECT_FLIPEX; if (pp->BackBufferCount < 2) pp->BackBufferCount = 2; pp->Flags &= ~(DWORD)D3DPRESENTFLAG_LOCKABLE_BACKBUFFER; }   /* flip model: no lockable back buffer (the screenshot path gets a copy anyway) */
         else if (pp->SwapEffect == D3DSWAPEFFECT_FLIPEX) { pp->SwapEffect = D3DSWAPEFFECT_DISCARD; }
     }
     LOG("present params: windowed=%d %ux%u refresh=%u interval=0x%x backbuffers=%u swap=%d", pp->Windowed, pp->BackBufferWidth,
@@ -89,7 +89,7 @@ static char g_wrapper_path[MAX_PATH];   /* the non-system d3d9.dll presenting th
    something: someone who stretches to fill and never uses borderless loses nothing and should
    not be told off about a file they installed on purpose. video.warn_wrapper=0 silences it. */
 static void warn_if_wrapper_presents(void) {
-    if (!cfg.warn_wrapper || g_own_present) return;
+    if (!cfg.warn_wrapper || g_own_present || cfg.flipex || cfg.own_present == 0) return;   /* asked for in the INI: no warning */
     if (cfg.scaling == SCALE_STRETCH && !cfg.fullscreen_mode) {
         LOG("presentation is not ours, but no setting in use depends on it");
         return;
@@ -333,7 +333,7 @@ static HRESULT __stdcall hook_CreateDevice(IDirect3D9* d3d, UINT adapter, D3DDEV
     if (g_using_ex) {
         IDirect3D9Ex* ex = (IDirect3D9Ex*)d3d; D3DDISPLAYMODEEX m; fill_mode_ex(&use, &m);
         hr = ex->lpVtbl->CreateDeviceEx(ex, adapter, type, hwnd, flags, &use, use.Windowed ? NULL : &m, (IDirect3DDevice9Ex**)out);
-        LOG("CreateDeviceEx %ux%u -> 0x%08lx", use.BackBufferWidth, use.BackBufferHeight, (long)hr);
+        LOG("CreateDeviceEx %ux%u -> 0x%08lx (behaviour flags 0x%lx, pp flags 0x%lx, format %d, depth %d/%d, multisample %d, window %p, device window %p)", use.BackBufferWidth, use.BackBufferHeight, (long)hr, (unsigned long)flags, (unsigned long)use.Flags, (int)use.BackBufferFormat, (int)use.EnableAutoDepthStencil, (int)use.AutoDepthStencilFormat, (int)use.MultiSampleType, (void*)hwnd, (void*)use.hDeviceWindow);
         if (FAILED(hr)) { hr = orig_CreateDevice(d3d, adapter, type, hwnd, flags, &use, out); LOG("fallback CreateDevice on the 9Ex object -> 0x%08lx", (long)hr); }
         if (SUCCEEDED(hr) && out && *out) {
             static const GUID iid_dev9ex = { 0xb18b10ce, 0x2649, 0x405a, { 0x87, 0x0f, 0x95, 0xf7, 0x77, 0xd4, 0x31, 0x3a } };
@@ -389,6 +389,11 @@ static HRESULT __stdcall hook_CreateDevice(IDirect3D9* d3d, UINT adapter, D3DDEV
    forces the game's textures into the default pool where a reset destroys them and the game
    has no code to reload them. */
 static void detect_d3d9_wrapper(void) {
+    if (cfg.flipex) {                               /* flip model exists only on the device's own chain */
+        g_want_own_present = 0;
+        LOG("presentation through the game's own chain in flip model (flipex)");
+        return;
+    }
     if (cfg.own_present >= 0) {                     /* forced by the INI */
         g_want_own_present = cfg.own_present;
         LOG("presentation chain forced to %s by own_present", g_want_own_present ? "ours" : "the game's");

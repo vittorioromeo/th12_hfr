@@ -47,6 +47,11 @@ static int __stdcall hfr_frame(void* ctx) {
     double t_in = now_s(); g_t_first_draw = g_t_present_in = g_t_present_out = 0;
     int r = orig_frame_vsync(ctx);
     g_frame_out_at = now_s();
+    if (cfg.debug && g_frame_out_at - t_in > 0.012) {   /* a long frame: say where inside it the time went */
+        static unsigned logged; if (logged++ < 60)
+            LOG("long frame: %.1f ms inside the frame function: before the first draw %.1f, drawing %.1f, in Present %.1f, after %.1f",
+                (g_frame_out_at - t_in) * 1000.0, g_t_first_draw ? (g_t_first_draw - t_in) * 1000.0 : -1.0, g_t_first_draw && g_t_present_in ? (g_t_present_in - g_t_first_draw) * 1000.0 : -1.0, g_t_present_in && g_t_present_out ? (g_t_present_out - g_t_present_in) * 1000.0 : -1.0, g_t_present_out ? (g_frame_out_at - g_t_present_out) * 1000.0 : -1.0);
+    }
     { double inside = g_frame_out_at - t_in; if (inside > g_gap_inside_max) g_gap_inside_max = inside; if (inside > 0.008) g_gap_inside_long++;
       if (g_t_first_draw > 0 && g_t_present_in > 0 && g_t_present_out > 0) {
           double span[4] = { g_t_first_draw - t_in, g_t_present_in - g_t_first_draw, g_t_present_out - g_t_present_in, g_frame_out_at - g_t_present_out };

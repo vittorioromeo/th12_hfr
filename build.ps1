@@ -11,7 +11,7 @@ try {
     New-Item -ItemType Directory -Force build/obj | Out-Null
     $cxxPath=Join-Path (Split-Path -Parent $compilerPath) 'g++.exe'
     $objects=@('build/obj/hfr.o')
-    & $compilerPath -std=gnu11 -O2 -Wall -Wextra -Wno-unused-function -Wno-unused-parameter -c src/hfr.c -o $objects[0]
+    & $compilerPath -std=gnu11 -O2 -msse2 -mfpmath=sse -Wall -Wextra -Wno-unused-function -Wno-unused-parameter -c src/hfr.c -o $objects[0]
     if($LASTEXITCODE){throw 'Runtime compilation failed'}
     $menuSources=@('third_party/imgui/imgui.cpp','third_party/imgui/imgui_draw.cpp',
         'third_party/imgui/imgui_tables.cpp','third_party/imgui/imgui_widgets.cpp',
@@ -19,7 +19,7 @@ try {
         'src/ui/menu.cpp')
     foreach($source in $menuSources) {
         $object='build/obj/'+[IO.Path]::GetFileNameWithoutExtension($source)+'.o'
-        & $cxxPath -std=gnu++17 -O2 -fno-exceptions -fno-rtti -Wall -Wno-unused-parameter -Ithird_party/imgui -c $source -o $object
+        & $cxxPath -std=gnu++17 -O2 -msse2 -mfpmath=sse -fno-exceptions -fno-rtti -Wall -Wno-unused-parameter -Ithird_party/imgui -c $source -o $object
         if($LASTEXITCODE){throw "Menu compilation failed: $source"}
         $objects += $object
     }

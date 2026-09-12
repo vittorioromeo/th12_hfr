@@ -146,7 +146,7 @@ static int install(void) {
             hook_iat(g_game->d3dx,"D3DXLoadSurfaceFromSurface",hook_D3DXLoadSurfaceFromSurface,(void**)&orig_D3DXLoadSurfaceFromSurface);
     }
     /* Sub-tick input feeds the simulation, so it belongs with the rest of it. */
-    if (sim && cfg.subtick_input) hook_iat("winmm.dll","joyGetPosEx",hook_joyGetPosEx,(void**)&orig_joyGetPosEx);
+    hook_iat("winmm.dll","joyGetPosEx",hook_joyGetPosEx,(void**)&orig_joyGetPosEx);   /* always: the real call stalls the game thread (input.c) */
     FlushInstructionCache(GetCurrentProcess(),g_stub_mem,g_stub_used);
     if (!patch_commit()) { LOG("Patch transaction failed; no code/import hooks applied");return 0; }
     AddVectoredExceptionHandler(1, hfr_exception_report);

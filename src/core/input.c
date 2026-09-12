@@ -23,16 +23,38 @@ static void set_game_input(uint32_t v) { input_write(g_game->addr.game_input, v)
 #define IN_FOCUS (g_game->layout.focus_mask ? g_game->layout.focus_mask : 0x08u)
 #define IN_MOVE  0xf0
 
-/* joystick: winmm's joyGetPosEx can be slow; between frames return the last polled state */
+/* joystick: winmm's joyGetPosEx is not a cheap read. With no controller attached it goes
+   looking for one -- a device enumeration that costs tens of milliseconds -- and it does so
+   again every second or so, on the caller's thread. TH10-12 call it from their frame function
+   before the game logic runs, which at 360 Hz is a 30 ms hole a few times a second (TH13 reads
+   its joystick differently). So the real call is made on a thread of our own, continuously,
+   and the game is always answered from the latest reading; the thread eats the stalls. */
 typedef MMRESULT (WINAPI *JoyGetPosExFn)(UINT, LPJOYINFOEX);
 static JoyGetPosExFn orig_joyGetPosEx;
-static JOYINFOEX g_joy_cache; static MMRESULT g_joy_cache_res; static int g_joy_cache_valid, g_joy_use_cache;
+static JOYINFOEX g_joy_cache; static MMRESULT g_joy_cache_res; static volatile int g_joy_cache_valid; static int g_joy_use_cache;
+static CRITICAL_SECTION g_joy_lock; static HANDLE g_joy_thread; static volatile int g_joy_stop;
+
+static DWORD WINAPI joy_thread_main(void* arg) {
+    (void)arg;
+    while (!g_joy_stop) {
+        JOYINFOEX ji; memset(&ji, 0, sizeof ji); ji.dwSize = sizeof ji; ji.dwFlags = JOY_RETURNALL;
+        double t = now_s(); MMRESULT r = orig_joyGetPosEx(0, &ji); t = now_s() - t;
+        EnterCriticalSection(&g_joy_lock); g_joy_cache = ji; g_joy_cache_res = r; g_joy_cache_valid = 1; g_stat_joy_polls++; if (t > g_stat_joy_max) g_stat_joy_max = t; LeaveCriticalSection(&g_joy_lock);
+        Sleep(r == JOYERR_NOERROR ? 2 : 250);   /* a controller: 500 Hz; none: look again every quarter second, off the game's thread */
+    }
+    return 0;
+}
 static MMRESULT WINAPI hook_joyGetPosEx(UINT id, LPJOYINFOEX ji) {
-    if (!ji) return orig_joyGetPosEx(id, ji);
-    DWORD n = ji->dwSize < sizeof g_joy_cache ? ji->dwSize : (DWORD)sizeof g_joy_cache;
-    if (g_joy_use_cache && id == 0 && g_joy_cache_valid) { memcpy(ji, &g_joy_cache, n); return g_joy_cache_res; }
-    MMRESULT r = orig_joyGetPosEx(id, ji);
-    if (id == 0) { memcpy(&g_joy_cache, ji, n); g_joy_cache_res = r; g_joy_cache_valid = 1; }
+    if (!ji || id != 0) return orig_joyGetPosEx(id, ji);
+    if (!g_joy_thread) { InitializeCriticalSection(&g_joy_lock); g_joy_thread = CreateThread(NULL, 0, joy_thread_main, NULL, 0, NULL); }
+    if (!g_joy_thread || !g_joy_cache_valid) {   /* the first call, or no thread: the slow way, once */
+        double t = now_s(); MMRESULT r = orig_joyGetPosEx(id, ji); t = now_s() - t;
+        if (t > g_stat_joy_max) g_stat_joy_max = t; g_stat_joy_polls++;
+        return r;
+    }
+    DWORD n = ji->dwSize < sizeof g_joy_cache ? ji->dwSize : (DWORD)sizeof g_joy_cache; DWORD size = ji->dwSize, flags = ji->dwFlags;
+    EnterCriticalSection(&g_joy_lock); memcpy(ji, &g_joy_cache, n); MMRESULT r = g_joy_cache_res; LeaveCriticalSection(&g_joy_lock);
+    ji->dwSize = size; ji->dwFlags = flags;
     return r;
 }
 /* Run the game's input poll without disturbing the per-frame raw input state. */

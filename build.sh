@@ -6,8 +6,8 @@ cd "$(dirname "$0")"
 mkdir -p build/obj
 CC=${CC:-i686-w64-mingw32-gcc}
 CXX=${CXX:-i686-w64-mingw32-g++}
-CFLAGS="-std=gnu11 -O2 -Wall -Wextra -Wno-unused-function -Wno-unused-parameter"
-CXXFLAGS="-std=gnu++17 -O2 -fno-exceptions -fno-rtti -Wall -Wno-unused-parameter"
+CFLAGS="-std=gnu11 -O2 -msse2 -mfpmath=sse -Wall -Wextra -Wno-unused-function -Wno-unused-parameter"
+CXXFLAGS="-std=gnu++17 -O2 -msse2 -mfpmath=sse -fno-exceptions -fno-rtti -Wall -Wno-unused-parameter"
 IMGUI=third_party/imgui
 
 $CC $CFLAGS -c src/hfr.c -o build/obj/hfr.o
@@ -18,7 +18,7 @@ done
 $CXX $CXXFLAGS -I"$IMGUI" -c src/ui/menu.cpp -o build/obj/menu.o
 
 $CXX -shared -static -static-libgcc -static-libstdc++ -o build/touhou_hfr.dll build/obj/*.o \
-     -ld3d9 -lwinmm -lgdi32 -ldwmapi -Wl,--kill-at
+     -ld3d9 -lwinmm -lgdi32 -ldwmapi -lpsapi -Wl,--kill-at
 $CC $CFLAGS -O2 -s -mwindows -static-libgcc -o build/touhou_hfr.exe src/launcher.c
 cp build/touhou_hfr.dll build/dinput8.dll
 cp touhou_hfr.ini build/touhou_hfr.ini

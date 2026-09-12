@@ -3,11 +3,13 @@
 #include <tlhelp32.h>
 #include <ctype.h>
 #include <d3d9.h>
+#include <dwmapi.h>
 #include <mmsystem.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
 #include <math.h>
+#include <float.h>
 #include <stdlib.h>
 
 /* ------------------------------------------------------------------ logging */
@@ -15,7 +17,12 @@ static FILE* g_log;
 static int g_log_lazy;   /* debug>=3: flushed once per frame instead of per line (the per-frame draw traces are big) */
 static void logf_(const char* fmt, ...) {
     if (!g_log) return;
+    /* Direct3D 9 leaves the game's thread in 24-bit x87 precision (see DEVNOTES_RUNTIME §3b,
+       "the clock that lied"); our arithmetic is SSE, but the C runtime's number formatting is
+       not, so format at full precision and put the game's setting back. */
+    unsigned cw = _controlfp(0, 0); _controlfp(_PC_53, _MCW_PC);
     va_list ap; va_start(ap, fmt); vfprintf(g_log, fmt, ap); va_end(ap);
+    _controlfp(cw, _MCW_PC);
     fputc('\n', g_log); if (!g_log_lazy) fflush(g_log);
 }
 #define LOG(...) logf_(__VA_ARGS__)

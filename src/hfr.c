@@ -14,6 +14,7 @@
 #include "core/interpolation.c"
 #include "core/input.c"
 #include "backends/update_runner.c"
+#include "core/sampler.c"
 #include "core/limiter.c"
 #include "core/shaders.c"
 #include "core/scaler.c"

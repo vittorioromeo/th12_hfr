@@ -318,17 +318,26 @@ is DESTCOLOR/INVDESTCOLOR); rare and short, left alone.
 `hitch:` for any gap over 40 ms between presents, with that frame's draw calls, forced batch
 flushes, sprite VM draws and texture upscales; and `frame time:` with the longest time spent
 *inside* the game's frame function (its draw and the present, vsync included) and *outside*
-it (its loop and its own waits), each with a count of frames over 8 ms. A stutter report
-with these two lines already says which side of the boundary to look at, and a span
-breakdown (before the first draw, drawing, in Present, after Present) says where inside.
-First user logs (TH10-12, 360 Hz, vsync) showed exactly 64 long gaps a second — the Windows
-timer's 15.6 ms rhythm — where TH13 showed none; a TH12 log with the breakdown put the long
-frames inside the frame function, before the first draw. TH10's recurring hitches
-with a brief `0.0fps` reading were subsequently reproduced in its native FPS
-watchdog: >65 FPS triggers clock rebasing and disables QPC, sending the retained
-deadline loop through huge catch-up runs. The adapter now bypasses that recovery
-branch; see TH10_DEVNOTES §6b for the exact code, TH13 comparison and regression.
-This identifies that specific failure, not every source of presentation jitter.
+it (its loop and its own waits), each with a count of frames over 8 ms, a span breakdown
+(before the first draw, drawing, in Present, after Present) and a histogram of the gaps
+between presents. `joystick:` counts the real `joyGetPosEx` calls made on our thread and the
+longest of them (§4, "the joystick that enumerated"). Under `debug=1` there is more: a `long
+frame:` line for each of the first sixty frames over 12 ms with its span breakdown; once,
+`clock:`, `process:` (compat layer, version lie, non-Windows modules) and `monitors:` (the
+window's placement, styles and every monitor's rate); for the first few windows `threads:`
+(affinity, priorities, per-thread CPU), `focus:` (the foreground window and EcoQoS throttling)
+and `screen:` (DWM composition rate, dropped frames, the chain's present statistics); and a
+1 kHz sampling profile of the main thread (`sampler.c`: modules by share, and the game-side
+return addresses seen while it sat in the system). Everything under `debug` is a probe that
+was written for one hunt and kept because it is cheap to keep; none of it runs by default.
+
+Read these lines with §4's "the clock that lied" in mind: before the mod's arithmetic was
+moved to SSE, every TH10-12 log showed exactly 64 long gaps a second and a histogram sitting
+on 15.6 ms, and that was the measurement, not the game. TH10's real hitches (a brief `0.0fps`
+reading every few seconds) were its native FPS watchdog: rates over 65 FPS are taken for a
+broken clock, the fourth reading zeroes the QPC frequency, and the retained deadline loop
+then runs through ~14 M iterations of catch-up (28 ms). The adapter bypasses that recovery
+branch; TH10_DEVNOTES §6b has the code, the TH13 comparison and the regression fixture.
 
 **Debug levels.** `debug=1`: state dumps, a draw table every ten seconds of a stage with VM
 word dumps. `debug=2`: the table every half second, no word dumps. `debug=3`: every other
@@ -336,6 +345,48 @@ frame for the first minute, the log flushed once per frame instead of per line (
 flushing under Wine halved the frame rate), and the first vertex of every batched draw.
 
 ## 4. Bugs met, and what they taught
+
+### The clock that lied
+
+Every log from TH10-12 at 360 Hz showed the same thing: 64 long gaps a second, a gap
+histogram sitting on 15.6 ms, presents arriving in bursts. TH13 showed none of it. That is the
+Windows timer's rhythm, so the hunt went where such a rhythm sends it — the compositor
+releasing frames in lumps, the driver queueing frames ahead, EcoQoS, timer resolution, the
+window style — and a week of probes, an event-query GPU sync, a no-vsync software pacer and
+`flipex` all made play worse without changing the pattern (the user's verdict: "much worse").
+
+The pattern was ours. Direct3D 9 created without `D3DCREATE_FPU_PRESERVE` puts the calling
+thread's x87 control word into 24-bit precision and leaves it there. TH13 sets 53-bit back
+in-game; TH10-12 never do. The mod's clock is `QueryPerformanceCounter / frequency` in a
+`double`; the `fild` loads the counter exactly, but the `fdiv` that follows rounds its result
+to 24 significant bits, so the seconds since boot came back in steps of (uptime / 2^24): about
+5 ms after a day of uptime, 15.6 ms after three. Every `now_s()` was being rounded to a grid
+of milliseconds, in the game's thread, by the game's FPU setting. The "stalls" were one step
+of that grid, the "bursts" were several frames rounding to the same value, and the limiter's
+deadline arithmetic, running on the same rounded clock, was doing exactly what a rounded
+clock tells it to. What gave it away was measuring the same 2 ms `NtDelayExecution` three ways: QPC in
+our double said 15.6 ms, the kernel's interrupt time said 2.0, `timeGetTime` said 2 — two
+clocks that agreed with each other and disagreed with ours.
+
+The fix is a compiler flag, `-msse2 -mfpmath=sse` for every C and C++ unit (build.sh and
+build.ps1): SSE arithmetic does not read the x87 control word. The one place the C runtime
+still formats through x87, `vfprintf`, is wrapped in `logf_` with `_controlfp(_PC_53)` and
+restored after, so logged numbers are also right. The rule for everything that lives on the
+game's thread: assume the FPU is in the state the game wants, never the state you want, and
+never trust a double computed there unless the arithmetic is SSE. A log full of 15.6 ms
+multiples is a clock reading in 24-bit precision before it is a stuttering game.
+
+### The joystick that enumerated
+
+TH10-12 call `joyGetPosEx` from the frame function before the game logic. With no controller
+attached, winmm's answer is not a cached "none": it re-enumerates HID devices, on the calling
+thread, and does so every second or so — 8 to 30 ms each time. At 60 Hz that hides inside a
+frame; at 360 Hz it is a hole of ten frames a few times a second. The call is now made
+continuously on a thread of our own (500 Hz with a controller, every quarter second
+without), and the game's call is answered from the latest reading under a critical section,
+with the caller's `dwSize`/`dwFlags` put back. The hook is installed for every game whether
+or not sub-tick input is on, because the stall is the same either way; the `joystick:` stats
+line shows how long the real calls take, off the game's thread.
 
 ### The menu key that stopped working
 
@@ -688,6 +739,10 @@ code.
   0.25; every float32 sum lands exactly and phase-alignment bugs stay hidden. 144 and 360 Hz
   give 0.416667 and 0.166667, which round, and the TH13 shot guard (§7a) only failed there.
   The rig can run any `fps=` value; run the non-power-of-two ones too.
+- **Measuring the measurer.** When every log agrees on a pattern that no fix touches, time
+  one known quantity three ways (a 2 ms kernel delay by QPC, interrupt time and `timeGetTime`)
+  and see which clock disagrees. §4's "the clock that lied" cost a week because the
+  instrument was checked last.
 - **Measuring the claim instead of arguing it.** A tester said the high frame rate was
   interpolated frames drawn twice. The stats line now counts presents that happened with no logic
   tick behind them, which is exactly what a duplicated frame is. TH11 in gameplay at a 240 Hz
