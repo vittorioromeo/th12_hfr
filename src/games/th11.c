@@ -156,6 +156,7 @@ static const struct DimRule th11_dim_rules[] = {
     { 11, 43, "enemy.anm",    6,  6, -1, -1, DIM_EFFECTS },      /* enemy.anm's effect layer under the enemies: spawn-in flashes, auras */
     { 11, 43, "enemy.anm",   -1, -1, -1, -1, DIM_NONE },
     { 11, 43, "bullet.anm",   9,  9, -1, -1, DIM_NONE },
+    { 11, 43, "bullet.anm",  15, 15, 73, 74, DIM_NONE },       /* the player's hitbox: two sprites turning about the player while focused */
     { 11, 43, "bullet.anm",  -1, -1, -1, -1, DIM_EFFECTS },
 };
 static const struct GameProfile th11_profile = {

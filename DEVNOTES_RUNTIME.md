@@ -323,8 +323,8 @@ sixteen one-sprite additive scripts on `enemy.anm`'s lowest layer (TH10 4, TH11 
 are spawn-in flashes and auras (effects, so the rule stays right by accident), and the small
 circles of `bullet.anm` script 164 never draw at all. The bursts the reports meant — TH12's
 coloured disc with a rotating ring, TH10/11's rings and sparks — are `bullet.anm` scripts
-that set the *bullet* layer themselves (TH12 76-152 `ins_68(16)`, TH11 73-188 layer 15,
-TH10 351-442 layer 13) and draw under the bullet-layer callback (TH12 34, TH11 32, TH10 33).
+that set the *bullet* layer themselves (TH12 78-152 `ins_68(16)`, TH11 75-188 layer 15,
+TH10 353-442 layer 13; the two scripts before each range are the hitbox, see below) and draw under the bullet-layer callback (TH12 34, TH11 32, TH10 33).
 That layer had been excluded on the assumption it held the bullets; it does not: the
 BulletManager draws bullets from its own callback (TH10/11 29, TH12 31) with the VM's layer
 left at 0. Dropping the exclusion was the whole fix. What found it: `debug=2` (a draw table
@@ -339,6 +339,18 @@ script index (TH10 +0x38a, TH11 +0x3a2, TH12 +0x3ea, TH13 +0x4aa; found at the V
 function, the one that stores the loaded-ANM pointer: `mov word [vm+X], bx` with bx the
 script parameter, next to `mov word [vm+X-4], cx` for the slot). The trace prints
 `anm:layer/script` per VM so a rule can be written from the table without a listing.
+
+**The hitbox lives on the death layer.** The first two scripts of each of those death
+ranges are not deaths: TH10 351-352, TH11 73-74 and TH12 76-77 are the player's hitbox, the
+two sprites that turn about the player while focused, drawn on the same bullet layer by the
+same callback -- so dropping the layer's exclusion faded the hitbox with the effects on all
+three games (TH13 keeps its hitbox in `pl*.anm` layer 12 and already had a rule). Each now
+has a script-range `DIM_NONE` rule ahead of the `bullet.anm` catch-all. Found the same way:
+a `debug=2` run with the focus key held for eight seconds (the log line count before and
+after marks the window), and the VMs present in every focused table and no unfocused one.
+The pair is unmistakable once seen: one draw each per frame, `v0` orbiting the player's
+centre at a radius of 45 (a rotating 64-pixel square's corner) while the body's `v0` stays
+put. The death scripts proper begin right after (TH10 353/355, TH11 75/77, TH12 78).
 
 **Known imprecision.** The options orbit the player on the shot layer, so they fade with the
 shots. TH13's trance overlay brightens the dimmed stage back towards its texture (its blend
