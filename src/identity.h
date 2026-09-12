@@ -36,10 +36,11 @@ struct GameIdentity {
    identity -- the same trap as a positional initialiser, and just as quiet. */
 enum { GI_TH10, GI_TH11, GI_TH12, GI_TH13 };
 static const struct GameIdentity game_identities[] = {
-    /* TH10's executables are named the other way round from later games: the English patch
-       replaces th10.exe and keeps the original as th10j.exe. The replay magic is unused while
-       the simulation is undescribed, so it is left at the obvious guess rather than asserted. */
-    [GI_TH10] = {10,0x9c000,0,"TH10 v1.00a","th10_hfr.ini","t10r",{"th10.exe","th10j.exe"},th10_signatures,sizeof th10_signatures/sizeof *th10_signatures,th10_conflicts,sizeof th10_conflicts/sizeof *th10_conflicts},
+    /* TH10 follows the same naming as the later games: th10.exe is the Japanese original and
+       th10e.exe the English one (an earlier note here claimed a th10j.exe; that was a local
+       rename, not a convention). The replay magic is unused while the simulation is
+       undescribed, so it is left at the obvious guess rather than asserted. */
+    [GI_TH10] = {10,0x9c000,0,"TH10 v1.00a","th10_hfr.ini","t10r",{"th10e.exe","th10.exe"},th10_signatures,sizeof th10_signatures/sizeof *th10_signatures,th10_conflicts,sizeof th10_conflicts/sizeof *th10_conflicts},
     [GI_TH11] = {11,0xcd000,0,"TH11 v1.00a","th11_hfr.ini","t11r",{"th11e.exe","th11.exe"},th11_signatures,sizeof th11_signatures/sizeof *th11_signatures,th11_conflicts,sizeof th11_conflicts/sizeof *th11_conflicts},
     [GI_TH12] = {12,0xd9000,0,"TH12 v1.00b","th12_hfr.ini","t12r",{"th12e.exe","th12.exe"},th12_signatures,sizeof th12_signatures/sizeof *th12_signatures,th12_conflicts,sizeof th12_conflicts/sizeof *th12_conflicts},
     [GI_TH13] = {13,0xe9000,0xea000,"TH13 v1.00c",NULL,"t13r",{"th13e.exe","th13.exe"},th13_signatures,sizeof th13_signatures/sizeof *th13_signatures,th13_conflicts,sizeof th13_conflicts/sizeof *th13_conflicts},

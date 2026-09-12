@@ -1,5 +1,5 @@
-/* Frozen TH10 v1.00a signatures, verified byte-identical in the Japanese (th10j.exe) and
-   English (th10.exe) executables: every site the simulation writes (speed sites, gated blocks,
+/* Frozen TH10 v1.00a signatures, verified byte-identical in the Japanese (th10.exe) and
+   English (th10e.exe) executables: every site the simulation writes (speed sites, gated blocks,
    the hit-test guard, replay and frame call sites, the frame limiter waits) plus function
    entries spread across the code section so that a different build fails to match. See
    TH10_DEVNOTES.md for what each site is. */

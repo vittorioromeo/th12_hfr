@@ -7,7 +7,7 @@
 > is `src/games/th10.c` and `src/games/th10_signatures.h`; if they disagree with this file, the
 > code is right and this file needs fixing.
 
-Supported: **TH10 v1.00a**, English `th10.exe` and Japanese `th10j.exe`. Both are the same
+Supported: **TH10 v1.00a**, Japanese `th10.exe` and English `th10e.exe`. Both are the same
 code (image size `0x9c000`); every address below holds for both, and every frozen signature is
 byte-identical in both. Build state: **supported** since v0.3.0-test (September 2026). The
 profile was started by ChatGPT (commit `66ade7f`, unvalidated), then validated, fixed and

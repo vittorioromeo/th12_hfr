@@ -48,7 +48,7 @@ int main(int argc,char** argv) {
         }
     }
     if(!target[0] || !local_path(exe,sizeof exe,dir,target) || !identify_file(exe))
-        die("No supported executable found. Supported: TH11 v1.00a and TH12 v1.00b (Japanese/static English). Code modified by another patch is not accepted.");
+        die("No supported executable found. Supported: TH10 v1.00a, TH11 v1.00a, TH12 v1.00b and TH13 v1.00c (Japanese or English executables). Code modified by another patch is not accepted.");
     if(GetFileAttributesA(dll)==INVALID_FILE_ATTRIBUTES)die("touhou_hfr.dll is missing next to the launcher.");
     STARTUPINFOA si={0};si.cb=sizeof si;PROCESS_INFORMATION pi;
     char cmd[MAX_PATH+4];snprintf(cmd,sizeof cmd,"\"%s\"",exe);
