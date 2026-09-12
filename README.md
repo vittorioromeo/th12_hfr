@@ -215,3 +215,67 @@ scope and adding another game. Per-game reverse-engineering records: [TH10](TH10
 [TH11](TH11_DEVNOTES.md), [TH12](DEVNOTES.md) and [TH13](TH13_DEVNOTES.md); the original
 release instructions are in [TH12_README.md](TH12_README.md) and
 [TH11_README.md](TH11_README.md).
+
+## Credits, tools and resources
+
+The mod was written by Vittorio Romeo together with AI models, with every address, hook and
+finding validated against the executables in a Wine rig and in play. The record of who found
+what is in the git history and the per-game devnotes.
+
+**AI models.** The original TH12 patch (v0.10-v0.11), the restructuring into a shared
+multi-game runtime with the TH11 adapter and the native regression harness, and the first
+TH10 profile were authored with OpenAI's ChatGPT ("ChatGPT 6.0 Astra" in the import commit;
+the TH10 work on a Codex branch). ChatGPT Astra also found the cause of TH10's HFR hitches —
+the game's FPS-counter watchdog resetting its clock — after a long hunt elsewhere had failed ([TH10_DEVNOTES §6b](TH10_DEVNOTES.md)). Everything from
+the scaler onward — output scaling and the filter chain, the Dear ImGui menu, Direct3D 9Ex
+presentation through an additional swap chain, the TH10 validation and the TH13 port, internal
+resolution and texture upscaling, dimming, sharpening, the joystick thread, the SSE clock fix
+and most of the devnotes — was developed with Anthropic's Claude (Opus 4.8, Opus 5 and Fable
+5.1, through Claude Code and Cowork), which also extended the harness and built and drove the
+Wine test rig. Each commit names its co-author.
+
+**Reverse engineering.** [Ghidra](https://github.com/NationalSecurityAgency/ghidra) 11.3.2,
+headless, with the two scripts in `tools/` (`FixFuncs.java` recovers the functions ZUN's MSVC
+builds hide behind vtables and `int3` padding; `ExportAll.java` decompiles everything into one
+greppable file). `objdump -d -M intel` for exact instruction bytes; Python with
+[pefile](https://github.com/erocarrera/pefile) and [Capstone](https://www.capstone-engine.org/)
+for the pattern scans in `tools/`, and [Unicorn](https://www.unicorn-engine.org/) to emulate
+the emitted stubs and patched sites in the Python tests. Game data was unpacked and the ECL and
+ANM scripts read with [thtk](https://github.com/thpatch/thtk) (`thdat`, `thecl`, `thanm`) and
+[truth](https://github.com/ExpHP/truth), whose instruction tables name what each script does.
+
+**Existing projects consulted.** [thprac](https://github.com/touhouworldcup/thprac) for its
+large, well-tested sets of TH11 and TH12 addresses and struct offsets, used as an independent
+reference; [OpenInputLagPatch](https://github.com/khang06/OpenInputLagPatch) by khang06 for the
+Direct3D 9Ex approach (managed-pool conversion, `CreateDeviceEx`, `SetMaximumFrameLatency`)
+and its main-loop hook site; vpatch and thcrap for how a `dinput8.dll` proxy is expected to
+coexist with the rest of the ecosystem; PivotDX9 as the wrapper the presentation-path detection
+was written against. The update-runner protocol, the game-speed model, the draw order and
+everything else in the devnotes was reverse-engineered from the binaries.
+
+**Third-party code in the build.**
+
+| Component | Author | Licence | Used for |
+| --- | --- | --- | --- |
+| [Dear ImGui](https://github.com/ocornut/imgui) 1.91.8 | Omar Cornut | MIT | the F11 menu (`third_party/imgui`) |
+| MMPX | Morgan McGuire and Mara Gagiu; slang port by hunterk | MIT | `shaders/mmpx.hlsl` |
+| xBR-lv2, Super-xBR | Hyllian | MIT | `shaders/xbr-lv2.hlsl`, `shaders/super-xbr.hlsl` |
+| ScaleFX | Sp00kyFox | MIT | `shaders/scalefx.hlsl` |
+| FidelityFX CAS | Advanced Micro Devices | MIT | `shaders/cas.hlsl` |
+
+The filters were ported to Direct3D 9 HLSL from the
+[libretro/slang-shaders](https://github.com/libretro/slang-shaders) and
+[libretro/common-shaders](https://github.com/libretro/common-shaders) versions; the licence
+texts travel at the top of each file, and `shaders/README.md` records what the ports changed
+and which well-known filters (xBRZ, hqx, NNEDI3, FSRCNNX) were left out and why.
+
+**Build and test environment.** MinGW-w64 GCC (32-bit) on Windows and Linux; PowerShell and
+POSIX shell scripts; the native harness in `tools/test_hfr.c` runs against the real executables
+as inert fixtures. Development and every automated run happened under
+[Wine](https://www.winehq.org/) 9 on Linux with Xvfb, `xdotool` driving the games and
+ImageMagick reading the screen; Direct3D behaviour was confirmed on Windows in play. Microsoft's
+Direct3D 9 and Win32 documentation was the reference for everything the patch asks of the
+system.
+
+Touhou Project is © Team Shanghai Alice / ZUN. This mod contains no game files and patches the
+games only in memory.
