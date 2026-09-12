@@ -175,6 +175,21 @@ static void th13_install_sites(void) {
     STUB_BEGIN(); E(0x50); E(0x8B, 0x81); E32(0x538); E(0x3B, 0x81); E32(0x53c); E(0x58);
     E(0x75, 0x03); E(0x31, 0xC0, 0xC3);
     ECOPY(0x46b9d0, 12); EJMP(0x46b9dc); site_hook(0x46b9d0, 12);
+
+    /* --- Player shot behaviours (table 0x4bb4d8, called with EDX = shot from the per-shot
+           update 0x4464d0; the shot array is 256 x 0x9c at player+0x6a0, MotionState at +0x2c,
+           state +0x70, shot-type data +0x94): homing 0x446cb0 (turn towards the target, speed
+           +-0.2 per call), 0x447590 (speed += 1 per call) and 0x447510 (speed *= 0.8 per call)
+           advance per call. Run each only on the tick where the shot's timer (+0x18/+0x1c,
+           Timer::tick at the end of the shot update) crossed a whole frame; the MotionState
+           still integrates every sub-tick. 0x446f20 anchors an option's laser to the option
+           every tick and stays unguarded; 0x4474a0 does nothing. Same treatment as TH11/TH12. --- */
+    { struct { uintptr_t addr; size_t n; } S[] = { { 0x446cb0, 6 }, { 0x447590, 6 }, { 0x447510, 6 } };
+      for (size_t i = 0; i < sizeof S / sizeof *S; ++i) {
+          STUB_BEGIN(); E(0x9c); E_timer_unchanged(R_EDX, 0x18, 0x1c);
+          E(0x75, 0x04, 0x9d, 0x31, 0xc0, 0xc3);       /* unchanged: restore flags, return 0 */
+          E(0x9d); ECOPY(S[i].addr, S[i].n); EJMP(S[i].addr + S[i].n); site_hook(S[i].addr, S[i].n);
+      } }
 #undef FMUL_FACTOR
     stub_end();
     LOG("TH13 site patches installed (%u bytes of stubs)", (unsigned)g_stub_used);

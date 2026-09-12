@@ -244,6 +244,18 @@
     "bytes": "53 8b d9 56 8b b3 94 00 00 00 8b 86"
   },
   {
+    "address": "0x446cb0",
+    "bytes": "55 8b ec 83 e4 f8"
+  },
+  {
+    "address": "0x447510",
+    "bytes": "33 c0 83 7a 70 01"
+  },
+  {
+    "address": "0x447590",
+    "bytes": "33 c0 83 7a 70 01"
+  },
+  {
     "address": "0x447c1b",
     "bytes": "e8 20 10 00 00"
   },
