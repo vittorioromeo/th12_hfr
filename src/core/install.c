@@ -147,6 +147,9 @@ static int install(void) {
     }
     /* Sub-tick input feeds the simulation, so it belongs with the rest of it. */
     hook_iat("winmm.dll","joyGetPosEx",hook_joyGetPosEx,(void**)&orig_joyGetPosEx);   /* always: the real call stalls the game thread (input.c) */
+    /* The pointer in borderless fullscreen (window.c): both calls or neither, since one without the other leaves it half hidden. */
+    if (hook_iat("user32.dll","ShowCursor",hook_ShowCursor,(void**)&orig_ShowCursor) && hook_iat("user32.dll","SetCursor",hook_SetCursor,(void**)&orig_SetCursor)) g_cursor_hooked = 1;
+    else LOG("window: the game's cursor calls are not in its import table; the pointer stays as the game leaves it");
     FlushInstructionCache(GetCurrentProcess(),g_stub_mem,g_stub_used);
     if (!patch_commit()) { LOG("Patch transaction failed; no code/import hooks applied");return 0; }
     AddVectoredExceptionHandler(1, hfr_exception_report);

@@ -23,7 +23,7 @@ try {
         if($LASTEXITCODE){throw "Menu compilation failed: $source"}
         $objects += $object
     }
-    & $cxxPath -shared -static -static-libgcc -static-libstdc++ -o build/touhou_hfr.dll @objects -ld3d9 -lwinmm -lgdi32 -ldwmapi '-Wl,--kill-at'
+    & $cxxPath -shared -static -static-libgcc -static-libstdc++ -o build/touhou_hfr.dll @objects -ld3d9 -lwinmm -lgdi32 -ldwmapi -lpsapi '-Wl,--kill-at'
     if($LASTEXITCODE){throw 'Unified DLL build failed'}
     & $compilerPath -std=gnu11 -O2 -Wall -Wextra -Wno-unused-function -s -mwindows -static-libgcc src/launcher.c -o build/touhou_hfr.exe
     if($LASTEXITCODE){throw 'Unified launcher build failed'}

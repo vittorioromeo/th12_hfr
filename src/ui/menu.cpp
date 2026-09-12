@@ -195,6 +195,35 @@ void draw_display_section(void) {
     help("Any .hlsl file in the shaders folder next to the game appears here.\n"
          "A filter that fails to compile is reported in touhou_hfr.log.");
 
+    /* Sharpening runs over the finished, window-sized image, after the filter and the
+       resample, so it is chosen and strengthened on its own. */
+    {
+        int pn = hfr_ui_post_count();
+        int post = hfr_ui_get(UI_SHARPEN);
+        if (post < -1 || post >= pn) post = -1;
+        if (ImGui::BeginCombo("Sharpen", post < 0 ? "Off" : hfr_ui_post_name(post))) {
+            if (ImGui::Selectable("Off", post < 0)) hfr_ui_set(UI_SHARPEN, -1);
+            for (int i = 0; i < pn; ++i) {
+                bool sel = i == post;
+                if (ImGui::Selectable(hfr_ui_post_name(i), sel)) hfr_ui_set(UI_SHARPEN, i);
+                if (sel) ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
+        help("A sharpening pass over the upscaled picture, after the filter, at the\n"
+             "window's resolution. cas is AMD's Contrast Adaptive Sharpening: it adds\n"
+             "contrast where there is room for it and leaves hard edges alone, so it\n"
+             "rarely rings. unsharp-mask is the plain operator, on luma only, with a\n"
+             "cap on how far a pixel can be pushed. A .hlsl file in the shaders folder\n"
+             "marked //! post appears here too.");
+        int strength = hfr_ui_get(UI_SHARPEN_STRENGTH);
+        ImGui::BeginDisabled(post < 0);
+        if (ImGui::SliderInt("Sharpen strength", &strength, 0, 100, "%d%%")) hfr_ui_set(UI_SHARPEN_STRENGTH, strength);
+        ImGui::EndDisabled();
+        help("0%% is off; 100%% is as strong as the pass goes. Around 40-60%% suits\n"
+             "sharp-bilinear at non-integer sizes; the xBR family needs less.");
+    }
+
     /* The window's size is what gives the scaler and the filters something to do: at the
        game's own 640x480 every mode and every filter is the same 1:1 picture. TH10's dialog
        offers nothing larger, so this is the one place a user of it can ask for more. */
@@ -230,6 +259,16 @@ void draw_display_section(void) {
     ImGui::EndDisabled();
     help("On: the game's fullscreen becomes a borderless window covering the\n"
          "monitor at its own resolution, instead of a 640x480 mode change.");
+    {
+        const char* cursors[] = { "Hidden, as the game does", "Visible", "Visible while moving" };
+        int cur = hfr_ui_get(UI_CURSOR);
+        if (cur < 0 || cur > 2) cur = 2;
+        if (ImGui::Combo("Mouse pointer in fullscreen", &cur, cursors, IM_ARRAYSIZE(cursors))) hfr_ui_set(UI_CURSOR, cur);
+        help("The game hides the pointer whenever it believes it is fullscreen, which\n"
+             "in borderless fullscreen means it vanishes over a window like any other.\n"
+             "This decides what happens instead. While this menu is open the pointer is\n"
+             "always shown, whatever is chosen here.");
+    }
 
     /* Readability: fade what competes with the bullets. Applied immediately, in-stage only. */
     ImGui::Separator();

@@ -8,7 +8,7 @@ per-game records are [TH10_DEVNOTES.md](TH10_DEVNOTES.md), [TH11_DEVNOTES.md](TH
 High refresh rate gameplay and presentation for Touhou. One DLL detects the game
 and selects its adapter; the scheduler, input, replay and Direct3D code are shared.
 
-**Current build: v0.4.9-test.** Supported executable layouts:
+**Current build: v0.4.10-test.** Supported executable layouts:
 
 | Game | Version | Executables | State |
 | --- | --- | --- | --- |
@@ -44,6 +44,11 @@ stretched, or held to whole-number multiples for pixel-perfect output. The game'
 become a borderless window covering the monitor. Four upscaling filters are bundled — MMPX,
 xBR-lv2, Super-xBR and ScaleFX — and any `.hlsl` file dropped into `shaders/` next to the game
 is offered alongside them, including multi-pass ones. `shaders/README.md` describes the format.
+After the filter, an optional sharpening pass — AMD's CAS or a clamped luma unsharp mask, with
+a strength slider — runs over the finished picture at the window's resolution, where it undoes
+the softness a non-integer resample leaves without touching the game's own pixels. In borderless
+fullscreen the mouse pointer, which the game hides, is shown while the mouse moves (or always,
+or never — `cursor=`), and always while the menu is open.
 
 **Internal resolution.** `internal_scale=2` (or 3) makes the game draw at 1280x960 (1920x1440)
 instead of 640x480 while keeping every coordinate it has: sprites land on real sub-pixel
@@ -79,7 +84,7 @@ every supported title; it still needs full-run replay testing before a stable re
 
 ## Install
 
-Download/extract `touhou_hfr_v0.4.9-test.zip` and close the game.
+Download/extract `touhou_hfr_v0.4.10-test.zip` and close the game.
 
 For a fresh installation, copy these four files next to the game executable:
 

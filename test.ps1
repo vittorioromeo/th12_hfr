@@ -12,7 +12,7 @@ $env:PATH="$(Split-Path -Parent $compilerPath);$savedPath"
 Push-Location $PSScriptRoot
 try {
     New-Item -ItemType Directory -Force build/tests | Out-Null
-    & $compilerPath -std=gnu11 -O2 -Wall -Wextra -Wno-unused-function -Wno-unused-parameter -static-libgcc tools/test_hfr.c -o build/tests/test_hfr.exe -ld3d9 -lwinmm '-Wl,--image-base,0x300000,--disable-dynamicbase,--section-start,.fixture=0x400000'
+    & $compilerPath -std=gnu11 -O2 -Wall -Wextra -Wno-unused-function -Wno-unused-parameter -static-libgcc tools/test_hfr.c -o build/tests/test_hfr.exe -ld3d9 -lwinmm -lgdi32 -ldwmapi -lpsapi '-Wl,--image-base,0x300000,--disable-dynamicbase,--section-start,.fixture=0x400000'
     if($LASTEXITCODE){throw 'Native harness build failed'}
     & $pythonPath tools/fill_pe_gaps.py build/tests/test_hfr.exe
     if($LASTEXITCODE){throw 'Harness fixture reservation failed'}

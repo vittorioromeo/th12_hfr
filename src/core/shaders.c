@@ -13,7 +13,7 @@
 #include "shader_sources.h"
 #include "shader_parse.h"
 
-enum { MAX_FILTERS = 32, FILTER_NAME_MAX = 32, MAX_PASSES = HFR_MAX_PASSES };
+enum { MAX_FILTERS = 32, MAX_POSTS = 16, FILTER_NAME_MAX = 32, MAX_PASSES = HFR_MAX_PASSES };
 
 /* A filter is one or more pixel shader passes. Everything before the first "//! pass" is a
    shared header compiled into every pass, which is what lets the passes of an algorithm
@@ -34,6 +34,7 @@ struct Filter {
     const char* header;             /* shared header, into text */
     size_t header_len;
     int   state;                    /* 0 not tried, 1 ready, -1 failed */
+    int   post;                     /* a post-process (sharpening) rather than a filter */
 };
 /* Direct3D 9 does not allow a ps_3_0 pixel shader with the fixed-function vertex pipeline,
    so a shader filter is drawn through this pass-through vertex shader with clip-space
@@ -64,6 +65,12 @@ static int g_downsample_state;
 
 static struct Filter g_filters[MAX_FILTERS];
 static int g_filter_count;
+/* Post-processes: single passes run over the finished image at the window's size, after
+   the filter and the resample, with a strength. Kept apart from the filters because they
+   are chosen separately -- a filter decides how the game's pixels are magnified, a
+   post-process what is done to the result -- and the two lists never mix in the menu. */
+static struct Filter g_posts[MAX_POSTS];
+static int g_post_count;
 static int g_filters_scanned;
 static const char* g_ps_profile;
 
@@ -145,22 +152,28 @@ static void shaders_pick_profile(IDirect3DDevice9* dev) {
     LOG("shaders: target profile %s", g_ps_profile ? g_ps_profile : "none");
 }
 
-static int filter_add(const char* name, int scale, const char* embedded, const char* path) {
-    if (g_filter_count >= MAX_FILTERS) return 0;
-    for (int i = FILTER_BUILTIN_COUNT; i < g_filter_count; ++i)
-        if (!_stricmp(g_filters[i].name, name)) {          /* a file replaces a built-in */
-            g_filters[i].embedded = embedded;
-            if (path) { snprintf(g_filters[i].path, sizeof g_filters[i].path, "%s", path); g_filters[i].embedded = NULL; }
-            if (scale >= 0) g_filters[i].scale = scale;
+static int filter_add_to(struct Filter* list, int* count, int max, int first, const char* name, int scale, const char* embedded, const char* path, int post) {
+    if (*count >= max) return 0;
+    for (int i = first; i < *count; ++i)
+        if (!_stricmp(list[i].name, name)) {          /* a file replaces a built-in */
+            list[i].embedded = embedded;
+            if (path) { snprintf(list[i].path, sizeof list[i].path, "%s", path); list[i].embedded = NULL; }
+            if (scale >= 0) list[i].scale = scale;
             return 1;
         }
-    struct Filter* f = &g_filters[g_filter_count++];
+    struct Filter* f = &list[(*count)++];
     memset(f, 0, sizeof *f);
     snprintf(f->name, sizeof f->name, "%s", name);
     f->scale = scale < 0 ? 0 : scale;
     f->embedded = embedded;
+    f->post = post;
     if (path) snprintf(f->path, sizeof f->path, "%s", path);
     return 1;
+}
+/* A file that says "//! post" goes to the post-process list; anything else is a filter. */
+static int filter_add(const char* name, int scale, const char* embedded, const char* path, const char* text) {
+    if (text && shader_is_post(text)) return filter_add_to(g_posts, &g_post_count, MAX_POSTS, 0, name, 0, embedded, path, 1);
+    return filter_add_to(g_filters, &g_filter_count, MAX_FILTERS, FILTER_BUILTIN_COUNT, name, scale, embedded, path, 0);
 }
 /* Fills in the filter's header and passes. Returns 0 when the shader is malformed. */
 static int parse_passes(struct Filter* f, const char* text) {
@@ -194,11 +207,13 @@ static void shaders_scan(void) {
     g_filters_scanned = 1;
     g_filter_count = FILTER_BUILTIN_COUNT;
     memset(g_filters, 0, sizeof g_filters);
+    g_post_count = 0;
+    memset(g_posts, 0, sizeof g_posts);
     snprintf(g_filters[FILTER_NEAREST].name, FILTER_NAME_MAX, "%s", "nearest");
     snprintf(g_filters[FILTER_BILINEAR].name, FILTER_NAME_MAX, "%s", "bilinear");
     snprintf(g_filters[FILTER_SHARP].name, FILTER_NAME_MAX, "%s", "sharp-bilinear");
     for (size_t i = 0; i < sizeof embedded_shaders / sizeof *embedded_shaders; ++i)
-        filter_add(embedded_shaders[i].name, embedded_shaders[i].scale, embedded_shaders[i].source, NULL);
+        filter_add(embedded_shaders[i].name, embedded_shaders[i].scale, embedded_shaders[i].source, NULL, embedded_shaders[i].source);
     char dir[MAX_PATH], pattern[MAX_PATH];
     GetModuleFileNameA(NULL, dir, MAX_PATH);
     char* p = strrchr(dir, '\\');
@@ -206,7 +221,7 @@ static void shaders_scan(void) {
     snprintf(pattern, sizeof pattern, "%s\\shaders\\*.hlsl", dir);
     WIN32_FIND_DATAA fd;
     HANDLE h = FindFirstFileA(pattern, &fd);
-    if (h == INVALID_HANDLE_VALUE) { LOG("shaders: %d built-in filter(s), no shaders folder", g_filter_count - FILTER_BUILTIN_COUNT); return; }
+    if (h == INVALID_HANDLE_VALUE) { LOG("shaders: %d built-in filter(s) and %d post-process(es), no shaders folder", g_filter_count - FILTER_BUILTIN_COUNT, g_post_count); return; }
     int added = 0;
     do {
         if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
@@ -216,12 +231,12 @@ static void shaders_scan(void) {
         char* dot = strrchr(name, '.'); if (dot) *dot = 0;
         size_t len = 0; char* text = read_text_file(full, &len);
         if (!text) { LOG("shaders: cannot read %s", fd.cFileName); continue; }
-        filter_add(name, parse_total_scale(name, text), NULL, full);
+        filter_add(name, parse_total_scale(name, text), NULL, full, text);
         free(text);
         ++added;
     } while (FindNextFileA(h, &fd));
     FindClose(h);
-    LOG("shaders: %d filter(s) available (%d from the shaders folder)", g_filter_count, added);
+    LOG("shaders: %d filter(s) and %d post-process(es) available (%d files in the shaders folder)", g_filter_count, g_post_count, added);
 }
 /* Compiled once alongside the first filter shader; a failure disables shader filters. */
 static IDirect3DVertexShader9* quad_vertex_shader(IDirect3DDevice9* dev) {
@@ -269,8 +284,8 @@ static void filters_release(void) {
     g_quad_vs_state = 0;
     if (g_downsample_ps) { g_downsample_ps->lpVtbl->Release(g_downsample_ps); g_downsample_ps = NULL; }
     g_downsample_state = 0;
-    for (int i = 0; i < g_filter_count; ++i) {
-        struct Filter* f = &g_filters[i];
+    for (int i = 0; i < g_filter_count + g_post_count; ++i) {
+        struct Filter* f = i < g_filter_count ? &g_filters[i] : &g_posts[i - g_filter_count];
         for (int j = 0; j < f->pass_count; ++j)
             if (f->pass[j].ps) { f->pass[j].ps->lpVtbl->Release(f->pass[j].ps); f->pass[j].ps = NULL; }
         free(f->text); f->text = NULL;
@@ -321,6 +336,12 @@ static int filter_prepare(IDirect3DDevice9* dev, struct Filter* f) {
             free(f->text); f->text = NULL; f->pass_count = 0;
             return 0;
         }
+    if (f->post && (f->pass_count != 1 || f->pass[0].s.scale > 1 || f->pass[0].s.want_float)) {
+        LOG("shaders: %s is a post-process, which must be a single pass at the window's size", f->name);
+        f->pass[0].ps->lpVtbl->Release(f->pass[0].ps); f->pass[0].ps = NULL;
+        free(f->text); f->text = NULL; f->pass_count = 0;
+        return 0;
+    }
     f->state = 1;
     if (f->pass_count > 1) LOG("shaders: %s ready (%d passes, %dx overall)", f->name, f->pass_count, f->scale);
     return 1;
@@ -331,6 +352,18 @@ static struct Filter* filter_at(int index) {
     return &g_filters[index];
 }
 static int filter_count(void) { shaders_scan(); return g_filter_count; }
+static struct Filter* post_at(int index) {
+    shaders_scan();
+    if (index < 0 || index >= g_post_count) return NULL;
+    return &g_posts[index];
+}
+static int post_count(void) { shaders_scan(); return g_post_count; }
+static int post_index_by_name(const char* name) {
+    shaders_scan();
+    if (!name || !*name) return -1;
+    for (int i = 0; i < g_post_count; ++i) if (!_stricmp(g_posts[i].name, name)) return i;
+    return -1;
+}
 /* Resolve a name from the INI to an index, so filters keep their identity when the
    shaders folder changes. Falls back to the numeric form for compatibility. */
 static int filter_index_by_name(const char* name) {
@@ -354,4 +387,13 @@ static void resolve_filter(void) {
     for (int i = 0; i < n; ++i)
         LOG("video: filter %d = %s%s%s", i, g_filters[i].name,
             g_filters[i].scale ? " (fixed scale)" : "", i == idx ? "  <- selected" : "");
+    /* The post-process is optional: "none" (or an unknown name) means off. */
+    int pn = post_count();
+    cfg.sharpen = post_index_by_name(cfg.sharpen_name);
+    if (cfg.sharpen < 0 && cfg.sharpen_name[0] && _stricmp(cfg.sharpen_name, "none"))
+        LOG("video: no post-process named '%s'; sharpening off", cfg.sharpen_name);
+    if (cfg.sharpen < 0) snprintf(cfg.sharpen_name, sizeof cfg.sharpen_name, "%s", "none");
+    for (int i = 0; i < pn; ++i)
+        LOG("video: post-process %d = %s%s", i, g_posts[i].name, i == cfg.sharpen ? "  <- selected" : "");
+    if (cfg.sharpen >= 0) LOG("video: sharpening with %s at %d%%", cfg.sharpen_name, cfg.sharpen_strength);
 }

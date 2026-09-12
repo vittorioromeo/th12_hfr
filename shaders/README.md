@@ -21,6 +21,7 @@ sampler2D Pass5 : register(s7);
 float4 SourceSize : register(c0);     // x=width, y=height, z=1/width, w=1/height of the input
 float4 TargetSize : register(c1);     // the same, for what this pass renders into
 float4 OriginalSize : register(c2);   // the same, for the game's own image
+float4 Params : register(c3);         // x = the menu's strength, 0..1, for a post-process; 0 otherwise
 ```
 
 Define exactly:
@@ -44,6 +45,7 @@ Directives are `//!` followed by a word, one per line, anywhere in the file:
 //! pass          begins a pass; everything above the first one is a header shared by all passes
 //! scale 2       this pass's output is 2x the size of its input (1 by default)
 //! float         this pass writes values outside 0..1, so it needs a float target
+//! post          a post-process, not a filter: see below
 ```
 
 A file with no directives at all is a single pass rendered straight into the destination
@@ -62,6 +64,17 @@ the result is averaged down rather than sampled at one point per destination pix
 single sample would keep two source pixels out of every three and turn every filtered edge
 into a dotted line.
 
+### Post-processes
+
+A file marked `//! post` is not offered as a filter but as a **sharpening** pass in the
+menu's own "Sharpen" list. It is a single pass, run once over the finished picture -- after
+the filter and the resample, at the window's resolution, into the destination rectangle --
+and `Source` is that picture at 1:1, sampled bilinearly, so `uv` lands on texel centres and
+a half-texel offset fetches the hardware's 2x2 average. `Params.x` is the menu's strength
+slider, 0..1; the pass is skipped altogether at 0, so every post-process should be the
+identity there. `SourceSize` and `TargetSize` are both the picture's size. A post-process
+that declares passes, a scale or a float target is refused.
+
 Compilation errors go to `touhou_hfr.log`, and a filter that fails falls back to sharp
 bilinear rather than taking the game down. `tools/shader_check.c` compiles a shader the same
 way outside the game, pass by pass, which is quicker than restarting it — and it includes the
@@ -75,8 +88,14 @@ runtime's own header, so it cannot drift from what the game does.
 | `xbr-lv2.hlsl` | Hyllian (Sérgio Gouveia de Barros) | MIT | 1 pass, free scale |
 | `super-xbr.hlsl` | Hyllian | MIT | 3 passes, 2x |
 | `scalefx.hlsl` | Sp00kyFox | MIT | 5 passes, 3x |
+| `cas.hlsl` | Advanced Micro Devices (FidelityFX CAS) | MIT | post-process |
+| `unsharp-mask.hlsl` | this project | project licence | post-process |
 
-All were ported to Direct3D 9 HLSL for this project — MMPX and xBR-lv2 from the `.slang`
+CAS was ported from the sharpen-only path of `ffx_cas.h` (with the better-diagonals
+variant), its sharpness driven by the strength slider through the same `-1/lerp(8, 5, s)`
+mapping AMD's setup function uses. The unsharp mask is the textbook operator, luma only and
+clamped, and is here as the plain reference point beside CAS. The filters were ported to
+Direct3D 9 HLSL for this project — MMPX and xBR-lv2 from the `.slang`
 versions in [libretro/slang-shaders](https://github.com/libretro/slang-shaders), Super-xBR and
 ScaleFX from the `.cg` versions in
 [libretro/common-shaders](https://github.com/libretro/common-shaders). The full licence text

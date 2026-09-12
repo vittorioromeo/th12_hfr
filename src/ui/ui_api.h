@@ -31,6 +31,9 @@ enum {
     UI_DIM_SPECIAL,          /* ... the game's own extra class (hfr_ui_dim_special_name says which) */
     UI_DIM_PLAYER_SHOTS,     /* ... the player's own shots */
     UI_DIM_AVAILABLE,        /* read-only: this game's draw order is known to the patch */
+    UI_SHARPEN,              /* index into the post-process registry; -1 for none */
+    UI_SHARPEN_STRENGTH,     /* 0..100 percent */
+    UI_CURSOR,               /* the mouse pointer in borderless fullscreen: 0 as the game does (hidden), 1 visible, 2 visible while moving */
     UI_SETTING_COUNT
 };
 
@@ -40,6 +43,8 @@ void        hfr_ui_set(int id, int value);
 int         hfr_ui_filter_count(void);
 const char* hfr_ui_filter_name(int index);
 int         hfr_ui_filter_is_fixed_scale(int index);
+int         hfr_ui_post_count(void);          /* post-processes (sharpening) available after the filter */
+const char* hfr_ui_post_name(int index);
 void        hfr_ui_save(void);
 void        hfr_ui_status(char* buf, int len);
 void        hfr_ui_scale_info(char* buf, int len);

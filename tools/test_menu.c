@@ -17,6 +17,8 @@ void        hfr_ui_set(int id, int v) { if (id >= 0 && id < UI_SETTING_COUNT) g_
 int         hfr_ui_filter_count(void) { return 5; }
 const char* hfr_ui_filter_name(int i) { return (i >= 0 && i < 5) ? g_names[i] : ""; }
 int         hfr_ui_filter_is_fixed_scale(int i) { return i == 3; }
+int         hfr_ui_post_count(void) { return 2; }
+const char* hfr_ui_post_name(int i) { return i == 0 ? "cas" : i == 1 ? "unsharp-mask" : ""; }
 void        hfr_ui_save(void) { printf("  (save called)\n"); }
 void        hfr_ui_status(char* b, int n) { snprintf(b, (size_t)n, "TH12 v1.00b   1280 x 960 window   360 Hz logic / 360 Hz present"); }
 void        hfr_ui_scale_info(char* b, int n) { snprintf(b, (size_t)n, "640x480 game image at 2x, 0 x 0 of black bars"); }
@@ -31,6 +33,7 @@ void        hfr_menu_key_down(int down) {
 int         hfr_ui_simulation_locked(void) { return 0; }
 int         hfr_ui_simulation_patched(void) { return 1; }
 const char* hfr_ui_present_path(void) { return "our own swap chain"; }
+const char* hfr_ui_dim_special_name(void) { return "UFOs"; }
 static const char* g_systems[] = { "BulletManager", "Player", "Bomb", "LaserManager",
                                    "ItemManager", "Gui", "Stage", "AnmManagerWorld", "AnmManagerUI" };
 static int g_system_on[9] = { 1, 1, 0, 1, 1, 0, 1, 1, 1 };

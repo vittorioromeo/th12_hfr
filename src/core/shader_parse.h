@@ -28,6 +28,7 @@ static const char SHADER_PROLOGUE[] =
     "float4 SourceSize : register(c0);\n"   /* w, h, 1/w, 1/h of the image being read    */
     "float4 TargetSize : register(c1);\n"   /* w, h, 1/w, 1/h of the surface being drawn */
     "float4 OriginalSize : register(c2);\n" /* w, h, 1/w, 1/h of the game's own image    */
+    "float4 Params : register(c3);\n"       /* x = strength 0..1 for a post-process; else 0 */
     "#define SourceSampler Source\n"
     "#line 1\n";
 
@@ -45,6 +46,8 @@ struct ShaderPass {
      //! pass          begins a new pass (everything before the first one is a shared header)
      //! scale N       this pass's output is N times the size of its input; 1 by default
      //! float         this pass writes values outside 0..1, so it needs a float target
+     //! post          not a filter but a post-process: one pass run over the finished,
+                       window-sized image (sharpening), with Params.x as its strength
    A file with no directives at all is a single free-scale pass drawn straight to the
    destination, which is what every shader written before passes existed relies on. */
 static const char* shader_next_directive(const char* p, const char** word, const char** rest) {
@@ -65,6 +68,15 @@ static const char* shader_next_directive(const char* p, const char** word, const
 static int shader_directive_is(const char* word, const char* name) {
     size_t n = strlen(name);
     return !strncmp(word, name, n) && !isalpha((unsigned char)word[n]);
+}
+/* Whether the file declares itself a post-process ("//! post" anywhere in it). */
+static int shader_is_post(const char* text) {
+    const char *p = text, *word, *rest;
+    while ((p = shader_next_directive(p, &word, &rest)) != NULL) {
+        if (shader_directive_is(word, "post")) return 1;
+        p += 3;
+    }
+    return 0;
 }
 static void shader_read_flags(const char* from, const char* to, struct ShaderPass* out) {
     const char *q = from, *word, *rest;

@@ -53,6 +53,10 @@ static struct {
     int scaling;            /* 0 stretch, 1 aspect fit, 2 integer (pixel perfect) */
     int filter;             /* index into the filter registry */
     char filter_name[32];   /* how it was written in the INI, so it survives folder changes */
+    char sharpen_name[32];  /* post-process run over the finished image; "none" for off */
+    int sharpen;            /* index into the post-process registry, or -1 */
+    int sharpen_strength;   /* 0..100 percent, the post-process's Params.x */
+    int cursor;             /* the pointer in borderless fullscreen: 0 hidden as the game does, 1 visible, 2 visible while moving */
     int resizable;          /* add a resize border to the game's window */
     int window_scale;       /* client size at startup, in percent of the game's own (200 = 1280x960);
                                0 leaves the window as the game made it, -1 takes the largest
@@ -75,7 +79,7 @@ static struct {
     .fullscreen_refresh = 0, .show_stats = 0, .warn_wrapper = 1,
     .enemy_interp = 1, .debug = 0, .subtick_input = 1, .d3d9ex = 1,
     .max_frame_latency = 1, .flipex = 0,
-    .scaling = 1, .filter = FILTER_SHARP, .filter_name = "",
+    .scaling = 1, .filter = FILTER_SHARP, .filter_name = "", .sharpen_name = "none", .sharpen = -1, .sharpen_strength = 50, .cursor = 2,
     .resizable = 1, .window_scale = 0, .snap_aspect = 0, .fullscreen_mode = 1,
     .menu_key = VK_F11, .size_cycle_key = VK_F10, .own_present = -1, .internal_scale = 1, .texture_scale = 0, .texture_filter_name = "xbr-lv2",
 };

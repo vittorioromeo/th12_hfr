@@ -32,6 +32,13 @@ static void read_config(void) {
     cfg.scaling = GetPrivateProfileIntA("video", "scaling", 1, ini);
     GetPrivateProfileStringA("video", "filter", "sharp-bilinear", cfg.filter_name, sizeof cfg.filter_name, ini);
     ini_trim(cfg.filter_name);
+    GetPrivateProfileStringA("video", "sharpen", "none", cfg.sharpen_name, sizeof cfg.sharpen_name, ini);
+    ini_trim(cfg.sharpen_name);
+    cfg.sharpen_strength = GetPrivateProfileIntA("video", "sharpen_strength", 50, ini);
+    if (cfg.sharpen_strength < 0) cfg.sharpen_strength = 0;
+    if (cfg.sharpen_strength > 100) cfg.sharpen_strength = 100;
+    cfg.cursor = GetPrivateProfileIntA("video", "cursor", 2, ini);
+    if (cfg.cursor < 0 || cfg.cursor > 2) cfg.cursor = 2;
     cfg.resizable = GetPrivateProfileIntA("video", "resizable", 1, ini);
     cfg.window_scale = GetPrivateProfileIntA("video", "window_scale", 0, ini);
     cfg.snap_aspect = GetPrivateProfileIntA("video", "snap_aspect", 0, ini);
@@ -82,10 +89,10 @@ BOOL WINAPI DllMain(HINSTANCE h, DWORD reason, LPVOID res) {
         if (nt) select_game(base,nt->OptionalHeader.SizeOfImage);
         read_config();
         if (cfg.log) { char path[MAX_PATH]; GetModuleFileNameA(NULL, path, MAX_PATH); char* p = strrchr(path, '\\'); if (p) strcpy(p + 1, "touhou_hfr.log"); g_log = fopen(path, "w"); }
-        LOG("Touhou HFR v0.4.9-test loading; fps=%d vsync=%d substep=%d subtick_input=%d d3d9ex=%d max_frame_latency=%d flipex=%d enemy_interp=%d",
+        LOG("Touhou HFR v0.4.10-test loading; fps=%d vsync=%d substep=%d subtick_input=%d d3d9ex=%d max_frame_latency=%d flipex=%d enemy_interp=%d",
             cfg.fps, cfg.vsync, cfg.substep, cfg.subtick_input, cfg.d3d9ex, cfg.max_frame_latency, cfg.flipex, cfg.enemy_interp);
-        LOG("video: scaling=%d filter=%s resizable=%d window_scale=%d snap_aspect=%d fullscreen_mode=%d internal_scale=%d texture_scale=%d (%s) dim=%d/%d/%d/%d/%d",
-            cfg.scaling, cfg.filter_name, cfg.resizable, cfg.window_scale, cfg.snap_aspect, cfg.fullscreen_mode, cfg.internal_scale, cfg.texture_scale, cfg.texture_filter_name, cfg.dim[0], cfg.dim[1], cfg.dim[2], cfg.dim[3], cfg.dim[4]);
+        LOG("video: scaling=%d filter=%s resizable=%d window_scale=%d snap_aspect=%d fullscreen_mode=%d internal_scale=%d texture_scale=%d (%s) dim=%d/%d/%d/%d/%d sharpen=%s/%d cursor=%d",
+            cfg.scaling, cfg.filter_name, cfg.resizable, cfg.window_scale, cfg.snap_aspect, cfg.fullscreen_mode, cfg.internal_scale, cfg.texture_scale, cfg.texture_filter_name, cfg.dim[0], cfg.dim[1], cfg.dim[2], cfg.dim[3], cfg.dim[4], cfg.sharpen_name, cfg.sharpen_strength, cfg.cursor);
         if (!g_game || !install()) LOG("Unsupported/modified executable or installation failure; HFR inactive (proxy forwarding available)");
     }
     return TRUE;

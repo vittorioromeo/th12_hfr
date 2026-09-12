@@ -72,8 +72,65 @@ static int window_override_pp(D3DPRESENT_PARAMETERS* out, HWND hwnd) {
     return 1;
 }
 
+/* ---- the mouse pointer.
+   The game hides the pointer whenever it believes it is fullscreen -- a loop of
+   ShowCursor(FALSE) until the display count goes negative, and SetCursor(NULL) on every
+   WM_SETCURSOR -- which is right for an exclusive 640x480 mode and wrong for the borderless
+   window this patch gives it instead: there the pointer vanishes over what is, to the
+   user, a window like any other, and the menu cannot be used by mouse. Both calls come
+   through the game's import table, so they are taken over here. The game is kept believing
+   what it asked for (it only ever tests the sign of the count), and what Windows is told is
+   decided by cursor_want_visible: the menu first, then the game's own wish in a real
+   window, then the borderless setting -- hidden as the game does, always visible, or
+   visible while the mouse moves and hidden two seconds after it stops. ShowCursor's
+   count is per thread, and every call here is on the game's thread: the hooks run on it,
+   and so does the once-a-frame cursor_apply in window_pump. */
+typedef int (WINAPI *ShowCursorFn)(BOOL);
+typedef HCURSOR (WINAPI *SetCursorFn)(HCURSOR);
+static ShowCursorFn orig_ShowCursor;
+static SetCursorFn  orig_SetCursor;
+static int    g_cursor_hooked;
+static int    g_cursor_game_count;     /* the display count as the game believes it, kept in -1..0 */
+static int    g_cursor_shown = 1;      /* what Windows was last told (a thread starts at 0: shown) */
+static double g_cursor_moved_at;       /* the last mouse message, for "visible while moving" */
+#define CURSOR_IDLE_HIDE_S 2.0
+static int cursor_want_visible(void) {
+    if (hfr_menu_visible()) return 1;
+    if (g_cursor_game_count >= 0) return 1;      /* the game shows it itself */
+    if (!g_borderless_active) return 0;          /* a hide the patch has no reason to overrule */
+    if (cfg.cursor == 1) return 1;
+    if (cfg.cursor == 2) return now_s() - g_cursor_moved_at < CURSOR_IDLE_HIDE_S;
+    return 0;
+}
+static void cursor_apply(void) {
+    if (!g_cursor_hooked) return;
+    int want = cursor_want_visible();
+    if (want == g_cursor_shown) return;
+    if (want) { int n = 0; while (orig_ShowCursor(TRUE) < 0 && ++n < 64) {} }
+    else      { int n = 0; while (orig_ShowCursor(FALSE) >= 0 && ++n < 64) {} }
+    g_cursor_shown = want;
+    if (cfg.debug) LOG("cursor: %s (game count %d, borderless %d, menu %d)", want ? "shown" : "hidden", g_cursor_game_count, g_borderless_active, hfr_menu_visible());
+}
+static int WINAPI hook_ShowCursor(BOOL show) {
+    if (!g_cursor_hooked) return orig_ShowCursor(show);
+    g_cursor_game_count += show ? 1 : -1;
+    if (g_cursor_game_count > 0) g_cursor_game_count = 0;
+    if (g_cursor_game_count < -1) g_cursor_game_count = -1;
+    cursor_apply();
+    return g_cursor_game_count;
+}
+static HCURSOR WINAPI hook_SetCursor(HCURSOR h) {
+    if (g_cursor_hooked && !h && cursor_want_visible()) h = LoadCursorA(NULL, IDC_ARROW);
+    return orig_SetCursor(h);
+}
+static void cursor_mouse_message(void) {
+    g_cursor_moved_at = now_s();
+    if (cfg.cursor == 2 && g_cursor_hooked && !g_cursor_shown) cursor_apply();   /* show it as soon as it moves, not at the next frame */
+}
+
 static LRESULT CALLBACK hfr_wndproc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     LRESULT handled = 0;
+    if (msg == WM_MOUSEMOVE || (msg >= WM_LBUTTONDOWN && msg <= WM_MBUTTONDBLCLK) || msg == WM_MOUSEWHEEL) cursor_mouse_message();
     if (hfr_menu_wndproc(h, msg, wp, lp, &handled)) return handled;
     /* F10 is a system key: left to DefWindowProc it puts the window into keyboard menu mode,
        which swallows the next key and stalls the game. When it is our size-cycle key on a
@@ -356,6 +413,7 @@ static int window_pump(IDirect3DDevice9* dev) {
     if (!g_win_ready) return 0;
     poll_menu_key();
     window_enforce();
+    cursor_apply();
     if (g_minimized) return 1;
     if (!g_resize_pending || g_in_sizemove || !dev || !g_scaler_ok) return 0;
     int cw, ch; client_size(g_wnd, &cw, &ch);

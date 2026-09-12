@@ -132,6 +132,36 @@ None of this stops anyone using them: a filter dropped into `shaders/` can be un
 
 ---
 
+### Post-processes, and the pointer
+
+Sharpening is not a filter. A filter decides how the game's 640x480 pixels become the
+window's; a sharpening pass decides what is done to the result, and it wants the result --
+the resampled picture, at the window's size, softness and all -- as its input. So it is a
+separate list (`g_posts`, files marked `//! post`), chosen separately in the menu, and it runs
+in `scaler_blit` after the final draw: with one selected and its strength above zero, the
+final draw goes into a window-sized intermediate in the back buffer's format (`g_post`) and
+the pass draws that into the back buffer at the same rectangle; with none, the final draw
+goes straight to the back buffer as before, and nothing else changes. Its strength arrives as
+`Params.x` (`c3`, added to the prologue and zeroed for every filter pass). `cas.hlsl` is
+AMD's CAS with the better-diagonals soft min/max, the strength driving AMD's own
+`-1/lerp(8,5,s)` peak; `unsharp-mask.hlsl` is the textbook operator on luma, clamped to
+±0.12, kept as the reference point. Both were checked in the rig on TH12 at 1600x1200:
+CAS at 100% visibly tightens sprite edges without a halo; the intermediate costs one
+window-sized draw.
+
+The pointer: the game hides it whenever it believes it is fullscreen, by
+`while (ShowCursor(FALSE) >= 0);` at the switch and `SetCursor(NULL)` on every
+`WM_SETCURSOR` -- TH10-13 all do it the same way, through their import tables. Over the
+borderless window it leaves the user with no pointer on what is, to them, a window. Both
+imports are hooked (window.c): the game's calls only ever test the sign of the count, so
+it is given a count kept in -1..0 and never told anything else, while what Windows sees is
+decided once a frame by `cursor_want_visible` -- the menu open wins, then the game's own
+wish in a real window, then `cursor=` for borderless (hidden / visible / visible for two
+seconds after the last mouse message). `SetCursor(NULL)` becomes the arrow whenever the
+pointer is meant to be visible, since a null cursor image would hide it regardless of the
+count. ShowCursor's count is per thread, so every real call is made on the game's thread:
+the hooks run there, and so does `window_pump`.
+
 ## 3a. Internal resolution, and where the whole pixels came from
 
 The complaint that led here: at 360 Hz a slow bullet still stepped from pixel to pixel. The

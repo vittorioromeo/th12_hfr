@@ -34,6 +34,9 @@ int hfr_ui_get(int id) {
     case UI_DIM_BACKGROUND: case UI_DIM_ITEMS: case UI_DIM_EFFECTS: case UI_DIM_SPECIAL: case UI_DIM_PLAYER_SHOTS:
         return cfg.dim[id - UI_DIM_BACKGROUND];
     case UI_DIM_AVAILABLE:      return g_dim_available && g_game && g_game->draw.world_prio > 0;
+    case UI_SHARPEN:            return cfg.sharpen;
+    case UI_SHARPEN_STRENGTH:   return cfg.sharpen_strength;
+    case UI_CURSOR:             return cfg.cursor;
     default:                    return 0;
     }
 }
@@ -46,6 +49,12 @@ void hfr_ui_set(int id, int value) {
             snprintf(cfg.filter_name, sizeof cfg.filter_name, "%s", filter_at(value)->name);
         }
         break;
+    case UI_SHARPEN:
+        if (value < 0 || value >= post_count()) { cfg.sharpen = -1; snprintf(cfg.sharpen_name, sizeof cfg.sharpen_name, "%s", "none"); }
+        else { cfg.sharpen = value; snprintf(cfg.sharpen_name, sizeof cfg.sharpen_name, "%s", post_at(value)->name); }
+        break;
+    case UI_SHARPEN_STRENGTH: cfg.sharpen_strength = value < 0 ? 0 : (value > 100 ? 100 : value); break;
+    case UI_CURSOR:          cfg.cursor = value < 0 ? 0 : (value > 2 ? 2 : value); break;
     case UI_RESIZABLE:       cfg.resizable = !!value; break;
     case UI_WINDOW_SCALE:
         cfg.window_scale = value < -1 ? -1 : (value > 800 ? 800 : value);
@@ -74,6 +83,8 @@ void hfr_ui_set(int id, int value) {
 int         hfr_ui_filter_count(void) { return filter_count(); }
 const char* hfr_ui_filter_name(int index) { struct Filter* f = filter_at(index); return f ? f->name : ""; }
 int         hfr_ui_filter_is_fixed_scale(int index) { struct Filter* f = filter_at(index); return f && f->scale > 0; }
+int         hfr_ui_post_count(void) { return post_count(); }
+const char* hfr_ui_post_name(int index) { struct Filter* f = post_at(index); return f ? f->name : ""; }
 int         hfr_ui_menu_key(void) { return cfg.menu_key; }
 const char* hfr_ui_dim_special_name(void) { return g_game ? g_game->draw.special_name : NULL; }
 int         hfr_ui_system_count(void) { return g_game ? (int)g_class_count : 0; }
@@ -123,6 +134,9 @@ void hfr_ui_save(void) {
     if (!g_ini_path[0]) { LOG("menu: no INI path; nothing saved"); return; }
     ini_put_int("video", "scaling", cfg.scaling);
     WritePrivateProfileStringA("video", "filter", cfg.filter_name, g_ini_path);
+    WritePrivateProfileStringA("video", "sharpen", cfg.sharpen_name, g_ini_path);
+    ini_put_int("video", "sharpen_strength", cfg.sharpen_strength);
+    ini_put_int("video", "cursor", cfg.cursor);
     ini_put_int("video", "resizable", cfg.resizable);
     ini_put_int("video", "window_scale", cfg.window_scale);
     ini_put_int("video", "snap_aspect", cfg.snap_aspect);

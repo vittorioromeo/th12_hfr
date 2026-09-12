@@ -76,6 +76,7 @@ struct PassTarget {
     D3DFORMAT fmt;
 };
 static struct PassTarget g_pass[MAX_PASSES];
+static struct PassTarget g_post;              /* the finished image, when a post-process runs over it */
 #define g_pass_tex  (g_pass[0].tex)
 #define g_pass_surf (g_pass[0].surf)
 #define g_pass_w    (g_pass[0].w)
@@ -103,7 +104,8 @@ static void release_pass_target(int i) {
     SAFE_RELEASE(g_pass[i].surf); SAFE_RELEASE(g_pass[i].tex);
     g_pass[i].w = g_pass[i].h = 0; g_pass[i].fmt = D3DFMT_UNKNOWN;
 }
-static void scaler_release_pass(void) { for (int i = 0; i < MAX_PASSES; ++i) release_pass_target(i); }
+static void release_post_target(void) { SAFE_RELEASE(g_post.surf); SAFE_RELEASE(g_post.tex); g_post.w = g_post.h = 0; g_post.fmt = D3DFMT_UNKNOWN; }
+static void scaler_release_pass(void) { for (int i = 0; i < MAX_PASSES; ++i) release_pass_target(i); release_post_target(); }
 
 /* Kept at the size and format the pass asks for, and reused between frames: a chain that
    does not change its shape allocates nothing after its first frame. */
@@ -122,6 +124,21 @@ static int ensure_pass_target_fmt(IDirect3DDevice9* dev, int i, int w, int h, D3
 }
 static int ensure_pass_target(IDirect3DDevice9* dev, int w, int h) {
     return ensure_pass_target_fmt(dev, 0, w, h, PASS_FORMAT);
+}
+/* The post-process's input: the finished image at the size it is shown, in the back
+   buffer's own format, so the pass changes nothing but what it means to. */
+static int ensure_post_target(IDirect3DDevice9* dev, int w, int h) {
+    if (w < 1 || h < 1 || w > 8192 || h > 8192) return 0;
+    if (g_post.tex && g_post.w == w && g_post.h == h) return 1;
+    release_post_target();
+    if (FAILED(dev->lpVtbl->CreateTexture(dev, (UINT)w, (UINT)h, 1, D3DUSAGE_RENDERTARGET, g_bb_format, D3DPOOL_DEFAULT, &g_post.tex, NULL)) ||
+        FAILED(g_post.tex->lpVtbl->GetSurfaceLevel(g_post.tex, 0, &g_post.surf))) {
+        release_post_target();
+        LOG("scaler: post-process target %dx%d unavailable", w, h);
+        return 0;
+    }
+    g_post.w = w; g_post.h = h; g_post.fmt = g_bb_format;
+    return 1;
 }
 static void client_size(HWND h, int* w, int* t) {
     RECT c;
@@ -359,9 +376,20 @@ static void shader_constants(IDirect3DDevice9* dev, int sw, int sh, int tw, int 
     float c1[4] = { (float)tw, (float)th, tw ? 1.0f / tw : 0.0f, th ? 1.0f / th : 0.0f };
     float c2[4] = { (float)g_native_w, (float)g_native_h,
                     g_native_w ? 1.0f / g_native_w : 0.0f, g_native_h ? 1.0f / g_native_h : 0.0f };
+    float c3[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
     dev->lpVtbl->SetPixelShaderConstantF(dev, 0, c0, 1);
     dev->lpVtbl->SetPixelShaderConstantF(dev, 1, c1, 1);
     dev->lpVtbl->SetPixelShaderConstantF(dev, 2, c2, 1);
+    dev->lpVtbl->SetPixelShaderConstantF(dev, 3, c3, 1);
+}
+/* The post-process that will run over this frame's finished image, or NULL: one chosen,
+   compiled, and with a strength above zero -- at zero every one of them is the identity,
+   so the pass is skipped rather than run for nothing. */
+static struct Filter* post_for_frame(IDirect3DDevice9* dev) {
+    if (cfg.sharpen < 0 || cfg.sharpen_strength <= 0) return NULL;
+    struct Filter* p = post_at(cfg.sharpen);
+    if (!p || !filter_prepare(dev, p) || !quad_vertex_shader(dev)) return NULL;
+    return p;
 }
 /* Bind an intermediate as the render target and get the pipeline ready to draw one quad over
    all of it. Shared by the sharp-bilinear prepass and by every pass of a filter chain: this
@@ -492,21 +520,51 @@ static void scaler_blit(IDirect3DDevice9* dev) {
         IDirect3DPixelShader9* box = downsample_shader(dev);
         if (box) { final_ps = box; filter = D3DTEXF_LINEAR; }
     }
-    dev->lpVtbl->SetRenderTarget(dev, 0, g_real_bb);
+    /* With a post-process, the final draw lands in a window-sized intermediate and the
+       post-process draws that into the back buffer; without one it draws straight there.
+       Either way the final draw itself is the same code, aimed at a different target. */
+    struct Filter* post = post_for_frame(dev);
+    if (post && !ensure_post_target(dev, dst.w, dst.h)) post = NULL;
+    struct ScaleRect at = dst;
+    int tw = g_out_w, th = g_out_h;
+    if (post) {
+        dev->lpVtbl->SetRenderTarget(dev, 0, g_post.surf);
+        at.x = 0; at.y = 0; tw = dst.w; th = dst.h;
+    } else dev->lpVtbl->SetRenderTarget(dev, 0, g_real_bb);
     dev->lpVtbl->SetDepthStencilSurface(dev, NULL);
-    D3DVIEWPORT9 vp = { 0, 0, (DWORD)g_out_w, (DWORD)g_out_h, 0.0f, 1.0f };
+    D3DVIEWPORT9 vp = { 0, 0, (DWORD)tw, (DWORD)th, 0.0f, 1.0f };
     dev->lpVtbl->SetViewport(dev, &vp);
-    if (dst.w < g_out_w || dst.h < g_out_h)
+    if (!post && (dst.w < g_out_w || dst.h < g_out_h))
         dev->lpVtbl->Clear(dev, 0, NULL, D3DCLEAR_TARGET, D3DCOLOR_XRGB(0, 0, 0), 1.0f, 0);
     quad_states(dev, filter);
     if (final_ps) {
         dev->lpVtbl->SetVertexShader(dev, quad_vertex_shader(dev));
         dev->lpVtbl->SetPixelShader(dev, final_ps);
-        shader_constants(dev, src_w, src_h, dst.w, dst.h);
-        draw_quad_vs(dev, src, &dst, g_out_w, g_out_h);
+        shader_constants(dev, src_w, src_h, at.w, at.h);
+        draw_quad_vs(dev, src, &at, tw, th);
         dev->lpVtbl->SetPixelShader(dev, NULL);
         dev->lpVtbl->SetVertexShader(dev, NULL);
-    } else draw_quad(dev, src, &dst);
+    } else draw_quad(dev, src, &at);
+    if (post) {
+        /* The post-process reads the finished image at 1:1 -- uv lands on texel centres, so
+           bilinear returns the texel itself and the shader may still use half-texel
+           offsets to get the hardware's 2x2 averages -- and writes the back buffer. */
+        dev->lpVtbl->SetRenderTarget(dev, 0, g_real_bb);
+        dev->lpVtbl->SetDepthStencilSurface(dev, NULL);
+        D3DVIEWPORT9 ovp = { 0, 0, (DWORD)g_out_w, (DWORD)g_out_h, 0.0f, 1.0f };
+        dev->lpVtbl->SetViewport(dev, &ovp);
+        if (dst.w < g_out_w || dst.h < g_out_h)
+            dev->lpVtbl->Clear(dev, 0, NULL, D3DCLEAR_TARGET, D3DCOLOR_XRGB(0, 0, 0), 1.0f, 0);
+        quad_states(dev, D3DTEXF_LINEAR);
+        dev->lpVtbl->SetVertexShader(dev, quad_vertex_shader(dev));
+        dev->lpVtbl->SetPixelShader(dev, post->pass[0].ps);
+        shader_constants(dev, dst.w, dst.h, dst.w, dst.h);
+        float params[4] = { (float)cfg.sharpen_strength / 100.0f, 0.0f, 0.0f, 0.0f };
+        dev->lpVtbl->SetPixelShaderConstantF(dev, 3, params, 1);
+        draw_quad_vs(dev, g_post.tex, &dst, g_out_w, g_out_h);
+        dev->lpVtbl->SetPixelShader(dev, NULL);
+        dev->lpVtbl->SetVertexShader(dev, NULL);
+    }
     ui_render_frame(dev, &dst);
     dev->lpVtbl->EndScene(dev);
     dev->lpVtbl->SetTexture(dev, 0, NULL);
