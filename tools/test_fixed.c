@@ -43,10 +43,33 @@ static void test_history(void) {
     q[0]=10;assert(fixed_pose(&g,9,9,2,2,q,.5,0,o) && o[0]==5);
     assert(fixed_pose(&g,9,9,2,2,q,.5,1,o) && o[0]==15);
     assert(fixed_pose(&g,9,9,2,2,q,0,1,o)==0); /* at phase 0 prediction is the native position */
+    /* Rotation and scale ride on the same history. A sprite that is not rotating must come
+       back exactly unchanged: a stray non-zero angle would push it onto the game's rotated
+       draw path, which tests the angle against zero. */
+    struct FixedPose r={0};float rp[3]={0,0,0},sp[2]={1,1},ro[3],so[2],still[3]={0,0,0};
+    assert(!fixed_pose(&r,7,7,1,1,still,0,0,ro));
+    assert(!fixed_pose_extra(&r,rp,sp,0.5,0,ro,so));
+    assert(fixed_pose(&r,7,7,2,2,still,.5,0,ro)==0);   /* no movement: nothing to blend */
+    assert(!fixed_pose_extra(&r,rp,sp,0.5,0,ro,so));
+    assert(ro[0]==0 && ro[1]==0 && ro[2]==0 && so[0]==1 && so[1]==1);
+    /* A rotating, growing sprite is blended; the angle takes the short way over the wrap. */
+    struct FixedPose w={0};float pos0[3]={0,0,0},o3[3];
+    float a0[3]={6.2f,0,0},a1[3]={0.1f,0,0},s0[2]={1,1},s1[2]={2,3};
+    assert(!fixed_pose(&w,8,8,1,1,pos0,0,0,o3));
+    fixed_pose_extra(&w,a0,s0,0,0,ro,so);
+    float moved[3]={1,0,0};
+    assert(fixed_pose(&w,8,8,2,2,moved,.5,0,o3));
+    assert(fixed_pose_extra(&w,a1,s1,0.5,0,ro,so));
+    /* 6.2 -> 0.1 is +0.183 the short way, not -6.1 the long way */
+    assert(ro[0]>6.2f && ro[0]<6.4f);
+    assert(so[0]==1.5f && so[1]==2.0f);
+    /* predicting continues past the current angle instead of approaching it */
+    assert(fixed_pose_extra(&w,a1,s1,0.5,1,ro,so));
+    assert(so[0]==2.5f && so[1]==4.0f);
     ticks=20;
     struct FixedPose* slot=history_slot(1234,1);slot->key=1234;slot->valid=1;slot->tick=ticks;
     reset_vm((void*)1234);assert(!slot->key && !slot->valid);
-    puts("PASS: pose history, births, teleports, gaps, repeated draws, VM reuse and nonfinite positions");
+    puts("PASS: pose history, births, teleports, gaps, repeated draws, VM reuse, nonfinite positions, rotation wrap and scale");
 }
 static void hex(FILE* f,const unsigned char* p,size_t n) {for(size_t i=0;i<n;++i)fprintf(f,"%02x",p[i]);}
 static void test_patches(const char* output) {

@@ -206,19 +206,29 @@ static uintptr_t sprite(SpriteFn original,void* manager,void* vm,uintptr_t flags
         return original(manager,vm,flags);
     unsigned char* p=vm;
     uintptr_t script; int age;
-    float saved[3], out[3];
+    float saved[3], out[3], turn[3], turn_out[3], size[2], size_out[2];
     memcpy(saved,p+game->vm_position,sizeof saved);
     memcpy(&script,p+game->vm_script,sizeof script);
     memcpy(&age,p+game->vm_age,sizeof age);
+    memcpy(turn,p+game->vm_rotation,sizeof turn);
+    memcpy(size,p+game->vm_scale,sizeof size);
     struct FixedPose* h=history_slot((uintptr_t)vm,1);
     ++samples;
-    int changed=h && fixed_pose(h,(uintptr_t)vm,script,ticks,age,saved,phase,subtick_active(),out);
+    int predict=subtick_active();
+    int changed=h && fixed_pose(h,(uintptr_t)vm,script,ticks,age,saved,phase,predict,out);
+    /* Rotation and scale ride on the same decision: a menu that spins or grows a step per
+       60 Hz frame looks exactly as stepped as one that moves, and most of them do both. */
+    int turned=h && fixed_pose_extra(h,turn,size,phase,predict,turn_out,size_out);
     if (changed) {memcpy(p+game->vm_position,out,sizeof out);++blends;}
+    if (turned) {memcpy(p+game->vm_rotation,turn_out,sizeof turn_out);
+                 memcpy(p+game->vm_scale,size_out,sizeof size_out);}
     ++depth;
     uintptr_t result=original(manager,vm,flags);
     --depth;
-    /* Restore only when we wrote: preserve the original function's native behavior. */
+    /* Restore only what we wrote: preserve the original function's native behavior. */
     if (changed) memcpy(p+game->vm_position,saved,sizeof saved);
+    if (turned) {memcpy(p+game->vm_rotation,turn,sizeof turn);
+                 memcpy(p+game->vm_scale,size,sizeof size);}
     return result;
 }
 static uintptr_t sprite_draw(void* m,void* v,uintptr_t f) {return sprite(sprite_original,m,v,f);}
@@ -242,6 +252,11 @@ static int wait_frame(void) {
             else SwitchToThread();
         } else YieldProcessor();
     }
+    /* The game counts its own frames once per native tick (just past wait_resume, which a
+       presentation-only iteration never reaches), so its on-screen readout would sit at 60
+       whatever the display is doing. Count the iterations it does not see, and the number it
+       prints becomes the presentation rate. Nothing else in the binary reads that counter. */
+    if (!major && game->fps_counter) ++*(unsigned*)(base+game->fps_counter);
     static double last; static uint64_t ft,ut,st,bt,pt,qt;
     t=now();
     if (!last) {last=t;ft=frames;ut=ticks;st=samples;bt=blends;pt=subtick_polls;qt=proj_passes;}

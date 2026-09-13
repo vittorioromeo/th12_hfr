@@ -54,6 +54,7 @@ static const struct FixedGame th06nc_game = {
     .present_call = 0x25a1f1, .graphics_api = 0x8fe20c, .no_vsync = 0x50a204,
     .sprite_draw = 0x67f0, .sprite_draw_rotated = 0x4dc0, .vm_start = {0x2760, 0x2a20},
     .vm_position = 0xc8, .vm_age = 0xb8, .vm_script = 0xf8, .vm_flags = 0xc4,
+    .vm_rotation = 0x9c, .vm_scale = 0xe4, .fps_counter = 0xc2232c,
     .player_motion = 0x69388, .player_motion_resume = 0x693a0, .player_motion_size = 24,
     .player = 0x4ff3a0, .bounds = 0x4ff0e0, .input_poll = 0x12be0, .replay_suspect = 0x4f27b2,
     .pl_position = 0x7730, .pl_scale = 0x7710, .pl_speed_straight = 0x7860, .pl_speed_diagonal = 0x7868,

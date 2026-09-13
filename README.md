@@ -21,6 +21,7 @@ their discrete effects (enemy damage above all) are applied once per 60 Hz frame
 sub-stepping their motion could not change an outcome — see
 [§18](TH06NC_DEVNOTES.md#18-lasers-and-where-the-parity-with-th10-13-actually-is-2026-09-13). New Classic does not have
 TH10–13's video enhancements. See
+[what New Classic has and TH10–13 do not, and the other way round](TH06NC_VS_TH10_13.md),
 [the prototype instructions and complete research record](TH06NC_DEVNOTES.md#13-experimental-prototype-2026-09-13)
 and [the sub-tick player movement notes](TH06NC_DEVNOTES.md#14-sub-tick-player-movement-2026-09-13).
 
@@ -29,7 +30,7 @@ and selects its adapter; TH10–13 share their scheduler, input, replay and Dire
 The same launcher dispatches New Classic to its separate x64 runtime. Menu contents,
 menu-key handling, patch transactions and the x64 executable registry are shared.
 
-**Current build: v0.4.16-test.** Supported executable layouts:
+**Current build: v0.4.17-test.** Supported executable layouts:
 
 | Game | Version | Executables | State |
 | --- | --- | --- | --- |
@@ -119,7 +120,7 @@ what it claimed, see [§17](TH06NC_DEVNOTES.md#17-why-neither-feature-had-ever-r
 32-bit `dinput8.dll` proxy in this x64 game. The generic `install.ps1` workflow below is
 for TH10–13. Bundled `th06c.exe` (Classic) is different and is not supported.
 
-Download/extract `touhou_hfr_v0.4.16-test.zip` and close the game.
+Download/extract `touhou_hfr_v0.4.17-test.zip` and close the game.
 
 For a fresh installation, copy these four files next to the game executable:
 
@@ -240,7 +241,7 @@ For New Classic, also install **64-bit MinGW-w64 GCC/G++** (default
 ```powershell
 .\build64.ps1
 .\test64.ps1 -GameExe 'C:\Program Files (x86)\Steam\steamapps\common\th06nc\th06nc.exe'
-.\package.ps1 -Version '0.4.16-th06nc-prototype' -IncludeExperimental64
+.\package.ps1 -Version '0.4.17-th06nc-prototype' -IncludeExperimental64
 ```
 
 Run `build.ps1` first: `test64.ps1` checks both launcher architectures. The x64 tests

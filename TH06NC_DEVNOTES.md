@@ -1297,3 +1297,47 @@ with sub-tick movement or sub-stepped projectiles on will not replay faithfully,
 is no guard left that disables the features during playback (section 17). Closing that --
 a sidecar carrying the sub-frame input stream, read back on playback -- is the next piece of
 real work, and it is what would make these features usable for anything scored.
+
+## 19. The fps readout, and smoothing what is not position (2026-09-13)
+
+### The readout now counts what it claims to
+
+Section 17 explained why the game's on-screen fps stays at 60: its counter at `0xc2232c` is
+incremented at `0x3c5f3`, just past `wait_resume`, which a presentation-only iteration never
+reaches. Explaining it is not the same as it being useful, so the runtime now increments that
+counter itself on every iteration the game does not see, and the readout becomes the
+presentation rate.
+
+This is safe because of what the counter is, and that was checked rather than assumed:
+`0xc2232c` is read once and written twice, all three inside the frame function `0x3c330`, and
+nothing else in the binary touches it. The same check finally confirmed section 17's conclusion
+about `0x4f27b2`: **one** reference in the whole executable, the fps display's.
+
+Both facts came from a new tool, `tools/porting/xrefs64.py`, which decodes each function from
+its own `.pdata` start instead of decoding sections linearly. Linear decoding misaligns wherever
+data or padding sits between functions, which is how it both invented the three dead "replay"
+functions of section 17 and missed the real writers here. Any address claim in these notes that
+rests on `inspect_pe.py xrefs` alone is worth re-checking with it.
+
+### Rotation and scale are smoothed too
+
+Interpolation only ever moved sprites. Menus, the HUD and a good deal of the game animate by
+spinning and scaling instead, so they still stepped at 60 Hz however high the presentation rate
+was. The pose history now carries rotation (`+0x9c/a0/a4`) and scale (`+0xe4/e8`) alongside
+position, smoothed on the same validity decision, with prediction when sub-tick movement is on.
+
+Two details that matter:
+
+- **Rotation takes the short way round.** A sprite crossing the wrap would otherwise spin
+  backwards through a whole turn in a single frame.
+- **A sprite that is not rotating comes back bit-identical.** The game picks its rotated draw
+  path by testing the angle against zero (`0x6816`, `0x6830`, `0x6894`), so a stray non-zero
+  angle would silently move sprites onto a different renderer. With previous equal to current
+  the delta is exactly zero and the value is unchanged, which the test asserts.
+
+The field offsets were read off the game rather than taken from section 14's note: `0x67f0`
+tests `+0x9c`, `+0xa0` and `+0xa4` against zero to choose the rotated path, and `0x4f41`/`0x5170`
+multiply the quad by `+0xe4`/`+0xe8`.
+
+Still not smoothed: animation frames, colour fades and 3D backgrounds. Colour is the next one
+worth doing — menu fades are the remaining visibly stepped thing.

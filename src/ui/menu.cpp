@@ -337,8 +337,8 @@ void draw_timing_section(void) {
         char rates_line[96];
         hfr_ui_rate_info(rates_line, sizeof rates_line);
         ImGui::TextUnformatted(rates_line);
-        ImGui::TextWrapped("The game's own fps readout counts simulation frames, so it stays at 60 however "
-                           "fast the picture is drawn. The line above is what the patch is measuring.");
+        ImGui::TextWrapped("The game's own fps readout counts presented frames too now, so it should agree "
+                           "with the first number above.");
         ImGui::Spacing();
         ImGui::BeginDisabled(!hfr_ui_get(UI_SUBTICK_AVAILABLE));
         toggle("Sub-tick player movement", UI_SUBTICK_INPUT);
@@ -369,8 +369,9 @@ void draw_timing_section(void) {
         ImGui::EndDisabled();
         ImGui::TextWrapped(subtick
             ? "Sub-tick movement supplies the smoothing while it is on."
-            : "Smooths sprite motion between native frames, at up to one 60 Hz frame of visual delay. Rotation, "
-              "animation frames, lasers and 3D backgrounds are not smoothed yet.");
+            : "Smooths sprite position, rotation and scale between native frames, at up to one 60 Hz frame of "
+              "visual delay. This is what makes menus and HUD animations look smooth as well as the game. "
+              "Animation frames, colour fades and 3D backgrounds are not smoothed yet.");
         ImGui::EndDisabled();
         return;
     }

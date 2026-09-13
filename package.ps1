@@ -18,7 +18,7 @@ if($IncludeExperimental64) {
     }
 }
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'shaders') -Destination $package -Recurse
-Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'TH06NC_DEVNOTES.md') -Destination $package
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'TH06NC_DEVNOTES.md','TH06NC_VS_TH10_13.md') -Destination $package
 foreach($file in @('README.md','ARCHITECTURE.md','DEVNOTES.md','DEVNOTES_RUNTIME.md','TH10_DEVNOTES.md','TH11_DEVNOTES.md','TH13_DEVNOTES.md','ADDING_A_GAME.md','TH11_README.md','TH12_README.md','install.ps1')){Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination $package}
 foreach($dir in @('src','tools','third_party','shaders')) {
     $base=Join-Path $PSScriptRoot $dir
@@ -33,7 +33,7 @@ foreach($dir in @('src','tools','third_party','shaders')) {
 foreach($file in @('build.ps1','build.sh','package.ps1','package.sh','test.ps1','test_th11.ps1','install.ps1','README.md','ARCHITECTURE.md','DEVNOTES.md','DEVNOTES_RUNTIME.md','TH10_DEVNOTES.md','TH11_DEVNOTES.md','TH13_DEVNOTES.md','ADDING_A_GAME.md','TH11_README.md','TH12_README.md','touhou_hfr.ini')) {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination $source
 }
-foreach($file in @('build64.ps1','test64.ps1','build64.sh','test64.sh','TH06NC_DEVNOTES.md')) {
+foreach($file in @('build64.ps1','test64.ps1','build64.sh','test64.sh','TH06NC_DEVNOTES.md','TH06NC_VS_TH10_13.md')) {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination $source
 }
 New-Item -ItemType Directory -Force (Join-Path $PSScriptRoot 'releases') | Out-Null
