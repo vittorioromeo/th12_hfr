@@ -5,25 +5,30 @@ and taking the patch to four games — are in [DEVNOTES_RUNTIME.md](DEVNOTES_RUN
 per-game records are [TH10_DEVNOTES.md](TH10_DEVNOTES.md), [TH11_DEVNOTES.md](TH11_DEVNOTES.md),
 [DEVNOTES.md](DEVNOTES.md) (TH12) and [TH13_DEVNOTES.md](TH13_DEVNOTES.md).
 
-**Touhou Koumakyou: New Classic** now has an experimental x64/D3D11 backend:
-60 Hz gameplay with high-rate sprite-position interpolation and the shared F11 menu.
-The owner has tested gameplay and the menu at high refresh rates. An optional setting,
-off by default and **untested in the running game**, additionally moves the player at the
-display rate, so input is sampled every drawn frame rather than every 60 Hz frame; the rest
-of the world — bullets, enemies, scripts, collisions — still runs at 60 Hz, and that is a
-deliberate limit rather than a temporary one. A second optional setting, also off by default and also untested in
-the running game, sub-steps enemy bullets and lasers: they advance a fraction of a frame at a
-time and their culling, grazing and collision run at every step, so a projectile that would
-have jumped past you between two 60 Hz frames can now hit you — it makes the game harder,
-not just smoother. Both ways the player can die are now evaluated at the display rate.
-Enemies, the player's shots, items and every script still run at 60 Hz, which is deliberate:
-their discrete effects (enemy damage above all) are applied once per 60 Hz frame, so
-sub-stepping their motion could not change an outcome — see
-[§18](TH06NC_DEVNOTES.md#18-lasers-and-where-the-parity-with-th10-13-actually-is-2026-09-13). New Classic does not have
-TH10–13's video enhancements. See
-[what New Classic has and TH10–13 do not, and the other way round](TH06NC_VS_TH10_13.md),
-[the prototype instructions and complete research record](TH06NC_DEVNOTES.md#13-experimental-prototype-2026-09-13)
-and [the sub-tick player movement notes](TH06NC_DEVNOTES.md#14-sub-tick-player-movement-2026-09-13).
+**Touhou Koumakyou: New Classic** has an experimental x64/D3D11 backend: a fixed 60 Hz
+simulation presented at the display rate, with sprite position, rotation and scale smoothed
+between native frames — including on the menus and title screen — and the shared F11 menu.
+
+Two optional settings, both off by default, take parts of the simulation to the display rate:
+
+- **Sub-tick player movement** polls input and moves the player once per drawn frame instead
+  of once per 60 Hz frame, so a direction change takes effect within the frame you make it.
+  Holding a direction still covers the stock distance per frame.
+- **Sub-stepped projectiles** advance enemy bullets and lasers a fraction of a frame at a
+  time, running their culling, grazing and collision at every step. A projectile that would
+  have jumped past you between two 60 Hz frames can now hit you, so this makes the game
+  harder as well as smoother. Both ways the player can die are evaluated at the display rate.
+
+Both have been run at 360 and 480 Hz. Enemies, the player's shots, items and every script
+still run at 60 Hz, which is deliberate rather than unfinished: their discrete effects (enemy
+damage above all) are applied once per 60 Hz frame, so sub-stepping their motion could not
+change an outcome —
+see [§18](TH06NC_DEVNOTES.md#18-lasers-and-where-the-parity-with-th10-13-actually-is-2026-09-13).
+Neither setting is safe for replays: the native format stores one input word per 60 Hz frame,
+and nothing disables them automatically, so turn them off before recording or watching one.
+New Classic does not have TH10–13's video enhancements. See
+[what New Classic has and TH10–13 do not, and the other way round](TH06NC_VS_TH10_13.md) and
+[the complete research record](TH06NC_DEVNOTES.md).
 
 High refresh rate gameplay and presentation for Touhou. One DLL detects the game
 and selects its adapter; TH10–13 share their scheduler, input, replay and Direct3D code.

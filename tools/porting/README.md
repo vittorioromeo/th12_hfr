@@ -22,11 +22,23 @@ ASCII and the ASCII subset of UTF-16LE; strings over 240 characters are skipped 
 (`--max-length` changes this) to avoid dumping embedded shader blobs. `xrefs` scans executable
 sections for instruction immediates and absolute/RIP-relative memory operands. It does not
 resolve register-indirect calls, pointer tables, or arbitrary control flow; linear decoding
-can miss references or interpret embedded data as code. The AMD64 `unwind_begin_rva` comes
+can miss references or interpret embedded data as code — **for AMD64 use `xrefs64.py` below
+instead; this warning was in the file all along and was still not enough to stop two wrong
+conclusions being built on `xrefs` output.** The AMD64 `unwind_begin_rva` comes
 from `.pdata`, whose entries may be function fragments rather than complete functions.
 Start disassembly on a known instruction boundary; an arbitrary byte offset is not reliable.
 See [TH06NC_DEVNOTES.md](../../TH06NC_DEVNOTES.md) for the investigation using this tool.
 
+- `xrefs64.py <exe> <rva> [...]` — **AMD64 xrefs, decoded from real function boundaries.**
+  Prefer this to `inspect_pe.py xrefs`, which decodes executable sections linearly and so
+  misaligns wherever data or padding sits between functions. That misalignment is not
+  theoretical: it invented three plausible "replay input" functions that nothing in the
+  binary calls, and a gate built on them silently disabled two features for several builds
+  (TH06NC_DEVNOTES §17). This one walks `.pdata`, starts each function at its own
+  `BeginAddress`, and says whether each hit is a read or a write. It cannot see accesses made
+  through a register (`[rbx+0x774c]` on an object pointer), which is the other way an address
+  scan lies — §16 and §18 were both bitten by that. **A reference found by a scan is a
+  candidate; something reachable has to read it before you build on it.**
 - `disasm.py <exe> <start> <end>` — disassemble a code range straight from the executable
   (objdump on the raw bytes, VA-adjusted). The everyday tool.
 - `scan_registrations.py <exe> <helper VA>` — every UpdateFunc registration with priority and

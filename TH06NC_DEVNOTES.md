@@ -278,6 +278,20 @@ Selected mappings (semantic names inferred from resource use and code):
 | Effects (`eff*.anm`) | `0x2b490` | `0x2b280` / 10 | `0x2b310` / 12 | static `0xa6ecd0` |
 | Enemy bullets/lasers | in `0x3a9c0` | `0x10870` / 11 | `0x11940` / 14 | static `0x3ec2a0` |
 
+**Observed at runtime (§20).** The map above was built statically and is incomplete. Read
+from the game's own lists while it ran, the title/menu screen registers:
+
+```text
+update list: 0@79c70  1@90d0   2@47940  3@75af0
+draw   list: 0@54870  13@92a0  18@7a330 19@9260  20@76280
+```
+
+`0x79c70` is the input update (the only caller of the device poll `0x12be0`). `0x47940`, a
+thunk into `0x479e0`, and `0x54870` are the update and draw of the **screen manager**, both
+switching on a screen state at `object+0x168b0`; `0x479e0` is a 22 KB state machine covering
+every menu screen. `0x7a330` is a fade/transition overlay. The runtime can print these lists
+itself -- see `diag_seconds` in §20 -- which is far more reliable than inferring them.
+
 This is a starting map, not a complete classification of every node or permission to
 sub-step any of these callbacks. Pause, menus, replay, stage transitions and object
 lifetimes still need native gameplay traces.
@@ -299,6 +313,11 @@ store current timer at bullet+0x2c
 Acceleration, turning, state transitions, collisions, graze and animation updates are in
 this same callback. Repeating it six times at 360 Hz would repeat those behaviors; scaling
 only a position addition would leave its integer events six times too frequent.
+
+> **Superseded by §16.** True as stated -- repeating the callback unchanged does repeat those
+> behaviours -- but it is not the obstacle it reads like. Each of those blocks is relocated
+> behind a gate and stands aside on a sub-step pass, so the callback can be repeated with only
+> motion, culling, grazing and collision live. Bullets and lasers are sub-stepped today.
 
 Useful layout from the update/draw loops:
 
@@ -335,7 +354,9 @@ Player state is at RVA `0x4ff3a0`; its update is `0x68820`:
 The ANM interpreter/update candidate at `0x69b0` advances integer timers directly. At
 `0x7451` it increments VM `+0x28`; at `0x7459`–`0x7469` it copies VM `+0xb8` to `+0xb4`
 and increments `+0xb8`. These are different from the later engines' fractional timers.
-Generic sprite draw entry points include `0x67f0` and `0x4dc0`; their full state mutation
+Generic sprite draw entry points include `0x67f0`, `0x4dc0` **and `0x36c0`** (§20 -- the
+third one draws the menus and was missed for a long time precisely because this sentence
+said "include" and nobody checked); their full state mutation
 and batching contracts are still unverified.
 
 No common fractional-speed global was established. That is a scoped negative finding,
@@ -431,6 +452,17 @@ Dear ImGui already supplies an [upstream D3D11 backend](https://github.com/ocorn
 so the F11 menu need not be rewritten from scratch; use a version matching the vendored ImGui.
 
 ## 11. Next implementation steps and acceptance criteria
+
+> **Status, as of §20.** 1 and 2 are done (§13). 3 is done and then some: the player and the
+> projectiles are not interpolated but genuinely sub-stepped (§14, §16, §18). 4 is partly done
+> -- position, rotation and scale are smoothed for every sprite, across all three draw entry
+> points (§19, §20) -- with animation frames, colour fades and 3D backgrounds still untreated.
+> 5 has the menu but none of the video features (see `TH06NC_VS_TH10_13.md`). 6 was attempted
+> and its conclusion is §18: the systems whose discrete effects are pinned to 60 Hz cannot gain
+> from sub-stepping, so "fractional gameplay" is complete for the systems where it means
+> anything. The acceptance criteria below have **not** been met -- in particular no
+> native-versus-patched comparison over identical replays has been run.
+
 
 1. **Confirm the release build and build an x64 observation runtime.** Freeze verified
    instruction signatures by RVA. Log native update/draw/Present counts and callback
@@ -543,6 +575,12 @@ production runtime changed during that research-only phase; prototype validation
 
 ### Result and scope
 
+> **This section describes the state at v0.4.13-test and is kept as the record of the first
+> prototype. It is no longer current.** Sub-tick player movement (§14), sub-stepped bullets
+> and lasers (§16, §18), rotation and scale smoothing (§19) and the third sprite entry point
+> (§20) all came later. Where this section says the prototype "does not implement fractional
+> gameplay or sub-tick input", read §14 onwards.
+
 Implemented `touhou_hfr64.dll` and `touhou_hfr64.exe` in this repository. The normal
 `touhou_hfr.exe` detects the verified New Classic executable and dispatches to the
 x64 helper. No separate source fork or second menu is needed. Executable files are
@@ -559,7 +597,8 @@ visual delay. Input, shooting decisions, collisions, script events, RNG and nati
 replay processing remain in the original update callbacks. It does not implement
 fractional gameplay or sub-tick input. Animation-frame selection, rotation, lasers,
 scrolling/3D backgrounds and paths bypassing the two sprite entry points do not have
-complete interpolation coverage. Pixel-art scaling, sharpening, internal resolution,
+complete interpolation coverage. (There turned out to be *three* such entry points, not two
+-- §20.) Pixel-art scaling, sharpening, internal resolution,
 texture magnification, dimming and custom window controls are not ported. Use the
 game's native display settings for now.
 
@@ -766,9 +805,9 @@ the same inputs/replays; cover all characters, shots, bosses, lasers, bombs, dea
 items, pause, replay recording/playback and fast-forward. Explicitly test resizing,
 fullscreen, alt-tab and multiple monitors. Expand the state guard and audit
 draw-triggered changes. Next extend visual coverage and port D3D11 video using shared
-shader/menu code. Fractional gameplay of the world at large remains a separate project;
-the player's own motion and input were taken to the display rate in section 14, which
-also records why the same approach does not extend to bullets.
+shader/menu code. Fractional gameplay: the player's motion and input went to the display
+rate in §14, bullets in §16 and lasers in §18, and §18 explains why the systems left at
+60 Hz cannot gain from following them.
 
 ## 14. Sub-tick player movement (2026-09-13)
 
@@ -795,7 +834,10 @@ direction still covers exactly the stock distance per 60 Hz frame.
 What it does not buy: enemies, bullets, lasers, items, effects, scripts, collisions, graze,
 shot cadence and RNG all still run at exactly 60 Hz, unchanged. This is not general
 high-rate gameplay, and it is not a step toward it that can be extended object by object —
-see "Why bullets cannot follow" below.
+see "Why bullets cannot follow" below. **(That last clause was wrong: bullets went to the
+display rate in §16 and lasers in §18, by gating the callback rather than adding slices on
+top of it. Enemies, shots, items and effects do still run at 60 Hz, and §18 says why that is
+deliberate.)**
 
 ### The site and the accounting
 
@@ -811,7 +853,7 @@ see "Why bullets cannot follow" below.
 | `+0x7868`, `+0x786c` | diagonal speed, unfocused and focused | static |
 | `0x4ff0e0` | playfield clamp: min X, min Y, width, height as four floats | static |
 | `0x12be0` | the device input poll, returning the input word in EAX | static; sole caller `0x79c70` |
-| `0x4f27b2` | non-zero while a replay is driving the input word | static, at `0x6ba40` |
+| `0x4f27b2` | ~~non-zero while a replay is driving the input word~~ **WRONG, see §17**: it marks gameplay in progress and nothing but the fps display reads it | was: static, at `0x6ba40` (dead code) |
 
 Input bits confirmed at the movement switch: `0x04` focus, `0x10` up, `0x20` down,
 `0x40` left, `0x80` right. Right beats left and up beats down, exactly as the native
@@ -870,14 +912,25 @@ left it.
 
 The native replay stores one input word per 60 Hz frame. Sub-tick movement puts the player
 somewhere that word cannot describe, so a replay recorded with it on will not play back
-faithfully — the divergence is real, not cosmetic. The feature disables itself while
-`0x4f27b2` is set, so native and previously recorded replays play back correctly; it does
-not and cannot make its own recordings faithful. Recording a sub-tick run honestly would
+faithfully — the divergence is real, not cosmetic. Recording a sub-tick run honestly would
 mean carrying the sub-frame input stream in a sidecar and reading it back on playback,
 which the replay format work in section 8 has not reached. Until then the setting is off by
 default, the menu says so, and score runs should leave it off.
 
+> **Correction (§17).** This section originally said the feature "disables itself while
+> `0x4f27b2` is set, so native and previously recorded replays play back correctly". That was
+> wrong twice over: the byte does not mean what it was thought to mean, and because it is
+> non-zero during ordinary play the guard silently disabled the whole feature instead. There
+> is **no automatic guard against replay playback**; both features must be turned off by hand
+> before watching a replay.
+
 ### Why bullets cannot follow
+
+> **Superseded by §16.** The argument below is sound about the design it describes -- adding
+> slices on top of an unchanged callback -- but its conclusion is wrong. Bullets *are*
+> sub-stepped now: the callback is called again with the motion scaled and the 60 Hz blocks
+> gated, so collision follows the motion instead of fighting it. Read §16 before acting on
+> anything here.
 
 The obvious next step — sub-step bullets the same way — does not work, and the reason is
 worth recording so it is not attempted twice. In `0x10870` the per-bullet motion is
@@ -997,8 +1050,10 @@ called from exactly one site, `0x11883`, inside this same callback. `0x6aba0` ro
 player's position into the projectile's frame (`sin`/`cos` at `0x2be07d`/`0x2be071`) and
 tests the player's radius `0x506aec` against a rotated box: it is the **laser** test.
 
-That leaves an open question this session did not settle: the death test for ordinary
-bullets was not found. The player's hitbox radius `0x506aec` has only two readers -- the
+That leaves an open question this session did not settle (**answered in §16: it is
+`0x6a980`, called from `0x11418`, and the address scan missed it because it reads the
+player's hitbox radius through a register**): the death test for ordinary bullets was not
+found. The player's hitbox radius `0x506aec` has only two readers -- the
 graze test and this laser test -- so ordinary bullets must reach the player through some
 other comparison. Until that is found, nobody should claim to know what sub-stepping does
 to bullet collision. Finding it is the first task of the next session, and the most likely
@@ -1131,7 +1186,8 @@ keeps the whole-frame step it already had.
 Positions accumulate across slices instead of being computed in one multiply, so a bullet's
 position can differ from stock by a few units in the last place. It is far below any hitbox
 and unbiased, but it is not bit-identity, and a replay recorded with the feature on will not
-play back faithfully in any case -- the setting disables itself during playback.
+play back faithfully in any case. (This section originally added "the setting disables itself
+during playback"; it does not -- see §17.)
 
 ### Validation
 
@@ -1381,6 +1437,24 @@ appear exactly where something is animating.
 
 The `depth` guard already handles the nesting: `0x36c0` dispatches into the lower-level
 draws, so a sprite can pass through two hooked functions, and the inner one steps aside.
+
+### What would actually finish the job
+
+Hooking the third entry point makes menu sprites smooth in position, rotation and scale. It
+cannot make a colour fade or an animation-frame change smooth, because those are decided by the
+ANM interpreter at 60 Hz and there is nothing to interpolate between.
+
+TH10–13 solve this differently, and the answer was sitting in their own profiles the whole time:
+in all four games `AnmManagerWorld` and `AnmManagerUI` are `MODE_SUB` — the animation
+interpreter itself is sub-stepped. Their menus are not smooth because the rendering is
+interpolated; they are smooth because the animation genuinely advances a fraction of a frame at
+a time.
+
+The equivalent here is New Classic's ANM VM update at `0x69b0`, which §7 recorded as advancing
+integer timers directly (`+0x28`, and `+0xb8` copied to `+0xb4`). Sub-stepping it would need the
+same treatment as the projectile callback: scale what is continuous, gate what is discrete. It
+is the most promising remaining rendering work, and unlike the gameplay systems in §18 it would
+actually change what is on screen.
 
 ### The lesson, again
 

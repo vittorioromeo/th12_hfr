@@ -3,10 +3,19 @@
 For why things are the way they are, rather than what they are, see
 [DEVNOTES_RUNTIME.md](DEVNOTES_RUNTIME.md).
 
-The current build contains one runtime and four game adapters. The same DLL
-supports TH10 v1.00a, TH11 v1.00a, TH12 v1.00b and TH13 v1.00c, including the
-static English executables tested with these layouts. Other games are not
-supported yet.
+The current build contains **two runtimes** and five game adapters.
+
+`touhou_hfr.dll` (x86, Direct3D 9) supports TH10 v1.00a, TH11 v1.00a, TH12 v1.00b
+and TH13 v1.00c, including the static English executables tested with these layouts.
+Everything below describes that runtime unless it says otherwise.
+
+`touhou_hfr64.dll` (AMD64, Direct3D 11) supports **Touhou Koumakyou: New Classic**,
+experimentally. It is a separate binary with its own clock, patch set and renderer;
+it shares source with the x86 runtime only where that is possible (the F11 menu, the
+settings API, the patch transaction, the launcher's identity registry). The two
+cannot share object code. What each does and does not do is set out side by side in
+[TH06NC_VS_TH10_13.md](TH06NC_VS_TH10_13.md); the research record is
+[TH06NC_DEVNOTES.md](TH06NC_DEVNOTES.md). Other games are not supported yet.
 
 ## Source map
 
@@ -22,9 +31,15 @@ supported yet.
 | Filter shaders | `src/core/shaders.c`, `shaders/` | Runtime shader compilation, filter registry, drop-in shader folder |
 | Window | `src/core/window.c` | Resize border, aspect snapping, borderless fullscreen, deferred reset |
 | In-game menu | `src/ui/` , `third_party/imgui` | Dear ImGui overlay; `ui_api.h` is the whole C/C++ interface |
-| Game adapters | `src/games/th11.c`, `src/games/th12.c` | Actual game addresses, exact x86 hooks and sprite placement |
+| Game adapters | `src/games/th10.c`, `th11.c`, `th12.c`, `th13.c` | Actual game addresses, exact x86 hooks and sprite placement |
+| **x64 runtime** | `src/hfr64.c` | The New Classic runtime end to end: fixed clock, patch transaction, emitted relays, sub-stepping, D3D11 and sprite hooks |
+| x64 support headers | `src/backends/fixed_clock.h`, `fixed_history.h`, `fixed_game.h`, `subtick.h`, `substep.h` | Fixed 60 Hz clock, pose history and smoothing, the game profile, sub-tick slice accounting, the dyadic sub-step schedule |
+| x64 game adapter | `src/games/th06nc.c` | New Classic's addresses, frozen signatures and guard ranges |
+| x64 UI and renderer | `src/ui/overlay_fixed.c`, `src/ui/menu_dx11.cpp`, `src/ui/overlay_dx11.cpp` | The x64 side of `ui_api.h` and the D3D11 ImGui backend |
+| x64 tests | `tools/test_fixed.c`, `tools/test_fixed_stubs.py`, `tools/test_fixed_profile.py` | Clock, history, schedule and patch transaction; Unicorn execution of every emitted AMD64 relay; signature and launcher checks |
 | Launcher | `src/launcher.c` | Detect and launch a supported executable using the common identity code |
 | Tests | `tools/test_hfr.c`, `tools/test_*.h`, `tools/test_*_stubs.py` | Native shared-runtime tests and emulation of emitted x86 hooks |
+| Build | `build.sh`/`build.ps1` (x86), `build64.sh`/`build64.ps1` (x64) | Two independent builds; `package.sh`/`package.ps1` ship both when asked |
 
 This is deliberately a unity build: the small C modules form one translation
 unit, which keeps the existing assembly entry points and their C symbols together.
@@ -134,7 +149,7 @@ validation of the game's own compressed replay format.
    slow motion, fullscreen/reset, stock/HFR replay recording and playback at
    different display rates. A matching executable signature is not a gameplay test.
 
-## Validation for v0.2.0-test
+## Validation for v0.2.0-test (historical)
 
 Automated tests pass on all four supplied executable fixtures (JP and English,
 TH11 and TH12). They cover the actual full installer, required imports, each

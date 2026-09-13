@@ -3,7 +3,7 @@
 Touhou HFR supports two quite different games under one launcher. TH10, TH11, TH12 and TH13
 are 32-bit Direct3D 9 games running one engine family; **Touhou Koumakyou: New Classic** is a
 64-bit Direct3D 11 remaster on DxLib with an unrelated engine. This is the honest accounting
-of what the patch does for each, written against the source as of v0.4.16-test.
+of what the patch does for each, written against the source as of v0.4.18-test.
 
 The per-game records are [TH10_DEVNOTES.md](TH10_DEVNOTES.md),
 [TH11_DEVNOTES.md](TH11_DEVNOTES.md), [DEVNOTES.md](DEVNOTES.md) (TH12),
@@ -20,9 +20,9 @@ runtime is described in [DEVNOTES_RUNTIME.md](DEVNOTES_RUNTIME.md).
 | Architecture | x86, Direct3D 9(Ex) | AMD64, Direct3D 11 (DxLib) |
 | Install | `dinput8.dll` proxy or launcher | launcher only (`touhou_hfr.exe` → `touhou_hfr64.exe`) |
 | Simulation | runs at the tick rate, sub-stepped | 60 Hz, with selected systems sub-stepped |
-| High-rate motion | player, bullets, shots, items, lasers | player, enemy bullets, lasers |
+| High-rate motion | player, bullets, items, lasers (not TH10), **both ANM managers** | player, enemy bullets, lasers |
 | Sprite smoothing | interpolation for what is not sub-stepped | interpolation or prediction for everything else |
-| Code patches | 65–101 verified sites per game | 24 verified signatures, 14 patches |
+| Code patches | 65–101 verified sites per game | 24 frozen signatures, 14 patches |
 | Video features | scaling, filters, sharpening, dimming, internal resolution | none |
 | Replays | extended format, per-tick input, recorded and played back | native format only, unextended |
 
@@ -35,9 +35,22 @@ This is the part most worth getting right, because "high FPS gameplay" is easy t
 **TH10–13.** The update list is run N times per displayed frame. Continuous quantities are
 multiplied by the sub-step's duration; discrete blocks are skipped on ticks that are not frame
 boundaries, using either "this is not a boundary tick" or "this object's timer did not change".
-Player movement, bullets, the player's shots, items and lasers all advance a fraction of a frame
-at a time. **Enemy scripts and frame-sensitive decisions stay at 60 Hz, and enemy sprites are
-interpolated** — even in these games, enemies are not sub-stepped.
+Which systems participate is a per-game table (`node_class`), and it is worth reading rather
+than assuming — checked across all four games:
+
+| Node class | TH10 | TH11 | TH12 | TH13 |
+| --- | --- | --- | --- | --- |
+| BulletManager, Player, ItemManager | sub | sub | sub | sub |
+| LaserManager | **frame** | sub | sub | sub |
+| Stage | **frame** | sub | sub | sub |
+| **AnmManagerWorld, AnmManagerUI** | **sub** | **sub** | **sub** | **sub** |
+| EnemyManager, Gui, Bomb, Spellcard, GameManager | frame | frame | frame | frame |
+
+Two things fall out of that table. **Enemies are not sub-stepped in any of these games** — their
+scripts and decisions stay at 60 Hz and their sprites are interpolated. And **both ANM managers
+are sub-stepped in all four**, which is the mechanism that makes their menus, HUD and animated
+UI smooth: the animation interpreter itself advances a fraction of a frame at a time, rather
+than the rendering being interpolated after the fact.
 
 **New Classic.** The simulation stays at 60 Hz and three things are lifted to the display rate:
 
@@ -65,15 +78,23 @@ a cost: their motion is followed by an optional clamp to per-enemy bounds, so a 
 have to reproduce that clamp or let bounded enemies overshoot and snap back once a frame.
 
 So the gap against TH10–13 in *gameplay* terms is the player's shots and items, and closing it
-would change nothing observable. The gap in *rendering* terms is that TH10–13 draw those systems
-at exact sub-stepped positions where New Classic draws them interpolated.
+would change nothing observable. The gap in *rendering* terms is bigger than it looks, and the
+ANM row above is why: TH10–13 advance the animation interpreter itself between frames, so an
+animation that scales, fades or changes frame is genuinely evaluated at the display rate. New
+Classic interpolates the *result* of a 60 Hz animation step instead, which covers position,
+rotation and scale but cannot cover a colour fade or an animation-frame change. **Sub-stepping
+New Classic's ANM VM update (`0x69b0`) is the closest equivalent and the most promising
+remaining rendering work** — see `TH06NC_DEVNOTES.md` §20.
 
 ---
 
 ## 3. Sprite smoothing
 
 Both runtimes keep a per-VM pose history that snaps on a birth, a script change, a gap in ticks
-or a teleport. New Classic's version additionally:
+or a teleport. New Classic hooks **three** VM draw entry points (`0x67f0`, `0x4dc0` and
+`0x36c0`); the third is the one the screen manager uses, so menus, transitions and the title
+screen are smoothed as well as the game — until v0.4.18 it was missed entirely and nothing on
+those screens was ever smoothed (§20). New Classic's version additionally:
 
 - **predicts instead of interpolating** when sub-tick player movement is on, so sprites line up
   with a player who is already ahead of the last native tick rather than lagging a frame behind it;
@@ -120,7 +141,7 @@ shader sources and the menu that drives them are already shared and would not ne
 | Sub-tick input | yes, polled per tick, **recorded into the replay** | yes, polled per drawn frame, **not recorded** |
 | Joystick handling | dedicated polling thread, `joyGetPosEx` hook | uses the game's own device poll |
 | Replay format | extended (`t10r`–`t13r` plus sidecar metadata) | native, untouched |
-| Replay playback with the patch | faithful; the recording's rate is reproduced | **not faithful if the features are on** |
+| Replay playback with the patch | faithful; the recording's rate is reproduced | **not faithful if the features are on, and nothing disables them automatically** |
 
 This is the one genuine functional gap rather than a cosmetic one. New Classic's native replay
 stores one input word per 60 Hz frame, which cannot describe a player who moved from six input
@@ -156,16 +177,16 @@ compiled into both.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `src/hfr64.c` | 518 | the whole x64 runtime: clock, patches, relays, sub-stepping, hooks |
+| `src/hfr64.c` | 575 | the whole x64 runtime: clock, patches, relays, sub-stepping, hooks |
 | `src/backends/fixed_clock.h` | 13 | the fixed 60 Hz clock with wall-clock phase |
 | `src/backends/fixed_history.h` | 77 | pose history, prediction, rotation and scale smoothing |
 | `src/backends/subtick.h` | 57 | the τ slice accounting and the direction table |
 | `src/backends/substep.h` | 61 | the exact dyadic sub-step schedule |
-| `src/backends/fixed_game.h` | 47 | the profile: every RVA the runtime needs |
-| `src/games/th06nc.c` | 80 | the profile's values and 24 frozen signatures |
+| `src/backends/fixed_game.h` | 51 | the profile: every RVA the runtime needs |
+| `src/games/th06nc.c` | 82 | the profile's values, 24 frozen signatures and 7 guard ranges |
 | `src/ui/overlay_fixed.c` | 65 | the x64 side of the settings API |
 | `src/ui/menu_dx11.cpp`, `src/ui/overlay_dx11.cpp` | 78 | the D3D11 ImGui backend |
-| `tools/porting/xrefs64.py` | 60 | AMD64 xrefs decoded from real function boundaries |
+| `tools/porting/xrefs64.py` | 53 | AMD64 xrefs decoded from real function boundaries |
 
 **Not used by the x64 build at all**: the whole of `src/core/` except `patch.c` — the scheduler,
 speed sites, runner, replay, input, limiter, scaler, shaders, texture scaling, dimming, window
@@ -217,5 +238,7 @@ In rough order of how much it would be worth doing.
 3. **Dimming.** Needs the draw-order attribution the x86 backend gets from the game's draw runner.
 4. **Window management** — borderless, aspect snapping, integer scaling.
 5. **Screenshots and coexistence checks.**
-6. **Exact sub-stepped positions for enemies, shots and items**, in place of interpolated ones.
+6. **Smoothing for animation frames and colour fades.** Position, rotation and scale are
+   covered; a menu that fades rather than moves still steps at 60 Hz.
+7. **Exact sub-stepped positions for enemies, shots and items**, in place of interpolated ones.
    Rendering only; it cannot change an outcome.
