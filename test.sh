@@ -15,6 +15,17 @@ for f in "$@"; do
     $RUN ./build/tests/test_hfr.exe "$f" "build/tests/$(basename "$f")"
 done
 
+# What the menu's sections offer, with no device and no window: a control that is silently
+# not drawn is invisible to the device test below, which only proves the overlay renders.
+if [ -d third_party/imgui ]; then
+    echo "--- menu contents"
+    ${CXX:-i686-w64-mingw32-g++} -std=gnu++11 -O1 -static-libgcc -static-libstdc++ -Ithird_party/imgui \
+        -o build/tests/test_menu_logic.exe tools/test_menu_logic.cpp build/obj/menu.o \
+        build/obj/imgui.o build/obj/imgui_draw.o build/obj/imgui_tables.o build/obj/imgui_widgets.o \
+        build/obj/imgui_impl_win32.o -lgdi32 -ldwmapi
+    $RUN ./build/tests/test_menu_logic.exe
+fi
+
 # The overlay on a real Direct3D 9Ex device, with the same swap chain, render target and
 # state block the patch uses. Needs a display; skipped when there is none.
 if [ -n "${DISPLAY:-}" ] && [ -d third_party/imgui ]; then

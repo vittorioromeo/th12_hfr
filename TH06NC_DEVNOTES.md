@@ -1693,3 +1693,34 @@ signature and launcher checks -- runs again.
 It immediately earned its keep: `test_patches` asserts the exact number of patches the
 profile installs, and the item fix made it 16. A count that has to be updated by hand is
 precisely the point; a patch appearing without anyone noticing is what it is there to stop.
+
+### Postscript 2: the sliders were built but never shown
+
+The owner opened F11 → Display on the new build and found the same sentence as before:
+*"Scaling, filters, dimming and window controls are not available in this experimental
+graphics backend yet."* The rule table, the pool, the settings and the INI keys were all
+working; `draw_display_section` simply began with
+
+```cpp
+if (!hfr_ui_get(UI_VIDEO_AVAILABLE)) { ImGui::TextWrapped(...); return; }
+```
+
+and dimming is drawn at the bottom of that function. `UI_VIDEO_AVAILABLE` means *the scaler
+and window controls have a backend*, which the x64 runtime does not have and does not need:
+dimming changes the colours the game draws with, so it never touches the scaler. One blanket
+early-out for "video" therefore hid the one video feature this backend has.
+
+The dimming block is now its own function, called from both paths, and the message names
+only what is actually missing. `UI_DIM_AVAILABLE` also counts pools, so a game whose only
+rule is a pool is not reported as having no dimming at all.
+
+The wider point is that the menu is the only way any of this work reaches the owner, and it
+had no test that could see a missing control: `tools/test_menu.c` renders the overlay on a
+real Direct3D 9 device and proves it does not crash, which a control that is never drawn
+passes trivially. `tools/test_menu_logic.cpp` now runs the sections headlessly -- ImGui with
+no backend at all, just a built font atlas and a display size -- against a stub that records
+which settings each section reads. A control that is drawn reads its own value, so the set of
+settings queried is the set of controls offered. It asserts every dimming control appears
+with *and* without a video backend, that the scaler's appear only with one, and that a game
+with no dimming rules still gets the sliders (disabled, saying why) rather than nothing.
+Reinstating the early-out makes it fail with ten named lines.

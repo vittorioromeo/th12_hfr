@@ -161,9 +161,47 @@ void draw_hint(void) {
     ImGui::End();
 }
 
+/* Readability: fade what competes with the bullets. Applied immediately, in-stage only.
+   Separate from the rest of Display because it does not go through the scaler: it changes
+   the colours the game itself draws with, so a backend with no scaler of its own can still
+   have it. The x64 backend is exactly that case. */
+static void draw_dimming_controls(void) {
+    bool dim_ok = hfr_ui_get(UI_DIM_AVAILABLE) != 0;
+    if (!dim_ok) ImGui::TextDisabled("This game's draw order is not described by the patch yet; dimming is inert.");
+    ImGui::BeginDisabled(!dim_ok);
+    const char* special = hfr_ui_dim_special_name();
+    struct { int id; const char* label; const char* tip; } dims[] = {
+        { UI_DIM_BACKGROUND,   "Dim background",   "Fades the stage background towards black so bullets stand out.\n"
+                                                   "Enemies, bullets, items, the player and the interface are untouched." },
+        { UI_DIM_ITEMS,        "Fade items",       "Fades the P, point and other pickups towards transparent so they are\n"
+                                                   "not mistaken for bullets. 100%% hides them entirely." },
+        { UI_DIM_EFFECTS,      "Fade effects",     "Fades the cosmetic effects: explosions, hit sparks, bullet cancels,\n"
+                                                   "particles. Bullets and lasers are never touched." },
+        { UI_DIM_PLAYER_SHOTS, "Fade player shots","Fades your own shots (and options) so the enemy's are what you see." },
+        { UI_DIM_SPECIAL,      special,            "This game's own extra class of thing that competes with bullets." },
+    };
+    /* A game may know how to fade only some of these. Showing a slider that cannot do
+       anything is worse than not showing it, so the ones this game has no rule for are
+       disabled and say so. */
+    int classes = hfr_ui_get(UI_DIM_CLASSES);
+    for (auto& d : dims) {
+        if (!d.label) continue;
+        bool known = (classes & (1 << (d.id - UI_DIM_BACKGROUND))) != 0;
+        int v = hfr_ui_get(d.id);
+        char label[64]; snprintf(label, sizeof label, d.id == UI_DIM_SPECIAL ? "Fade %s" : "%s", d.label);
+        ImGui::BeginDisabled(!known);
+        if (ImGui::SliderInt(label, &v, 0, 100, "%d%%")) hfr_ui_set(d.id, v);
+        ImGui::EndDisabled();
+        help(known ? d.tip : "This game's patch does not know which draws belong to this class yet.");
+    }
+    ImGui::EndDisabled();
+}
+
 void draw_display_section(void) {
     if (!hfr_ui_get(UI_VIDEO_AVAILABLE)) {
-        ImGui::TextWrapped("Scaling, filters, dimming and window controls are not available in this experimental graphics backend yet. Use the game's own display settings.");
+        ImGui::TextWrapped("Scaling, filters and window controls are not available in this experimental graphics backend yet -- use the game's own display settings for those. Dimming does not go through them and works here:");
+        ImGui::Separator();
+        draw_dimming_controls();
         return;
     }
     /* A d3d9 wrapper such as PivotDX9 presents the game itself, so it -- not this patch --
@@ -279,37 +317,8 @@ void draw_display_section(void) {
              "always shown, whatever is chosen here.");
     }
 
-    /* Readability: fade what competes with the bullets. Applied immediately, in-stage only. */
     ImGui::Separator();
-    bool dim_ok = hfr_ui_get(UI_DIM_AVAILABLE) != 0;
-    if (!dim_ok) ImGui::TextDisabled("This game's draw order is not described by the patch yet; dimming is inert.");
-    ImGui::BeginDisabled(!dim_ok);
-    const char* special = hfr_ui_dim_special_name();
-    struct { int id; const char* label; const char* tip; } dims[] = {
-        { UI_DIM_BACKGROUND,   "Dim background",   "Fades the stage background towards black so bullets stand out.\n"
-                                                   "Enemies, bullets, items, the player and the interface are untouched." },
-        { UI_DIM_ITEMS,        "Fade items",       "Fades the P, point and other pickups towards transparent so they are\n"
-                                                   "not mistaken for bullets. 100%% hides them entirely." },
-        { UI_DIM_EFFECTS,      "Fade effects",     "Fades the cosmetic effects: explosions, hit sparks, bullet cancels,\n"
-                                                   "particles. Bullets and lasers are never touched." },
-        { UI_DIM_PLAYER_SHOTS, "Fade player shots","Fades your own shots (and options) so the enemy's are what you see." },
-        { UI_DIM_SPECIAL,      special,            "This game's own extra class of thing that competes with bullets." },
-    };
-    /* A game may know how to fade only some of these. Showing a slider that cannot do
-       anything is worse than not showing it, so the ones this game has no rule for are
-       disabled and say so. */
-    int classes = hfr_ui_get(UI_DIM_CLASSES);
-    for (auto& d : dims) {
-        if (!d.label) continue;
-        bool known = (classes & (1 << (d.id - UI_DIM_BACKGROUND))) != 0;
-        int v = hfr_ui_get(d.id);
-        char label[64]; snprintf(label, sizeof label, d.id == UI_DIM_SPECIAL ? "Fade %s" : "%s", d.label);
-        ImGui::BeginDisabled(!known);
-        if (ImGui::SliderInt(label, &v, 0, 100, "%d%%")) hfr_ui_set(d.id, v);
-        ImGui::EndDisabled();
-        help(known ? d.tip : "This game's patch does not know which draws belong to this class yet.");
-    }
-    ImGui::EndDisabled();
+    draw_dimming_controls();
 }
 
 void draw_timing_section(void) {
@@ -498,6 +507,19 @@ void draw_window(void) {
     ImGui::End();
 }
 } // namespace
+
+/* Draws every section into whatever ImGui frame is current, with no device and no window.
+   The sections live in an anonymous namespace, and they should: this is the only thing that
+   reaches them, and it exists so a headless test can check what a section actually offers
+   rather than only that the menu draws without crashing. `draw_display_section` shipped for
+   several builds returning before the dimming controls whenever the video backend was
+   absent -- which is exactly the case where dimming is the only thing it has left to offer. */
+extern "C" void hfr_menu_draw_sections_for_test(void) {
+    draw_display_section();
+    draw_timing_section();
+    draw_presentation_section();
+    draw_diagnostics_section();
+}
 
 extern "C" void hfr_menu_render(void* dev, int width, int height) {
     if (!g_ready || g_menu_failed || (!g_visible && g_hint_frames <= 0)) return;

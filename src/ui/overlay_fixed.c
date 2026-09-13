@@ -11,7 +11,7 @@ int hfr_ui_get(int id) {
     case UI_SUBSTEP: return substep;
     case UI_SUBTICK_AVAILABLE: return game->player_motion!=0;
     case UI_SUBSTEP_AVAILABLE: return game->projectile!=0;
-    case UI_DIM_AVAILABLE: return game->dim_rule_count!=0 && game->vm_colour!=0;
+    case UI_DIM_AVAILABLE: return (game->dim_rule_count!=0 || game->dim_pool_count!=0) && game->vm_colour!=0;
     case UI_DIM_CLASSES: {
         int mask=0;
         for (size_t i=0;i<game->dim_rule_count;++i) {
