@@ -3,7 +3,7 @@
 Touhou HFR supports two quite different games under one launcher. TH10, TH11, TH12 and TH13
 are 32-bit Direct3D 9 games running one engine family; **Touhou Koumakyou: New Classic** is a
 64-bit Direct3D 11 remaster on DxLib with an unrelated engine. This is the honest accounting
-of what the patch does for each, written against the source as of v0.4.18-test.
+of what the patch does for each, written against the source as of v0.4.20-test.
 
 The per-game records are [TH10_DEVNOTES.md](TH10_DEVNOTES.md),
 [TH11_DEVNOTES.md](TH11_DEVNOTES.md), [DEVNOTES.md](DEVNOTES.md) (TH12),
@@ -22,7 +22,7 @@ runtime is described in [DEVNOTES_RUNTIME.md](DEVNOTES_RUNTIME.md).
 | Simulation | runs at the tick rate, sub-stepped | 60 Hz, with selected systems sub-stepped |
 | High-rate motion | player, bullets, items, lasers (not TH10), **both ANM managers** | player, enemy bullets, lasers (items deliberately 60 Hz, §22) |
 | Sprite smoothing | interpolation for what is not sub-stepped | interpolation or prediction for everything else |
-| Code patches | 65–101 verified sites per game | 27 frozen signatures, 16 patches |
+| Code patches | 66–101 verified sites per game | 27 frozen signatures, 16 patches |
 | Video features | scaling, filters, sharpening, dimming, internal resolution | dimming only |
 | Replays | extended format, per-tick input, recorded and played back | native format only, unextended |
 
@@ -121,7 +121,7 @@ its own window handling.
 | Upscaling filters (sharp-bilinear and others, `shaders/*.hlsl`) | yes | no |
 | Sharpening post-process (CAS, unsharp mask) with strength slider | yes | no |
 | Internal resolution (`internal_scale=2`/`3`) | yes | no |
-| Dimming sliders for background, items, player shots, effects | yes | no |
+| Dimming sliders for background, items, player shots, effects | yes | yes (no `dim_special`: the game has no fifth class) |
 | Texture upscaling | yes | no |
 | D3D9Ex present queue / max frame latency / FlipEx | yes | n/a (D3D11) |
 | VSync control | yes | yes (`[fixed60] vsync`) |
@@ -149,7 +149,7 @@ callback with something that must not fade. See [§22](TH06NC_DEVNOTES.md).
 | --- | --- | --- |
 | Sub-tick input | yes, polled per tick, **recorded into the replay** | yes, polled per drawn frame, **not recorded** |
 | Joystick handling | dedicated polling thread, `joyGetPosEx` hook | uses the game's own device poll |
-| Replay format | extended (`t10r`–`t13r` plus sidecar metadata) | native, untouched |
+| Replay format | extended (`t10r`–`t13r`, HFR metadata in an appended `USER` chunk) | native, untouched |
 | Replay playback with the patch | faithful; the recording's rate is reproduced | **not faithful if the features are on, and nothing disables them automatically** |
 
 This is the one genuine functional gap rather than a cosmetic one. New Classic's native replay
@@ -174,11 +174,12 @@ compiled into both.
 
 | File | What it is |
 | --- | --- |
-| `src/ui/menu.cpp` (524 lines) | the entire F11 menu: tabs, controls, help text, key handling |
+| `src/ui/menu.cpp` (553 lines) | the entire F11 menu: tabs, controls, help text, key handling |
 | `src/ui/ui_api.h` | the settings enum both backends implement |
 | `src/ui/menu_key.h` | menu-key edge handling |
 | `src/core/patch.c` | the patch transaction: queue, preflight, all-or-nothing commit |
 | `src/identity.h` / `src/launcher*.c` | the executable registry and launcher dispatch |
+| `src/dim_classes.h` | the dimming class enum and names, shared by both runtimes and both launchers |
 | `shaders/*.hlsl` | authored once (used only by the x86 backend today) |
 | `third_party/imgui`, `third_party/minhook` | vendored |
 
@@ -186,15 +187,20 @@ compiled into both.
 
 | File | Lines | What it is |
 | --- | --- | --- |
-| `src/hfr64.c` | 575 | the whole x64 runtime: clock, patches, relays, sub-stepping, hooks |
+| `src/hfr64.c` | 721 | the whole x64 runtime: clock, patches, relays, sub-stepping, hooks |
 | `src/backends/fixed_clock.h` | 13 | the fixed 60 Hz clock with wall-clock phase |
 | `src/backends/fixed_history.h` | 77 | pose history, prediction, rotation and scale smoothing |
 | `src/backends/subtick.h` | 57 | the τ slice accounting and the direction table |
 | `src/backends/substep.h` | 61 | the exact dyadic sub-step schedule |
-| `src/backends/fixed_game.h` | 51 | the profile: every RVA the runtime needs |
-| `src/games/th06nc.c` | 123 | the profile's values, 27 frozen signatures, 7 guard ranges and the dimming map |
-| `src/ui/overlay_fixed.c` | 65 | the x64 side of the settings API |
+| `src/backends/fixed_game.h` | 78 | the profile: every RVA the runtime needs |
+| `src/games/th06nc.c` | 129 | the profile's values, 27 frozen signatures, 7 guard ranges and the dimming map |
+| `src/ui/overlay_fixed.c` | 86 | the x64 side of the settings API |
 | `src/ui/menu_dx11.cpp`, `src/ui/overlay_dx11.cpp` | 78 | the D3D11 ImGui backend |
+| `src/launcher64.c` | 88 | the x64 launcher the shared launcher dispatches to |
+| `src/fixed_identity.h` | 14 | the x64 executable registry |
+| `tools/test_fixed.c` | 187 | the x64 harness: clock, history, slices, schedule, transaction |
+| `tools/test_fixed_stubs.py` | 264 | Unicorn execution of every emitted AMD64 relay |
+| `tools/test_fixed_profile.py` | 65 | signatures, dimming rules and pools, launcher checks |
 | `tools/porting/xrefs64.py` | 53 | AMD64 xrefs decoded from real function boundaries |
 
 **Not used by the x64 build at all**: the whole of `src/core/` except `patch.c` — the scheduler,
@@ -225,7 +231,7 @@ by hand. Two of them changed in the port:
 | --- | --- | --- |
 | Signature/preflight tests | yes, per game | yes, 27 signatures, plus every dimming rule and pool |
 | Scheduler tests | yes | yes, eight rates |
-| Emitted machine code executed in Unicorn | yes, per game | yes, all 9 relays |
+| Emitted machine code executed in Unicorn | yes, per game | yes, every emitted relay; 16 patch sites in all |
 | Replay round-trip tests | yes | n/a |
 | Menu rendered against a real device | yes (D3D9) | shares `menu.cpp`, tested via the x86 harness |
 | Played by the owner | yes, extensively | yes, at 360 and 480 Hz |
@@ -244,10 +250,11 @@ In rough order of how much it would be worth doing.
 1. **Sub-tick replay recording.** The only gap that blocks real use. Everything else is optional.
 2. **The video stack in Direct3D 11** — scaling, filters, sharpening, internal resolution,
    texture upscaling. The menu and the shaders already exist; the backend does not.
-3. **Dimming.** Needs the draw-order attribution the x86 backend gets from the game's draw runner.
-4. **Window management** — borderless, aspect snapping, integer scaling.
-5. **Screenshots and coexistence checks.**
-6. **Smoothing for animation frames and colour fades.** Position, rotation and scale are
+3. **Window management** — borderless, aspect snapping, integer scaling.
+4. **Screenshots and coexistence checks.**
+5. **Smoothing for animation frames and colour fades.** Position, rotation and scale are
    covered; a menu that fades rather than moves still steps at 60 Hz.
-7. **Exact sub-stepped positions for enemies, shots and items**, in place of interpolated ones.
+6. **Exact sub-stepped positions for enemies, shots and items**, in place of interpolated ones.
    Rendering only; it cannot change an outcome.
+7. **Additive-blend dimming.** Effects drawn additively do not fade, because this backend
+   cannot yet tell a VM's blend mode; the background works around it by scaling colour.

@@ -73,7 +73,7 @@ All addresses are absolute for v1.00c. Fields named as in `GameProfile`.
 | Score / difficulty | `0x4be7c0` / `0x4be7c4` |
 | Data directory / game directory strings | `0x4dd0d1` / `0x4de0d1` |
 
-Identity: magic `t13r`, no legacy INI, 96 frozen signatures (`tools/th13_signatures.json`).
+Identity: magic `t13r`, no legacy INI, 101 frozen signatures (`tools/th13_signatures.json`).
 
 ### vpatch conflict sites (`src/games/th13_conflicts.h`)
 
@@ -283,7 +283,7 @@ two *bits*); assuming an old hook still has a counterpart (§6's "not hooked" li
   The rig renders at 25–35 presents/s; every present slot then runs one tick plus one catch-up
   tick, so sub-stepping *is* exercised (dt as configured) but wall-clock is ~0.6× real time.
   Replays under the rig land in `/tmp/wp/drive_c/users/root/AppData/Roaming/ShanghaiAlice/th13/`.
-- Harness: `./test.sh th13.exe` and `th13e.exe` — 92 signatures, 52 patches, no overlaps;
+- Harness: `./test.sh th13.exe` and `th13e.exe` — 101 signatures, 52 patches, no overlaps;
   TH10/TH11/TH12 unchanged by the runner generalisation (the `INTERNAL ERROR: missing
   signature @004737a2` line the harness prints is its own negative test, not a fault).
 - Live under the rig at `fps=120`, `240` and `360`: stage 1 gameplay, hits and kills, items,

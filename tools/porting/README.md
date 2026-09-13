@@ -32,9 +32,11 @@ See [TH06NC_DEVNOTES.md](../../TH06NC_DEVNOTES.md) for the investigation using t
 - `xrefs64.py <exe> <rva> [...]` — **AMD64 xrefs, decoded from real function boundaries.**
   Prefer this to `inspect_pe.py xrefs`, which decodes executable sections linearly and so
   misaligns wherever data or padding sits between functions. That misalignment is not
-  theoretical: it invented three plausible "replay input" functions that nothing in the
-  binary calls, and a gate built on them silently disabled two features for several builds
-  (TH06NC_DEVNOTES §17). This one walks `.pdata`, starts each function at its own
+  theoretical: it invented four apparent readers of one byte, and a gate built on them
+  silently disabled two features for several builds. Worse, when the same linear scan was
+  then used to look for *callers* of those functions and found none, three live node
+  callbacks were written up as dead code -- an absence of references found by a linear
+  decode is exactly as worthless as a reference found by one (TH06NC_DEVNOTES §17). This one walks `.pdata`, starts each function at its own
   `BeginAddress`, and says whether each hit is a read or a write. It cannot see accesses made
   through a register (`[rbx+0x774c]` on an object pointer), which is the other way an address
   scan lies — §16 and §18 were both bitten by that. **A reference found by a scan is a

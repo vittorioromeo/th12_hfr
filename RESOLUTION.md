@@ -1,3 +1,8 @@
+> Written while this work was done on TH11 and TH12. The scaler, filter chain, window
+> management and menu described here are shared by all four x86 games today; addresses
+> and "both games" phrasing date from that period. New Classic's D3D11 backend has none
+> of it — see [TH06NC_VS_TH10_13.md](TH06NC_VS_TH10_13.md).
+
 # Output resolution, scaling and the in-game menu
 
 These notes cover the second strand of work on the patch: getting the game out of its three
@@ -353,7 +358,7 @@ log is the only thing a tester can send back:
 ## 2.8 When another patch is in the same game
 
 vpatch (VsyncPatch, by swmpLV/75E) replaces the game's frame limiter and calls Present on its
-own schedule. So does this patch. Their sites do not overlap ours -- I checked all 60 frozen
+own schedule. So does this patch. Their sites do not overlap ours -- I checked all 69 frozen
 signatures against all 16 of vpatch's th12 patch addresses -- so nothing in the identity check
 notices, both installs report success, and the game ends up running at whichever scheduler got
 the last word, with no clue anywhere as to why.
@@ -450,7 +455,7 @@ says about it.
   problem above.
 * **No CRT or scanline filters** are bundled. They fit the existing shader interface; there
   are permissively licensed ones that could be ported.
-* **`snap_aspect` assumes the game's aspect**, which is 4:3 for both supported games.
+* **`snap_aspect` assumes the game's aspect**, which is 4:3 for every supported game.
 * **Exclusive fullscreen is gone**, for the reason in 2.5. Restoring it would mean teaching
   the patch to reload the game's textures itself, or keeping them in the managed pool by
   giving up Direct3D 9Ex and the frame-queue control with it.

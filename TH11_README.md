@@ -90,7 +90,7 @@ Patched replays can desync in the stock game or in a different HFR build.
 
 ## Compatibility and reporting
 
-The loader checks 63 frozen instruction signatures before applying hooks. An
+The loader checks 66 frozen instruction signatures before applying hooks. An
 unsupported/modified layout is left unpatched and reported in the log. The
 supplied Japanese v1.00a and English static patch v1.0 both pass these checks.
 The initial runtime test included the existing local `d3d9.dll` wrapper.

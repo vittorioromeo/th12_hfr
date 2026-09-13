@@ -23,8 +23,8 @@ cannot share object code. What each does and does not do is set out side by side
 | --- | --- | --- |
 | Build entry | `src/hfr.c` | Includes the modules once, in dependency order |
 | Executable identity | `src/identity.h`, `src/games/*_signatures.h` | PE layout and frozen code signatures, shared with the launcher |
-| Game contract | `src/game_profile.h` | Addresses, object offsets, node classification, hook and sprite callbacks |
-| Shared core | `src/core/` | Patch transactions, x86 emission, dyadic scheduler, input, interpolation history, frame pacing, replay extensions, configuration and proxy |
+| Game contract | `src/game_profile.h`, `src/dim_classes.h` | Addresses, object offsets, node classification, hook and sprite callbacks, and the dimming classes both runtimes share |
+| Shared core | `src/core/` | Patch transactions, x86 emission, dyadic scheduler, input, interpolation history, frame pacing, dimming, texture scaling, replay extensions, configuration and proxy |
 | Update backend | `src/backends/update_runner.c` | TH11/TH12 update-list ABI, node return values, pause boundaries and player input edges |
 | Renderer backend | `src/backends/d3d9.c` | D3D9/9Ex, resource conversion, display refresh, reset and latency |
 | Output scaling | `src/core/scaler.c` | Render-target redirection, scaling geometry, filter passes, present blit |
@@ -37,7 +37,7 @@ cannot share object code. What each does and does not do is set out side by side
 | x64 game adapter | `src/games/th06nc.c` | New Classic's addresses, frozen signatures, guard ranges and dimming rules |
 | x64 UI and renderer | `src/ui/overlay_fixed.c`, `src/ui/menu_dx11.cpp`, `src/ui/overlay_dx11.cpp` | The x64 side of `ui_api.h` and the D3D11 ImGui backend |
 | x64 tests | `tools/test_fixed.c`, `tools/test_fixed_stubs.py`, `tools/test_fixed_profile.py` | Clock, history, schedule and patch transaction; Unicorn execution of every emitted AMD64 relay; signature and launcher checks |
-| Launcher | `src/launcher.c` | Detect and launch a supported executable using the common identity code |
+| Launcher | `src/launcher.c`, `src/launcher64.c`, `src/fixed_identity.h` | Detect and launch a supported executable using the common identity code; x64 games are handed to the x64 launcher |
 | Tests | `tools/test_hfr.c`, `tools/test_*.h`, `tools/test_*_stubs.py` | Native shared-runtime tests and emulation of emitted x86 hooks |
 | Build | `build.sh`/`build.ps1` (x86), `build64.sh`/`build64.ps1` (x64) | Two independent builds; `package.sh`/`package.ps1` ship both when asked |
 
@@ -56,14 +56,15 @@ are not assumptions that every Touhou title uses this ABI or renderer.
 
 Detection requires x86 PE32 at image base `0x400000`, the expected image size
 (TH13 accepts two, since `th13e.exe` carries an extra section), and every frozen
-signature (83 for TH10, 66 for TH11, 62 for TH12, 98 for TH13). These cover all
+signature (83 for TH10, 66 for TH11, 69 for TH12, 101 for TH13). These cover all
 overwritten code ranges and selected native function entries. This is code-layout
 verification, not a whole-file checksum: resources and English text may differ.
 It does not establish compatibility with arbitrary third-party runtime patches.
 
 The DLL selects its adapter from the loaded image. The launcher maps a file as
-inert bytes and applies the same checks before creating a process. If both games
-are present it requires an explicit target; within one game it prefers English.
+inert bytes and applies the same checks before creating a process. It knows every
+supported executable, x86 and x64; if more than one supported game is present it requires an
+explicit target, and within one game it prefers English.
 `touhou_hfr.exe --check <path>` performs read-only detection, returning 0 for a
 supported file and 2 otherwise.
 
@@ -80,25 +81,30 @@ the files it will replace, installs the common files and updates existing legacy
 DLL/launcher aliases. It preserves an existing common INI, or copies the game's
 legacy INI for a first upgrade. It never modifies the game executable or data.
 
-## Simulation behavior in this refactor
+## Simulation behavior
 
-TH11's validated game-specific stubs retain the same 952 emitted bytes, apart
-from relocation to the new runtime's variables. Its edge handling and partner
-hooks remain in its adapter. TH12's original site hooks are retained, with its
-movement residual now using the shared resettable storage and bypassing the
-residual at stock speed, as TH11 already does.
+All four x86 adapters share one scheduler. `substep=0` selects 60 Hz logic;
+presentation pacing is independent of a replay's logic rate; device resets retain an
+active replay's rate and tick sequence; stage and rate changes reset motion residuals;
+duplicate presentation frames do not capture a new enemy position. Input polling reads
+the actual raw input word rather than an undefined native return value.
 
-Both games now use the TH11 port's scheduler fixes: `substep=0` selects 60 Hz
-logic; presentation pacing is independent of a replay's logic rate; device resets
-retain an active replay's rate and tick sequence; stage/rate changes reset motion
-residuals; duplicate presentation frames do not capture a new enemy position.
-Input polling reads the actual raw input word rather than relying on an undefined
-native return value. TH11 alone masks player pressed/released/bomb edges on minor
-ticks, preserving the previously tested behavior of both adapters.
+What stays per-adapter is what the games genuinely do differently. TH11's validated
+stubs retain the same 952 emitted bytes apart from relocation to the shared runtime's
+variables, and it alone masks player pressed/released/bomb edges on minor ticks. TH12's
+original site hooks are retained, its movement residual now using the shared resettable
+storage. TH13 is TH12's engine with the structural differences named by profile fields.
+TH10 has no single game-speed float at all, so its speed handling is a hand-written
+`SpeedSite` table plus movement, item-homing and Cartesian-integration hooks the others
+do not need (`DEVNOTES_RUNTIME.md` §7).
 
-Enemy logic remains at 60 Hz. Interpolation history is shared; TH11's child sprite
-propagation and TH12's slot offsets/parent relationships remain separate callbacks.
-The presentation configuration is common to both games.
+Enemy logic remains at 60 Hz in every game. Interpolation history is shared; child
+sprite propagation and slot/parent relationships remain per-adapter callbacks. The
+presentation configuration is common to all of them.
+
+New Classic's runtime shares none of this. It keeps the simulation at 60 Hz and presents
+at the display rate, sub-stepping only the player, enemy bullets and lasers, each behind
+its own setting; `TH06NC_VS_TH10_13.md` is the comparison in full.
 
 ## Replay extensions
 
@@ -158,10 +164,11 @@ rates 60–1000 Hz, cross-rate presentation, synthetic eight-stage replay file
 round trips, metadata/settings, update-list pauses and input edges, and the
 emitted gameplay stubs including native SSE/x87 float-to-integer paths.
 
-The tests map game files as inert local data and never ship them in a release.
-The pre-refactor TH11 port passed the user's gameplay test. This unified build
-still needs manual gameplay and full-run replay testing in both games; the
-automated checks do not prove every character/stage combination correct.
+The tests map game files as inert local data and never ship them in a release. Every
+supported title has been played on this build, and New Classic extensively at 360 and
+480 Hz. What is still missing is full-run replay testing: the automated checks do not
+prove every character and stage combination correct, and no native-versus-patched
+comparison over identical replays has been done for any game.
 
 Output scaling, the filter pipeline, window management and the menu are described in
 `RESOLUTION.md`; they live in the shared core because they are Direct3D and Win32 work that

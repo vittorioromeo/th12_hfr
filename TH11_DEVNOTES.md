@@ -20,7 +20,7 @@ Both supplied executables are x86 PE32, image base `0x400000`, file size 688128.
 | Japanese `th11.exe`, v1.00a | `2978b17f6184d100d249d4311348dd30c5c32ec75c014b667a525b797d3d8813` |
 | English `th11e.exe`, static patch v1.0 | `18555e5055909570dbf46ca2a7cb796c50174fcdffb863a83357110d7f3f770b` |
 
-The loader uses 63 frozen instruction signatures, rather than a full-file hash,
+The loader uses 66 frozen instruction signatures, rather than a full-file hash,
 to recognize the reviewed code layout. All signatures match both supplied images.
 It checks all of them before installing any game hooks. A mismatch leaves HFR
 disabled while the DirectInput proxy still forwards to the system DLL.
@@ -250,7 +250,7 @@ the emitted stubs with Unicorn. Passed:
 - 10 seconds of the actual C scheduler at every integer rate 60–1000, all selected
   logic/presentation-rate combinations, stock mode, stage reset, replay/device reset.
 - Valid RLE decode and malformed sizes, runs, and input-bit rejection.
-- All 63 signatures in both supported images.
+- All 66 signatures in both supported images.
 - Both paths of 12 ordinary guards, including preserved flags, registers, and stack.
 - Mesh/shot callback return paths; the item countdown's five-pop x87 cleanup;
   Reimu C minor-tick displacement; Cartesian/linear/angular scaling.

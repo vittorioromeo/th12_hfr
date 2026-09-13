@@ -15,6 +15,9 @@ for f in "$@"; do
     $RUN ./build/tests/test_hfr.exe "$f" "build/tests/$(basename "$f")"
 done
 
+echo "--- documentation links"
+python3 tools/check_docs.py
+
 # What the menu's sections offer, with no device and no window: a control that is silently
 # not drawn is invisible to the device test below, which only proves the overlay renders.
 if [ -d third_party/imgui ]; then

@@ -498,7 +498,7 @@ imports are `KERNEL32`, `USER32`, `SHLWAPI` — no `d3d9`, no `dinput8`. It patc
 memory at hardcoded addresses and calls Direct3D through the game's own device global.
 
 It replaces the frame limiter and calls `Present` on its own schedule. So do we. Its sites do
-not overlap ours — all 60 frozen signatures checked against all 16 of its TH12 addresses — so
+not overlap ours — all 69 frozen signatures checked against all 16 of its TH12 addresses — so
 the identity check cannot notice, both installs report success, and the game runs at whichever
 scheduler got the last word.
 
@@ -657,7 +657,7 @@ TH10 is supported. It is worth writing down what made it a different job from ad
 game that shares TH11's engine, because TH13 and beyond will be one or the other.
 
 **Its speed model is not a single float.** TH11 and TH12 each write a literal `1.0` into one
-game-speed float at ~22 sites, and the whole sub-stepping design hangs off multiplying that by
+game-speed float at ~21 sites, fifteen of which this patch redirects, and the whole sub-stepping design hangs off multiplying that by
 the sub-step duration. TH10 has no such single global — its top candidates take 12, 12 and 10
 writes, spread across per-object timers that carry a pointer to the shared speed at `+0x0c`. So
 its `install_sites` is per-game hand-written code: twelve `SpeedSite` entries (the generalised

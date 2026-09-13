@@ -7,6 +7,15 @@ v0.4.12-test checkout (`d09a86e`). Sections 1–12 preserve the original finding
 [section 13](#13-experimental-prototype-2026-09-13) records implementation, validation,
 installation and remaining work.
 
+**This document is a running record, so its sections are dated and earlier ones are not
+corrected in place** — where a later section overturns an earlier one it says so, and the
+earlier one carries a banner pointing forward. Read it back to front if you want the current
+state. As of v0.4.20-test that state is: **27 frozen signatures, 16 patch sites, 7 guard
+ranges, 3 dimming rules and 2 dimming pools** (`src/games/th06nc.c`); sub-tick player
+movement, sub-stepped bullets and sub-stepped lasers, each off by default; items and enemies
+deliberately at 60 Hz; and nothing that disables any of it during replay playback. Counts
+quoted inside a dated section are the counts of that day.
+
 ## 1. Decision
 
 This is an HFR target requiring a new backend, **not a thin adapter for the x86 runtime**.
@@ -769,8 +778,9 @@ menu_key=122
 
 `fps=0` follows the primary display; explicit targets clamp to 60–1000. F11 → Timing
 changes presentation/interpolation; F11 → Presentation changes D3D11 VSync. Save writes
-these keys without replacing unrelated settings. Simulation-substep controls are not
-offered by this backend.
+these keys without replacing unrelated settings. Simulation-substep controls did not exist at
+this point; §14 and §16 added `[fixed60] subtick` and `substep`, and the Timing tab offers
+both.
 
 ### Validation and limits of evidence
 
@@ -853,7 +863,7 @@ deliberate.)**
 | `+0x7868`, `+0x786c` | diagonal speed, unfocused and focused | static |
 | `0x4ff0e0` | playfield clamp: min X, min Y, width, height as four floats | static |
 | `0x12be0` | the device input poll, returning the input word in EAX | static; sole caller `0x79c70` |
-| `0x4f27b2` | ~~non-zero while a replay is driving the input word~~ **WRONG, see §17**: it marks gameplay in progress and nothing but the fps display reads it | was: static, at `0x6ba40` (dead code) |
+| `0x4f27b2` | ~~non-zero while a replay is driving the input word~~ **WRONG, see §17**: it is set during ordinary play, so it cannot mean playback in progress | was: static, at `0x6ba40`, which §17 wrongly called dead code |
 
 Input bits confirmed at the movement switch: `0x04` focus, `0x10` up, `0x20` down,
 `0x40` left, `0x80` right. Right beats left and up beats down, exactly as the native
@@ -952,7 +962,9 @@ velocity `+0x08`, position `+0x30`, state `+0x44`, and the 64-entry laser loop f
 
 ```ini
 [fixed60]
-subtick=0     ; sub-tick player movement; inert at 60 Hz and during replay playback
+subtick=0     ; sub-tick player movement; inert at 60 Hz. NOTHING disables it during
+              ; replay playback -- see §17 -- so turn it off by hand before recording or
+              ; watching one.
 ```
 
 F11 → Timing toggles it live and explains the replay consequence; the interpolation toggle
@@ -1246,14 +1258,28 @@ That identification was wrong, and the way it was wrong is worth keeping. It cam
 apparent readers found by `inspect_pe.py xrefs`, three of which are at `0x6b970`, `0x6b9f0`
 and `0x6ba40` and do look exactly like replay input handling -- one appends an entry when
 the input word changes, one walks a table by frame number and writes the input global.
-**Nothing in the binary reaches any of them.** No call, no jump, no `lea`, no 8-byte
-pointer, and no 4-byte image-relative entry of the kind a switch table would hold. They are
-dead code, most likely carried over from the original game and never called. `xrefs`
-decodes executable sections linearly, so it reports references from code that can never
-run, and reading three plausible functions in a row is convincing enough that nobody
-questions the fourth.
+At the time this section was written it claimed **nothing in the binary reaches any of
+them** -- no call, no jump, no `lea`, no image-relative switch-table entry -- and concluded
+they were dead code carried over from the original game. *That claim is false, and it was
+made with the very tool this section was warning about.* The search for references was
+itself a linear decode. Repeating it with `tools/porting/xrefs64.py`, which decodes each
+function from its own `.pdata` BeginAddress, finds all three taken by address:
 
-The one live reader is the fps display above, where a non-zero value adds an offset to a
+```text
+0x6b970  <- lea at 0x6b307, inside 0x6b24f
+0x6ba40  <- lea at 0x6b401, inside 0x6b24f
+0x6b9f0  <- lea at 0x6b521, inside 0x6b50f
+```
+
+Those are node registrations, and the update list dumped from a running stage contains
+`15@6b970`, so one of the three executes every frame of ordinary play. They are the replay
+recorder and player, both live, exactly as they looked.
+
+The correction does not rescue the original identification; it sharpens the conclusion
+below. `0x4f27b2` is set during ordinary play *because* TH06 records every run, so whatever
+it marks, it is not playback in progress.
+
+The other reader is the fps display above, where a non-zero value adds an offset to a
 drawing position. No writer is visible to an address scan either, which by section 16's
 lesson means it is written through a register.
 
@@ -1274,8 +1300,8 @@ bug, and the log should say so rather than staying silent.
 
 ### What this costs, and what it asks for next
 
-Replay playback is no longer guarded, because the flag that was guarding it never meant
-what it claimed. Watching a replay with either feature on will now drive the player from
+Replay playback is no longer guarded, because the flag that was guarding it is set during
+ordinary play and so cannot mean playback. Watching a replay with either feature on will now drive the player from
 the device as well as from the file, which looks wrong; it cannot damage the replay, since
 playback does not write, and both features remain off by default. **Finding the real
 playback flag is still open** -- and this time it wants a live check, not an address scan:
@@ -1463,7 +1489,7 @@ actually change what is on screen.
 ### The lesson, again
 
 This is the third time in this file that a confident-looking record turned out to be a
-partial one: dead code read as live (§17), a register-relative access invisible to an address
+partial one: live code read as dead (§17), a register-relative access invisible to an address
 scan (§16, §18), and now an entry-point list that was never complete. The common thread is
 that each was believed because it was written down, not because it had been checked against
 the running game.
@@ -1536,6 +1562,11 @@ the same way; all fourteen are clean**, with branches only to their first byte.
 
 ### What is missing: the map
 
+> **Filled in by [§22](#22-items-fell-at-the-tick-rate-and-the-finished-dimming-map-2026-09-13),
+> which also replaced the background plan below.** The rule table now has three callback rules
+> and two address-range pools, and the background fades by colour rather than by a D3D11 quad.
+> What follows is the state at the end of §21 and the reasoning that produced the census.
+
 A class is decided by which draw callback is running, and the rule table currently has exactly
 one entry: `0x2b310` → effects, from the registration scan in §6. That is enough to prove the
 machinery but it is not the feature. The other classes need the **in-game** draw list, and §6's
@@ -1554,9 +1585,11 @@ background is then a table edit, not an investigation.
 
 The menu reflects this honestly: `UI_DIM_CLASSES` is a new read-only bitmask of the classes a
 game can actually fade, and the shared menu disables the sliders a game has no rule for and
-says why. The x86 runtime returns all of them. Background dimming will need more than a rule
-in any case — the x86 blends a black quad over the viewport before the first world-priority
-callback, which here means drawing a quad in D3D11 at the right point in the draw list.
+says why. The x86 runtime returns all of them. Background dimming looks like it will need more
+than a rule in any case — the x86 blends a black quad over the viewport before the first
+world-priority callback, which here would mean drawing a quad in D3D11 at the right point in
+the draw list. (§22: it did not. Scaling the background's colour instead of its alpha does the
+same job in one branch, because the background is drawn over the playfield's own fill.)
 
 ## 22. Items fell at the tick rate, and the finished dimming map (2026-09-13)
 
