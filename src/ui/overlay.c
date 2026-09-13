@@ -15,6 +15,7 @@ static int g_pending_chain, g_pending_rate, g_pending_window;
 
 int hfr_ui_get(int id) {
     switch (id) {
+    case UI_VIDEO_AVAILABLE:    return 1;
     case UI_SCALING:            return cfg.scaling;
     case UI_FILTER:             return cfg.filter;
     case UI_RESIZABLE:          return cfg.resizable;

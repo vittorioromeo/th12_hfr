@@ -10,7 +10,7 @@
  */
 #include "ui_api.h"
 #include "../../third_party/imgui/imgui.h"
-#include "../../third_party/imgui/backends/imgui_impl_dx9.h"
+#include "menu_renderer.h"
 #include "../../third_party/imgui/backends/imgui_impl_win32.h"
 #include <cstdio>
 
@@ -58,7 +58,7 @@ void style_for(float height) {
 }
 } // namespace
 
-extern "C" int hfr_menu_init(IDirect3DDevice9* dev, HWND hwnd) {
+extern "C" int hfr_menu_init(void* dev, HWND hwnd) {
     if (g_ready) return 1;
     if (!dev || !hwnd) return 0;
     IMGUI_CHECKVERSION();
@@ -68,7 +68,12 @@ extern "C" int hfr_menu_init(IDirect3DDevice9* dev, HWND hwnd) {
     io.IniFilename = nullptr;                 /* the game's INI is the only settings file */
     io.LogFilename = nullptr;
     io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;   /* the game owns the cursor */
-    if (!ImGui_ImplWin32_Init(hwnd) || !ImGui_ImplDX9_Init(dev)) {
+    if (!ImGui_ImplWin32_Init(hwnd)) {
+        ImGui::DestroyContext(g_ctx); g_ctx = nullptr;
+        return 0;
+    }
+    if (!hfr_menu_renderer_init(dev)) {
+        ImGui_ImplWin32_Shutdown();
         ImGui::DestroyContext(g_ctx); g_ctx = nullptr;
         return 0;
     }
@@ -79,13 +84,13 @@ extern "C" int hfr_menu_init(IDirect3DDevice9* dev, HWND hwnd) {
 }
 extern "C" void hfr_menu_shutdown(void) {
     if (!g_ready) return;
-    ImGui_ImplDX9_Shutdown(); ImGui_ImplWin32_Shutdown();
+    hfr_menu_renderer_shutdown(); ImGui_ImplWin32_Shutdown();
     ImGui::DestroyContext(g_ctx); g_ctx = nullptr;
     g_ready = false; g_objects = false;
 }
 /* Device objects live in the default pool, so they go before a reset and come back after. */
 extern "C" void hfr_menu_invalidate(void) {
-    if (g_ready && g_objects) { ImGui_ImplDX9_InvalidateDeviceObjects(); g_objects = false; }
+    if (g_ready && g_objects) { hfr_menu_renderer_invalidate(); g_objects = false; }
 }
 extern "C" void hfr_menu_toggle(void) {
     if (!g_ready) return;
@@ -151,12 +156,16 @@ void draw_hint(void) {
                      ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoInputs)) {
         int key = hfr_ui_menu_key();
         const char* name = key == VK_F11 ? "F11" : (key == VK_INSERT ? "Insert" : "the menu key");
-        ImGui::TextColored(ImVec4(1, 1, 1, a), "Press %s for scaling and filter settings", name);
+        ImGui::TextColored(ImVec4(1, 1, 1, a), "Press %s for Touhou HFR settings", name);
     }
     ImGui::End();
 }
 
 void draw_display_section(void) {
+    if (!hfr_ui_get(UI_VIDEO_AVAILABLE)) {
+        ImGui::TextWrapped("Scaling, filters, dimming and window controls are not available in this experimental graphics backend yet. Use the game's own display settings.");
+        return;
+    }
     /* A d3d9 wrapper such as PivotDX9 presents the game itself, so it -- not this patch --
        decides how the image reaches the window. The filters still work, because they run
        before that point, but placing the image inside the window no longer does. Say so and
@@ -317,10 +326,17 @@ void draw_timing_section(void) {
     for (int i = 0; i < IM_ARRAYSIZE(rates); ++i) if (rates[i] == fps) index = i;
     char current[32];
     if (index < 0) snprintf(current, sizeof current, "%d (from the INI)", fps);
-    if (ImGui::BeginCombo("Tick rate", index < 0 ? current : rate_names[index])) {
+    if (ImGui::BeginCombo(hfr_ui_get(UI_FIXED_LOGIC) ? "Presentation rate" : "Tick rate", index < 0 ? current : rate_names[index])) {
         for (int i = 0; i < IM_ARRAYSIZE(rates); ++i)
             if (ImGui::Selectable(rate_names[i], i == index)) hfr_ui_set(UI_FPS, rates[i]);
         ImGui::EndCombo();
+    }
+    if (hfr_ui_get(UI_FIXED_LOGIC)) {
+        help("How often a picture is drawn. Gameplay and input stay at 60 Hz.");
+        toggle("Interpolate sprite positions", UI_ENEMY_INTERP);
+        ImGui::TextWrapped("Experimental: interpolates sprite positions between native frames. Adds up to one 60 Hz frame of visual delay. Collision, shooting, input and replays use the native simulation. Rotation, animation frames, lasers and 3D backgrounds are not interpolated yet.");
+        ImGui::EndDisabled();
+        return;
     }
     help("How often the game's logic runs. Auto follows the display, which is\n"
          "what you want unless you are comparing against stock 60 Hz.");
@@ -356,6 +372,10 @@ void draw_presentation_section(void) {
     if (ImGui::Checkbox("Vertical sync", &vsync)) hfr_ui_set(UI_VSYNC, vsync);
     help("Rebuilds the presentation chain, which takes effect on the next frame.");
 
+    if (hfr_ui_get(UI_FIXED_LOGIC)) {
+        ImGui::TextWrapped("D3D11 presentation. VSync can cap the actual frame rate at the monitor rate; turn it off to measure the software limiter. The frame queue uses the game's own settings.");
+        return;
+    }
     int latency = hfr_ui_get(UI_MAX_FRAME_LATENCY);
     if (ImGui::SliderInt("Frame queue", &latency, 0, 3, "%d")) hfr_ui_set(UI_MAX_FRAME_LATENCY, latency);
     ImGui::SameLine();
@@ -435,10 +455,10 @@ void draw_window(void) {
 }
 } // namespace
 
-extern "C" void hfr_menu_render(IDirect3DDevice9* dev, int width, int height) {
+extern "C" void hfr_menu_render(void* dev, int width, int height) {
     if (!g_ready || g_menu_failed || (!g_visible && g_hint_frames <= 0)) return;
     if (!g_objects) {
-        if (!ImGui_ImplDX9_CreateDeviceObjects()) {
+        if (!hfr_menu_renderer_create()) {
             static bool told = false;
             if (!told) { told = true; hfr_ui_report("menu: the overlay's device objects could not be built; it cannot draw"); }
             return;
@@ -452,15 +472,16 @@ extern "C" void hfr_menu_render(IDirect3DDevice9* dev, int width, int height) {
         if (last_height) g_place_next = true;
         last_width = width; last_height = height; style_for((float)height);
     }
-    ImGui_ImplDX9_NewFrame();
+    hfr_menu_renderer_new_frame();
     ImGui_ImplWin32_NewFrame();
     ImGuiIO& io = ImGui::GetIO();
     io.DisplaySize = ImVec2((float)width, (float)height);   /* the swap chain, not the game */
+    io.MouseDrawCursor = g_visible && hfr_ui_get(UI_SOFTWARE_CURSOR);
     ImGui::NewFrame();
     if (g_visible) draw_window();
     else if (g_hint_frames > 0) { draw_hint(); --g_hint_frames; }
     ImGui::EndFrame();
     ImGui::Render();
-    if (!g_menu_failed) ImGui_ImplDX9_RenderDrawData(ImGui::GetDrawData());
+    if (!g_menu_failed) hfr_menu_renderer_draw(ImGui::GetDrawData());
     (void)dev;
 }

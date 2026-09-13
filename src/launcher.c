@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "identity.h"
+#include "fixed_identity.h"
 
 static void die(const char* msg) {MessageBoxA(NULL,msg,"Touhou HFR launcher",MB_ICONERROR);ExitProcess(1);}
 static const struct GameIdentity* identify_file(const char* path) {
@@ -21,9 +22,20 @@ static int local_path(char* out,size_t cap,const char* dir,const char* name) {
     /* exe names are relative to the launcher, including optional subfolders. */
     int n=snprintf(out,cap,"%s\\%s",dir,name);return n>=0 && (size_t)n<cap;
 }
+static int run_x64(const char* dir,const char* exe) {
+    char helper[MAX_PATH],command[MAX_PATH*2+8];
+    if (!local_path(helper,sizeof helper,dir,"touhou_hfr64.exe") || GetFileAttributesA(helper)==INVALID_FILE_ATTRIBUTES)
+        die("TH06 New Classic requires touhou_hfr64.exe and touhou_hfr64.dll next to this launcher. Build with build64.ps1.");
+    snprintf(command,sizeof command,"\"%s\" \"%s\"",helper,exe);
+    STARTUPINFOA si={0};si.cb=sizeof si;PROCESS_INFORMATION pi={0};
+    if (!CreateProcessA(helper,command,NULL,NULL,FALSE,CREATE_NO_WINDOW,NULL,dir,&si,&pi)) die("Cannot start the x64 launcher helper.");
+    WaitForSingleObject(pi.hProcess,INFINITE);
+    DWORD code=1;GetExitCodeProcess(pi.hProcess,&code);
+    CloseHandle(pi.hThread);CloseHandle(pi.hProcess);return (int)code;
+}
 int main(int argc,char** argv) {
     /* Read-only diagnostic for scripts; no process is created. */
-    if(argc==3 && !strcmp(argv[1],"--check"))return identify_file(argv[2])?0:2;
+    if(argc==3 && !strcmp(argv[1],"--check"))return identify_file(argv[2]) || fixed_identify_file(argv[2]) ? 0:2;
     char dir[MAX_PATH],exe[MAX_PATH],dll[MAX_PATH],ini[MAX_PATH],target[MAX_PATH]="";
     if(!GetModuleFileNameA(NULL,dir,sizeof dir) || strlen(dir)>=sizeof dir-1)die("Launcher path is too long.");
     char* p=strrchr(dir,'\\');if(!p)die("Cannot locate the launcher directory.");*p=0;
@@ -41,12 +53,18 @@ int main(int argc,char** argv) {
             if(selected && selected!=id)die("More than one supported game is present. Set [launcher] exe in touhou_hfr.ini or pass an executable name.");
             if(!selected){strcpy(target,game_identities[g].executables[e]);selected=id;}
         }
+        for (size_t f=0;f<FIXED_GAME_COUNT;++f) {
+            if (!local_path(exe,sizeof exe,dir,fixed_games[f]->executable) || !fixed_identify_file(exe)) continue;
+            if (target[0]) die("More than one supported game is present. Set [launcher] exe in touhou_hfr.ini or pass an executable name.");
+            strcpy(target,fixed_games[f]->executable);
+        }
         if(selected && !common_ini && selected->legacy_ini) {
             if(!local_path(ini,sizeof ini,dir,selected->legacy_ini))die("Configuration path is too long.");
             char legacy[MAX_PATH];GetPrivateProfileStringA("launcher","exe","",legacy,sizeof legacy,ini);
             if(legacy[0])strcpy(target,legacy);
         }
     }
+    if (target[0] && local_path(exe,sizeof exe,dir,target) && fixed_identify_file(exe)) return run_x64(dir,exe);
     if(!target[0] || !local_path(exe,sizeof exe,dir,target) || !identify_file(exe))
         die("No supported executable found. Supported: TH10 v1.00a, TH11 v1.00a, TH12 v1.00b and TH13 v1.00c (Japanese or English executables). Code modified by another patch is not accepted.");
     if(GetFileAttributesA(dll)==INVALID_FILE_ATTRIBUTES)die("touhou_hfr.dll is missing next to the launcher.");

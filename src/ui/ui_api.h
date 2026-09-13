@@ -3,7 +3,6 @@
    compiled separately and the menu can be left out of a build entirely. */
 #pragma once
 #include <windows.h>
-#include <d3d9.h>
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -34,6 +33,9 @@ enum {
     UI_SHARPEN,              /* index into the post-process registry; -1 for none */
     UI_SHARPEN_STRENGTH,     /* 0..100 percent */
     UI_CURSOR,               /* the mouse pointer in borderless fullscreen: 0 as the game does (hidden), 1 visible, 2 visible while moving */
+    UI_FIXED_LOGIC,           /* read-only: fixed 60 Hz simulation with render interpolation */
+    UI_VIDEO_AVAILABLE,       /* read-only: scaler and window controls have a backend */
+    UI_SOFTWARE_CURSOR,       /* read-only: game hides the OS cursor; draw one in the menu */
     UI_SETTING_COUNT
 };
 
@@ -69,18 +71,18 @@ void        hfr_menu_key_down(int down);           /* the menu key's state per t
 /* Implemented by the menu (C++); all are safe to call when the menu failed to start.
    A build without the menu (the test harness) defines HFR_NO_UI and gets local no-ops. */
 #ifndef HFR_NO_UI
-int  hfr_menu_init(IDirect3DDevice9* dev, HWND hwnd);
+int  hfr_menu_init(void* dev, HWND hwnd);
 void hfr_menu_shutdown(void);
 void hfr_menu_invalidate(void);
-void hfr_menu_render(IDirect3DDevice9* dev, int width, int height);
+void hfr_menu_render(void* dev, int width, int height);
 int  hfr_menu_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, LRESULT* result);
 void hfr_menu_toggle(void);
 int  hfr_menu_visible(void);
 #else
-static int  hfr_menu_init(IDirect3DDevice9* dev, HWND hwnd) { (void)dev; (void)hwnd; return 0; }
+static int  hfr_menu_init(void* dev, HWND hwnd) { (void)dev; (void)hwnd; return 0; }
 static void hfr_menu_shutdown(void) {}
 static void hfr_menu_invalidate(void) {}
-static void hfr_menu_render(IDirect3DDevice9* dev, int width, int height) { (void)dev; (void)width; (void)height; }
+static void hfr_menu_render(void* dev, int width, int height) { (void)dev; (void)width; (void)height; }
 static int  hfr_menu_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, LRESULT* result)
             { (void)hwnd; (void)msg; (void)wp; (void)lp; (void)result; return 0; }
 static void hfr_menu_toggle(void) {}

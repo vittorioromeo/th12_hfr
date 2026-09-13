@@ -9,7 +9,10 @@ A game in the existing x86/D3D9 engine family is three files and three lines.
 Check architecture, rendering API, callback semantics and timer representation first.
 For an engine outside that family, shared algorithms can still be reused, but a profile
 does not replace the required platform and engine backends. See
-[the New Classic investigation](TH06NC_DEVNOTES.md) for a concrete x64/D3D11 example.
+[the New Classic implementation record](TH06NC_DEVNOTES.md#13-experimental-prototype-2026-09-13)
+for a concrete x64/D3D11 example. Its fixed-clock profile/registry and renderer-independent
+history live alongside the x86 family; both builds use the same F11 menu. The rest of
+this guide describes the x86/D3D9 family.
 
 ## The three files
 

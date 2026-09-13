@@ -16,10 +16,11 @@ for f in "$IMGUI/imgui" "$IMGUI/imgui_draw" "$IMGUI/imgui_tables" "$IMGUI/imgui_
     $CXX $CXXFLAGS -I"$IMGUI" -c "$f.cpp" -o "build/obj/$(basename "$f").o"
 done
 $CXX $CXXFLAGS -I"$IMGUI" -c src/ui/menu.cpp -o build/obj/menu.o
+$CXX $CXXFLAGS -I"$IMGUI" -c src/ui/menu_dx9.cpp -o build/obj/menu_dx9.o
 
 $CXX -shared -static -static-libgcc -static-libstdc++ -o build/touhou_hfr.dll build/obj/*.o \
      -ld3d9 -lwinmm -lgdi32 -ldwmapi -lpsapi -Wl,--kill-at
-$CC $CFLAGS -O2 -s -mwindows -static-libgcc -o build/touhou_hfr.exe src/launcher.c
+$CC $CFLAGS -O2 -s -mwindows -static-libgcc -o build/touhou_hfr.exe src/launcher.c -lbcrypt
 cp build/touhou_hfr.dll build/dinput8.dll
 cp touhou_hfr.ini build/touhou_hfr.ini
 mkdir -p build/shaders && cp shaders/*.hlsl shaders/README.md build/shaders/

@@ -5,12 +5,16 @@ and taking the patch to four games — are in [DEVNOTES_RUNTIME.md](DEVNOTES_RUN
 per-game records are [TH10_DEVNOTES.md](TH10_DEVNOTES.md), [TH11_DEVNOTES.md](TH11_DEVNOTES.md),
 [DEVNOTES.md](DEVNOTES.md) (TH12) and [TH13_DEVNOTES.md](TH13_DEVNOTES.md).
 
-Research into **Touhou Koumakyou: New Classic** is recorded in
-[TH06NC_DEVNOTES.md](TH06NC_DEVNOTES.md). It is not supported yet: its x64/DxLib/D3D11
-engine needs new backends, beyond a TH10–13 address profile.
+**Touhou Koumakyou: New Classic** now has an experimental x64/D3D11 backend:
+60 Hz gameplay with high-rate sprite-position interpolation and the shared F11 menu.
+The owner has tested gameplay and the menu at high refresh rates. It does not yet have
+TH10–13's fractional gameplay, sub-tick input or video enhancements. See
+[the prototype instructions and complete research record](TH06NC_DEVNOTES.md#13-experimental-prototype-2026-09-13).
 
 High refresh rate gameplay and presentation for Touhou. One DLL detects the game
-and selects its adapter; the scheduler, input, replay and Direct3D code are shared.
+and selects its adapter; TH10–13 share their scheduler, input, replay and Direct3D code.
+The same launcher dispatches New Classic to its separate x64 runtime. Menu contents,
+menu-key handling, patch transactions and the x64 executable registry are shared.
 
 **Current build: v0.4.12-test.** Supported executable layouts:
 
@@ -20,6 +24,7 @@ and selects its adapter; the scheduler, input, replay and Direct3D code are shar
 | Touhou 11 — Subterranean Animism | v1.00a | `th11.exe`, `th11e.exe` | supported |
 | Touhou 12 — Undefined Fantastic Object | v1.00b | `th12.exe`, `th12e.exe` | supported |
 | Touhou 13 — Ten Desires | v1.00c | `th13.exe`, `th13e.exe` | supported |
+| Touhou Koumakyou: New Classic | verified SHA-256 in [notes](TH06NC_DEVNOTES.md#2-product-and-inspected-build) | `th06nc.exe` | experimental: fixed 60 Hz + sprite interpolation |
 
 The current source fixes TH10's recurring HFR hitches accompanied by a brief
 `0.0fps` reading: its native FPS watchdog mistook rates above 65 FPS for a broken
@@ -33,6 +38,9 @@ TH13 keeps its replays and scores in `%APPDATA%\ShanghaiAlice\th13\`, and so doe
 replay metadata.
 
 ## What it does
+
+The features below describe TH10–13. New Classic currently provides the smaller feature
+set listed above; its F11 menu identifies the unavailable controls.
 
 **High frame rate.** Movement, bullets, shots and other suitable systems update at the display
 rate, with sub-steps whose durations add up exactly to 60 game frames per second. Enemy scripts
@@ -87,6 +95,13 @@ every supported title; it still needs full-run replay testing before a stable re
 [architecture and porting guide](ARCHITECTURE.md) and [ADDING_A_GAME.md](ADDING_A_GAME.md).
 
 ## Install
+
+For **New Classic**, build both architectures (below), then copy `touhou_hfr.exe`,
+`touhou_hfr64.exe`, `touhou_hfr64.dll` and `touhou_hfr.ini` beside `th06nc.exe` in the
+`th06nc` subfolder. Start `touhou_hfr.exe`. Use F11 → Timing to select the presentation
+rate or toggle interpolation. Use the game's own display settings. Do not install the
+32-bit `dinput8.dll` proxy in this x64 game. The generic `install.ps1` workflow below is
+for TH10–13. Bundled `th06c.exe` (Classic) is different and is not supported.
 
 Download/extract `touhou_hfr_v0.4.12-test.zip` and close the game.
 
@@ -202,6 +217,22 @@ Windows requires a **32-bit MinGW-w64 GCC** compiler. The default script path is
 .\test.ps1 -GameExe 'G:\Touhou\TH11 ~ Subterranean Animism\th11.exe','G:\Touhou\TH12 ~ Undefined Fantastic Object\th12.exe','G:\Touhou\TH13 ~ Ten Desires\th13.exe' -Python 'C:\Python313\python.exe'
 .\package.ps1
 ```
+
+For New Classic, also install **64-bit MinGW-w64 GCC/G++** (default
+`C:\msys64\mingw64\bin\gcc.exe`), then run:
+
+```powershell
+.\build64.ps1
+.\test64.ps1 -GameExe 'C:\Program Files (x86)\Steam\steamapps\common\th06nc\th06nc.exe'
+.\package.ps1 -Version '0.4.12-th06nc-prototype' -IncludeExperimental64
+```
+
+Run `build.ps1` first: `test64.ps1` checks both launcher architectures. The x64 tests
+also require Python `pefile`; they check clock scheduling, history invalidation, the
+actual patch transaction and emitted AMD64 relays, frozen signatures, and read-only
+launcher rejection. `build64.ps1` produces `touhou_hfr64.dll` and its launcher helper.
+The optional package includes vendored ImGui and MinHook sources/licenses. There is
+currently no x64 shell build script; the existing shell build remains x86.
 
 The Python tests need `unicorn` (`python -m pip install unicorn`). The native
 harness runs on Windows and uses your local executables as inert fixtures. It

@@ -1,0 +1,282 @@
+/* Fixed-clock x64 runtime. Game facts live in games/, not in this backend. */
+#define WIN32_LEAN_AND_MEAN
+#define COBJMACROS
+#include <windows.h>
+#include <dxgi.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdarg.h>
+#include <string.h>
+#include <math.h>
+#include "../third_party/minhook/include/MinHook.h"
+#include "backends/fixed_history.h"
+#include "backends/fixed_clock.h"
+#include "fixed_identity.h"
+#include "ui/ui_api.h"
+void hfr_d3d11_overlay(void* swap);
+
+static const struct FixedGame* game;
+static uintptr_t base;
+static HMODULE module;
+static FILE* logfile;
+static char ini[MAX_PATH];
+static int fps=0, rate=60, interpolate=1, vsync=0, debug=0;
+static int major=1, guard_failed=0, depth=0;
+static uint64_t ticks, frames, samples, blends;
+static double phase, frequency, deadline;
+static struct FixedClock logic_clock;
+static HANDLE timer;
+static struct FixedPose history[16384];
+typedef uintptr_t (*UpdateFn)(void*);
+typedef void (*DrawFn)(void);
+typedef uintptr_t (*SpriteFn)(void*,void*,uintptr_t);
+static SpriteFn sprite_original, rotated_original;
+static SpriteFn vm_start_original[2];
+static void set_rate(void);
+static void report(const char* fmt, ...) {
+    if (!logfile) return;
+    va_list ap; va_start(ap,fmt); vfprintf(logfile,fmt,ap); va_end(ap);
+    fputc('\n',logfile); fflush(logfile);
+}
+#define LOG(...) report(__VA_ARGS__)
+#include "ui/overlay_fixed.c"
+#include "core/patch.c"
+static const uint8_t* site_expected(uintptr_t addr,size_t n) {
+    for (size_t i=0;i<game->signature_count;++i) {
+        const struct FixedSignature* s=&game->signatures[i];
+        if (addr==base+s->rva && n<=s->size) return s->bytes;
+    }
+    return NULL;
+}
+static double now(void) {LARGE_INTEGER q;QueryPerformanceCounter(&q);return (double)q.QuadPart;}
+static int display_rate(void) {
+    DEVMODEA dm={0};dm.dmSize=sizeof dm;
+    return EnumDisplaySettingsA(NULL,ENUM_CURRENT_SETTINGS,&dm) && dm.dmDisplayFrequency>=60 ? (int)dm.dmDisplayFrequency : 60;
+}
+static void set_rate(void) {
+    rate=fps ? fps : display_rate(); if (rate<60) rate=60; if (rate>1000) rate=1000;
+    if (guard_failed) rate=60;
+    deadline=0;
+    memset(history,0,sizeof history);
+    LOG("rate=%d, fixed simulation=60, interpolate=%d, vsync=%d",rate,interpolate,vsync);
+}
+/* Scheduling uses elapsed time: a blocked Present must not slow the simulation just
+   because the requested presentation rate exceeds the actual display rate. At most
+   one native update is made per outer loop; severe stalls retain native slowdown. */
+static uintptr_t update_first(void* result) {
+    if (pending_rate) {pending_rate=0;set_rate();}
+    major=fixed_clock_step(&logic_clock,now(),frequency,rate,&phase);
+    if (major) {
+        ++ticks;
+        uintptr_t r=((UpdateFn)(base+game->update))(result);
+        return (unsigned char)r; /* AH=0 is the post-update relay's normal path. */
+    }
+    return 0x100; /* AL=0 (normal), AH=1 (skip native audio/fast-forward bookkeeping). */
+}
+static uintptr_t update_extra(void* result) {
+    ++ticks; return ((UpdateFn)(base+game->update))(result);
+}
+static uint64_t guard_hash(void) {
+    uint64_t h=14695981039346656037ull;
+    for (size_t r=0;r<game->guard_count;++r) {
+        const struct GuardRange* g=&game->guards[r];
+        for (uint32_t n=0;n<g->count;++n) {
+            const unsigned char* p=(void*)(base+g->rva+(size_t)n*g->stride);
+            for (uint32_t b=0;b<g->bytes;++b) h=(h^p[b])*1099511628211ull;
+        }
+    }
+    return h;
+}
+static void draw_frame(void) {
+    uint64_t before=guard_hash();
+    ((DrawFn)(base+game->draw))();
+    ++frames;
+    if (!guard_failed && before!=guard_hash()) {
+        guard_failed=1;
+        LOG("DRAW GUARD FAILED at frame=%llu tick=%llu; reverting to 60 Hz without interpolation",(unsigned long long)frames,(unsigned long long)ticks);
+        set_rate();
+    }
+}
+static struct FixedPose* history_slot(uintptr_t key,int create) {
+    size_t index=((key>>4)*11400714819323198485ull)>>(64-14);
+    struct FixedPose* vacant=NULL;
+    for (unsigned i=0;i<8;++i) {
+        struct FixedPose* slot=&history[(index+i)&16383];
+        if (slot->key==key) return slot;
+        if (!vacant && (!slot->key || slot->tick+2<ticks)) vacant=slot;
+    }
+    return create?vacant:NULL;
+}
+static void reset_vm(void* vm) {
+    struct FixedPose* h=history_slot((uintptr_t)vm,0);
+    if (h) memset(h,0,sizeof *h);
+}
+static uintptr_t vm_start_0(void* m,void* v,uintptr_t script) {reset_vm(v);return vm_start_original[0](m,v,script);}
+static uintptr_t vm_start_1(void* m,void* v,uintptr_t script) {reset_vm(v);return vm_start_original[1](m,v,script);}
+static uintptr_t sprite(SpriteFn original,void* manager,void* vm,uintptr_t flags) {
+    if (depth || !vm || !interpolate || guard_failed || rate==60)
+        return original(manager,vm,flags);
+    /* Stack VMs are temporary text/layout scratch objects, not persistent sprites. */
+    NT_TIB* tib=(NT_TIB*)NtCurrentTeb();
+    if ((uintptr_t)vm>=(uintptr_t)tib->StackLimit && (uintptr_t)vm<(uintptr_t)tib->StackBase)
+        return original(manager,vm,flags);
+    unsigned char* p=vm;
+    uintptr_t script; int age;
+    float saved[3], out[3];
+    memcpy(saved,p+game->vm_position,sizeof saved);
+    memcpy(&script,p+game->vm_script,sizeof script);
+    memcpy(&age,p+game->vm_age,sizeof age);
+    struct FixedPose* h=history_slot((uintptr_t)vm,1);
+    ++samples;
+    int changed=h && fixed_pose(h,(uintptr_t)vm,script,ticks,age,saved,phase,out);
+    if (changed) {memcpy(p+game->vm_position,out,sizeof out);++blends;}
+    ++depth;
+    uintptr_t result=original(manager,vm,flags);
+    --depth;
+    /* Restore only when we wrote: preserve the original function's native behavior. */
+    if (changed) memcpy(p+game->vm_position,saved,sizeof saved);
+    return result;
+}
+static uintptr_t sprite_draw(void* m,void* v,uintptr_t f) {return sprite(sprite_original,m,v,f);}
+static uintptr_t rotated_draw(void* m,void* v,uintptr_t f) {return sprite(rotated_original,m,v,f);}
+static HRESULT present(IDXGISwapChain* swap,UINT sync,UINT flags) {
+    (void)sync;
+    if (!(flags & DXGI_PRESENT_TEST) && menu_key_code) hfr_d3d11_overlay(swap);
+    *(int*)(base+game->no_vsync)=!vsync;
+    return IDXGISwapChain_Present(swap,vsync?1:0,flags);
+}
+static int wait_frame(void) {
+    double t=now(), step=frequency/rate;
+    if (!deadline || t-deadline>step*4) deadline=t;
+    deadline+=step;
+    for (;;) {
+        double remaining=deadline-now();
+        if (remaining<=0) break;
+        if (timer && remaining>frequency*0.0004) {
+            LARGE_INTEGER due; due.QuadPart=-(LONGLONG)((remaining/frequency-0.0002)*10000000.0);
+            if (SetWaitableTimer(timer,&due,0,NULL,NULL,FALSE)) WaitForSingleObject(timer,INFINITE);
+            else SwitchToThread();
+        } else YieldProcessor();
+    }
+    static double last; static uint64_t ft,ut,st,bt;
+    t=now();
+    if (!last) {last=t;ft=frames;ut=ticks;st=samples;bt=blends;}
+    if (t-last>=frequency*2) {
+        double seconds=(t-last)/frequency;
+        LOG("stats seconds=%.3f presents=%.2f updates=%.2f frames=%llu ticks=%llu samples=%llu blends=%llu guard=%s api=%d",seconds,
+            (frames-ft)/seconds,(ticks-ut)/seconds,(unsigned long long)frames,(unsigned long long)ticks,
+            (unsigned long long)(samples-st),(unsigned long long)(blends-bt),guard_failed?"FAILED":"ok",*(int*)(base+game->graphics_api));
+        last=t;ft=frames;ut=ticks;st=samples;bt=blends;
+    }
+    return !major;
+}
+/* All generated relays are leaf tail jumps (no stack changes or calls). Native
+   call sites provide shadow space and unwind metadata for our compiled callbacks. */
+static unsigned char* relay_page; static size_t relay_used;
+static int rel32(unsigned char* field,uintptr_t end,uintptr_t target) {
+    int64_t d=(int64_t)target-(int64_t)end;
+    if (d<INT32_MIN || d>INT32_MAX) return 0;
+    int32_t value=(int32_t)d;memcpy(field,&value,4);return 1;
+}
+static void* relay(void* target) {
+    if (relay_used+16>4096) return NULL;
+    unsigned char* p=relay_page+relay_used;relay_used+=16;
+    p[0]=0xff;p[1]=0x25;memset(p+2,0,4);memcpy(p+6,&target,8);return p;
+}
+static int queue_call(uint32_t rva,void* target) {
+    unsigned char b[5]={0xe8};void* dest=relay(target);
+    return dest && rel32(b+1,base+rva+5,(uintptr_t)dest) && patch_bytes(base+rva,b,sizeof b,NULL);
+}
+static int prepare_patches(void) {
+    SYSTEM_INFO si;GetSystemInfo(&si);
+    uintptr_t start=base&~((uintptr_t)si.dwAllocationGranularity-1);
+    for (uintptr_t delta=si.dwAllocationGranularity;delta<0x70000000;delta+=si.dwAllocationGranularity) {
+        relay_page=VirtualAlloc((void*)(start+delta),4096,MEM_RESERVE|MEM_COMMIT,PAGE_READWRITE);
+        if (relay_page) break;
+        if (start>delta) relay_page=VirtualAlloc((void*)(start-delta),4096,MEM_RESERVE|MEM_COMMIT,PAGE_READWRITE);
+        if (relay_page) break;
+    }
+    if (!relay_page) return 0;
+    patch_begin();
+    if (!queue_call(game->update_calls[0],update_first) || !queue_call(game->update_calls[1],update_extra) ||
+        !queue_call(game->draw_call,draw_frame) || !queue_call(game->present_call,present)) return 0;
+    unsigned char b[32];memset(b,0x90,sizeof b);
+    b[0]=0xe8;
+    if (!rel32(b+1,base+game->wait_site+5,(uintptr_t)relay(wait_frame))) return 0;
+    b[5]=0x85;b[6]=0xc0;b[7]=0x0f;b[8]=0x85;
+    if (!rel32(b+9,base+game->wait_site+13,base+game->frame_epilogue)) return 0;
+    b[13]=0xe9;
+    if (!rel32(b+14,base+game->wait_site+18,base+game->wait_resume) ||
+        !patch_bytes(base+game->wait_site,b,game->wait_patch_size,NULL)) return 0;
+    /* Skip the native fast-forward/audio work on a presentation-only iteration.
+       On real ticks reproduce the three displaced instructions exactly. */
+    unsigned char* p=relay_page+relay_used;relay_used+=32;
+    p[0]=0x84;p[1]=0xe4; /* test ah,ah */
+    p[2]=0x0f;p[3]=0x85;
+    if (!rel32(p+4,(uintptr_t)p+8,base+game->draw_call)) return 0;
+    p[8]=0x8b;p[9]=0x1d;
+    if (!rel32(p+10,(uintptr_t)p+14,base+game->audio_counter)) return 0;
+    const unsigned char displaced[]={0x40,0x32,0xf6,0x41,0x8b,0xfd,0xe9};
+    memcpy(p+14,displaced,sizeof displaced);
+    if (!rel32(p+21,(uintptr_t)p+25,base+game->post_update_resume)) return 0;
+    memset(b,0x90,12);b[0]=0xe9;
+    if (!rel32(b+1,base+game->post_update+5,(uintptr_t)p) || !patch_bytes(base+game->post_update,b,12,NULL)) return 0;
+    DWORD old;
+    if (!VirtualProtect(relay_page,4096,PAGE_EXECUTE_READ,&old)) return 0;
+    FlushInstructionCache(GetCurrentProcess(),relay_page,4096);return 1;
+}
+__declspec(dllexport) DWORD WINAPI hfr_start(void* unused) {
+    (void)unused;
+    static LONG started;
+    if (InterlockedCompareExchange(&started,1,0)) return 0;
+    char path[MAX_PATH];
+    DWORD path_length=GetModuleFileNameA(module,ini,sizeof ini);
+    if (!path_length || path_length>=sizeof ini) return 0;
+    char* slash=strrchr(ini,'\\');if (!slash) return 0;
+    strcpy(slash+1,"touhou_hfr.log");logfile=fopen(ini,"w");
+    strcpy(slash+1,"touhou_hfr.ini");
+    LOG("Touhou HFR x64 fixed-clock prototype");
+    DWORD exe_length=GetModuleFileNameA(NULL,path,sizeof path);
+    if (!exe_length || exe_length>=sizeof path || !(game=fixed_identify_file(path))) {
+        LOG("Executable fingerprint rejected; no patches applied");return 0;
+    }
+    LOG("Verified %s",game->name);
+    base=(uintptr_t)GetModuleHandleA(NULL);
+    IMAGE_DOS_HEADER* dos=(void*)base;
+    IMAGE_NT_HEADERS64* pe=(void*)(base+dos->e_lfanew);
+    if (pe->FileHeader.Machine!=IMAGE_FILE_MACHINE_AMD64 || pe->OptionalHeader.SizeOfImage!=game->image_size) return 0;
+    for (size_t i=0;i<game->signature_count;++i) {
+        const struct FixedSignature* s=&game->signatures[i];
+        if (memcmp((void*)(base+s->rva),s->bytes,s->size)) {LOG("Signature rejected at RVA %x; no patches applied",s->rva);return 0;}
+    }
+    fps=GetPrivateProfileIntA("hfr","fps",0,ini);
+    if (fps<0) fps=0;
+    if (fps>1000) fps=1000;
+    /* Experimental backend uses its own opt-out to avoid changing x86 defaults. */
+    vsync=GetPrivateProfileIntA("fixed60","vsync",0,ini)!=0;
+    interpolate=GetPrivateProfileIntA("fixed60","interpolate",1,ini)!=0;
+    debug=GetPrivateProfileIntA("hfr","debug",0,ini)!=0;
+    menu_key_code=GetPrivateProfileIntA("video","menu_key",VK_F11,ini);
+    if (menu_key_code<0 || menu_key_code>255) menu_key_code=VK_F11;
+    LARGE_INTEGER q;QueryPerformanceFrequency(&q);frequency=(double)q.QuadPart;
+    timer=CreateWaitableTimerExW(NULL,NULL,2,TIMER_ALL_ACCESS);
+    if (!timer) timer=CreateWaitableTimerW(NULL,FALSE,NULL);
+    set_rate();
+    if (!prepare_patches()) {LOG("Code patch preparation failed");return 0;}
+    if (MH_Initialize()!=MH_OK ||
+        MH_CreateHook((void*)(base+game->sprite_draw),sprite_draw,(void**)&sprite_original)!=MH_OK ||
+        MH_CreateHook((void*)(base+game->sprite_draw_rotated),rotated_draw,(void**)&rotated_original)!=MH_OK ||
+        MH_CreateHook((void*)(base+game->vm_start[0]),vm_start_0,(void**)&vm_start_original[0])!=MH_OK ||
+        MH_CreateHook((void*)(base+game->vm_start[1]),vm_start_1,(void**)&vm_start_original[1])!=MH_OK ||
+        MH_QueueEnableHook(MH_ALL_HOOKS)!=MH_OK || MH_ApplyQueued()!=MH_OK) {
+        LOG("Sprite hook installation failed");MH_Uninitialize();return 0;
+    }
+    if (!patch_commit()) {LOG("Code patch commit failed");MH_Uninitialize();return 0;}
+    LOG("Installed at image=%p relay=%p; original executable unchanged",(void*)base,relay_page);
+    return 1;
+}
+BOOL WINAPI DllMain(HINSTANCE self,DWORD reason,LPVOID reserved) {
+    (void)reserved;
+    if (reason==DLL_PROCESS_ATTACH) {module=self;DisableThreadLibraryCalls(self);}
+    return TRUE;
+}
