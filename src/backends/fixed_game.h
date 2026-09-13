@@ -5,8 +5,11 @@
 struct FixedSignature { uint32_t rva; unsigned char size; unsigned char bytes[32]; };
 struct GuardRange { uint32_t rva, bytes, count, stride; };
 /* Which dimming class a sprite belongs to, by the draw callback that is running. Coarser than
-   the x86 rules (which also match the ANM file, layer and script index) because one New Classic
-   callback has not yet been seen drawing two classes. */
+   the x86 rules, which also match the ANM file, layer and script index -- so a callback rule is
+   only correct for a callback that draws *nothing but* that class. Two of New Classic's do not:
+   the bullet callback also draws the items, and the player's shot callback goes on to draw the
+   player. Both are handled by the pool rules below, and a new callback rule is worth only as
+   much as a reading of the whole function that says it draws one thing. */
 struct DimRule { uint32_t draw_callback; int category; };
 /* Some classes share a draw callback with something that must not fade: items are drawn by the
    same callback as the bullets they have to stand out against. Those are matched by the VM's

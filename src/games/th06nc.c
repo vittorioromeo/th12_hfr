@@ -57,6 +57,9 @@ static const struct GuardRange th06nc_guards[] = {
      0x78390  priority 6   stage background layers 2 and 3   (~720)
      0x6a210  priority 9   the player's 80-entry shot pool at player+0x420, stride 0x170,
      0x6a430  priority 11  drawn in two passes filtered on the entry's type word (1 then 2)
+                           -- but 0x6a210 goes on, after its loop, to draw the player itself
+                           (VM at player+0x78c8, fed from pl_position) and the focus sprite at
+                           player+0x7898, so the shots are a pool, not a callback
      0x2b310  priority 12  the 512-entry effect pool, stride 0x198
      0x11940  priority 14  bullets, lasers AND items -- see th06nc_pools
      0x38290  priority 10  enemies          0x3cd20  priority 15  the HUD's digits
@@ -68,8 +71,6 @@ static const struct GuardRange th06nc_guards[] = {
 static const struct DimRule th06nc_dim[] = {
     {0x78290, DIM_BACKGROUND},
     {0x78390, DIM_BACKGROUND},
-    {0x6a210, DIM_PLAYER_SHOTS},
-    {0x6a430, DIM_PLAYER_SHOTS},
     {0x2b310, DIM_EFFECTS},
 };
 /* Items are drawn by the bullet callback, so they can only be told apart by address. The pool
@@ -77,6 +78,11 @@ static const struct DimRule th06nc_dim[] = {
    why the bullet draw reads 0xbaf1d8 (entry 0's VM position field, 0xbaf110 + 0xc8). */
 static const struct DimPool th06nc_pools[] = {
     {0xbaf110, 0x160, 1024, DIM_ITEMS},
+    /* The player's shots (and options): 80 entries of 0x170 at player+0x420, VM at +0x08, so
+       the first is 0x4ff3a0 + 0x428. Keyed by address for the opposite reason to the items --
+       not because the callback draws something that must not fade alongside them, but because
+       it draws the player himself once the loop is done. */
+    {0x4ff7c8, 0x170, 80, DIM_PLAYER_SHOTS},
 };
 
 static const struct FixedGame th06nc_game = {

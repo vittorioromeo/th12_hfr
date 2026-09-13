@@ -1651,8 +1651,24 @@ sprite census from the owner's play session, read against the decompilation, set
 
 The player's shots are one pool of 80 entries at `player+0x420`, stride 0x170, with the VM at
 `+0x08` and a type word at `+0x00`; the two callbacks walk it twice, filtering on that word, so
-the shots draw at two different depths. Neither draws the player itself, which is what makes
-this class safe to fade -- the mistake the owner had already found in TH10-12's x86 rules.
+the shots draw at two different depths.
+
+**This was first shipped as two callback rules, and the owner caught it in a minute: it faded
+the player.** `0x6a210` does not stop when its loop ends. It goes on to draw the player himself
+-- `mov eax,[rdi+0x7730]` (the position `pl_position` names) into `[rdi+0x78c8 + 0xc8]`, the
+player's own sprite VM -- and then the focus sprite at `player+0x7898`. Reading a function's
+loop is not reading the function. So player shots are a pool too:
+
+```text
+0x4ff7c8 + n * 0x170,  n < 80      (player 0x4ff3a0, + 0x420 element, + 0x08 VM)
+```
+
+which ends at `0x506ac8`, eight bytes before `pl_position` at `0x506ad0` and well below the
+player's own VMs at `0x506c38` and `0x506c68`. That is exactly the fault the owner had already
+reported in TH10-12's x86 rules, where fading effects also faded the hitbox, arrived at by a
+different route. The lesson is now in `fixed_game.h` where the rule table is declared: a
+callback rule is worth only as much as a reading of the *whole* function that says it draws
+one thing, and neither of New Classic's two interesting callbacks does.
 
 Two things did not fit the callback-keyed rule table, and both are now handled:
 
