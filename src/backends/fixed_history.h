@@ -9,8 +9,13 @@ struct FixedPose {
     int age, valid;
     float previous[3], current[3];
 };
+/* alpha runs from the previous native position to the current one. `predict` continues past
+   the current one instead, which is what the sub-tick pass needs: once the player is advancing
+   between native ticks, everything drawn beside it has to be where it is now, not where it was
+   a frame ago, or the two disagree by a frame of bullet travel exactly when that matters. */
 static int fixed_pose(struct FixedPose* h, uintptr_t key, uintptr_t script,
-                      uint64_t tick, int age, const float pos[3], double alpha, float out[3]) {
+                      uint64_t tick, int age, const float pos[3], double alpha, int predict,
+                      float out[3]) {
     int finite=1;
     for (int i=0;i<3;++i) finite &= isfinite(pos[i]);
     if (!finite) {h->valid=0;return 0;}
@@ -30,6 +35,7 @@ static int fixed_pose(struct FixedPose* h, uintptr_t key, uintptr_t script,
         memcpy(h->current,pos,sizeof h->current);
     }
     if (!h->valid) return 0;
-    for (int i=0;i<3;++i) out[i]=h->previous[i]+(h->current[i]-h->previous[i])*(float)alpha;
+    const float* from=predict?h->current:h->previous;
+    for (int i=0;i<3;++i) out[i]=from[i]+(h->current[i]-h->previous[i])*(float)alpha;
     return memcmp(out,pos,sizeof h->current)!=0;
 }

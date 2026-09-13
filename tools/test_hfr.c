@@ -127,6 +127,8 @@ int main(int argc,char**argv) {
     patch_begin();uint8_t changed[6]={0};
     uintptr_t addr=id->signatures[0].addr;
     assert(patch_bytes(addr,changed,5,NULL));
+    /* addr+1 is deliberately not a frozen site, so this must be refused. The
+       "INTERNAL ERROR: missing signature" line it prints is that refusal working. */
     assert(!patch_bytes(addr+1,changed,5,NULL));
     assert(!patch_commit());assert(!memcmp((void*)addr,id->signatures[0].bytes,5));
     cfg.subtick_input=1;cfg.d3d9ex=1;

@@ -36,6 +36,7 @@ enum {
     UI_FIXED_LOGIC,           /* read-only: fixed 60 Hz simulation with render interpolation */
     UI_VIDEO_AVAILABLE,       /* read-only: scaler and window controls have a backend */
     UI_SOFTWARE_CURSOR,       /* read-only: game hides the OS cursor; draw one in the menu */
+    UI_SUBTICK_AVAILABLE,     /* read-only: this game's player movement site is described */
     UI_SETTING_COUNT
 };
 

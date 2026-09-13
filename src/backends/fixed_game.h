@@ -18,6 +18,12 @@ struct FixedGame {
     uint32_t sprite_draw, sprite_draw_rotated;
     uint32_t vm_start[2];
     unsigned vm_position, vm_age, vm_script, vm_flags;
+    /* Sub-tick player movement. The motion site is relocated so its per-frame step can be
+       scaled; everything the sub-step pass needs to reproduce that step lives here. */
+    uint32_t player_motion, player_motion_resume;
+    unsigned player_motion_size;
+    uint32_t player, bounds, input_poll, replay_playing;
+    unsigned pl_position, pl_scale, pl_speed_straight, pl_speed_diagonal;
     const struct GuardRange* guards;
     size_t guard_count;
 };

@@ -24,19 +24,25 @@ static void test_clock(void) {
 }
 static void test_history(void) {
     struct FixedPose h={0};float p[3]={10,20,0},out[3];
-    assert(!fixed_pose(&h,1,2,1,1,p,0,out)); /* birth */
+    assert(!fixed_pose(&h,1,2,1,1,p,0,0,out)); /* birth */
     p[0]=20;
-    assert(fixed_pose(&h,1,2,2,2,p,.5,out) && out[0]==15);
-    assert(fixed_pose(&h,1,2,2,2,p,.75,out) && out[0]==17.5f); /* no accumulation */
+    assert(fixed_pose(&h,1,2,2,2,p,.5,0,out) && out[0]==15);
+    assert(fixed_pose(&h,1,2,2,2,p,.75,0,out) && out[0]==17.5f); /* no accumulation */
     assert(p[0]==20);
     p[0]=500;
-    assert(!fixed_pose(&h,1,2,3,3,p,.5,out)); /* teleport */
+    assert(!fixed_pose(&h,1,2,3,3,p,.5,0,out)); /* teleport */
     p[0]=501;
-    assert(!fixed_pose(&h,1,3,4,0,p,.5,out)); /* script replacement */
-    assert(!fixed_pose(&h,1,3,7,3,p,.5,out)); /* absent frames */
-    p[0]=502;assert(fixed_pose(&h,1,3,8,4,p,.5,out));
-    p[0]=503;assert(!fixed_pose(&h,1,3,8,4,p,.5,out)); /* reused VM during draw */
-    p[0]=NAN;assert(!fixed_pose(&h,1,3,9,5,p,.5,out));
+    assert(!fixed_pose(&h,1,3,4,0,p,.5,0,out)); /* script replacement */
+    assert(!fixed_pose(&h,1,3,7,3,p,.5,0,out)); /* absent frames */
+    p[0]=502;assert(fixed_pose(&h,1,3,8,4,p,.5,0,out));
+    p[0]=503;assert(!fixed_pose(&h,1,3,8,4,p,.5,0,out)); /* reused VM during draw */
+    p[0]=NAN;assert(!fixed_pose(&h,1,3,9,5,p,.5,0,out));
+    /* Prediction continues past the current position instead of approaching it. */
+    struct FixedPose g={0};float q[3]={0,0,0},o[3];
+    assert(!fixed_pose(&g,9,9,1,1,q,0,1,o));
+    q[0]=10;assert(fixed_pose(&g,9,9,2,2,q,.5,0,o) && o[0]==5);
+    assert(fixed_pose(&g,9,9,2,2,q,.5,1,o) && o[0]==15);
+    assert(fixed_pose(&g,9,9,2,2,q,0,1,o)==0); /* at phase 0 prediction is the native position */
     ticks=20;
     struct FixedPose* slot=history_slot(1234,1);slot->key=1234;slot->valid=1;slot->tick=ticks;
     reset_vm((void*)1234);assert(!slot->key && !slot->valid);
@@ -54,7 +60,7 @@ static void test_patches(const char* output) {
     assert(!memcmp((void*)(base+game->update_calls[0]),site_expected(base+game->update_calls[0],5),5));
     bad[0]^=1;
     VirtualFree(relay_page,0,MEM_RELEASE);relay_page=NULL;relay_used=0;
-    assert(prepare_patches());assert(g_patch_count==6);
+    assert(prepare_patches());assert(g_patch_count==7);
     for (size_t i=0;i<g_patch_count;++i) assert(!memcmp((void*)g_patches[i].addr,g_patches[i].before,g_patches[i].size));
     assert(patch_commit());
     for (size_t i=0;i<g_patch_count;++i) assert(!memcmp((void*)g_patches[i].addr,g_patches[i].after,g_patches[i].size));
@@ -69,6 +75,28 @@ static void test_patches(const char* output) {
     VirtualFree(relay_page,0,MEM_RELEASE);VirtualFree((void*)base,0,MEM_RELEASE);
     puts("PASS: actual x64 patch transaction, failed preflight leaves code intact, relays emitted");
 }
+/* The sub-tick pass: slices sum to one frame, and it stands aside when it must. */
+static void test_subtick(void) {
+    struct SubtickPlayer s={0};double total=0;
+    for (int i=1;i<=6;++i) total+=subtick_slice(&s,i/6.0,1);
+    assert(fabs(total-1.0)<1e-12);
+    assert(subtick_slice(&s,1.0,1)==0);        /* time did not advance */
+    assert(subtick_slice(&s,1.5,0)==0);        /* not armed: the slice is consumed, not applied */
+    assert(subtick_slice(&s,2.0,1)==0.5);      /* and the next one starts from there */
+    assert(subtick_slice(&s,90.0,1)==0);       /* a stall belongs to the native tick */
+    assert(subtick_slice(&s,90.5,1)==0.5);
+    const float straight[2]={4,2},diagonal[2]={3,1.5f};float x,y;
+    subtick_direction(0,straight,diagonal,&x,&y);assert(x==0&&y==0);
+    subtick_direction(SUBTICK_UP,straight,diagonal,&x,&y);assert(x==0&&y==-4);
+    subtick_direction(SUBTICK_DOWN|SUBTICK_FOCUS,straight,diagonal,&x,&y);assert(x==0&&y==2);
+    subtick_direction(SUBTICK_LEFT,straight,diagonal,&x,&y);assert(x==-4&&y==0);
+    subtick_direction(SUBTICK_LEFT|SUBTICK_RIGHT,straight,diagonal,&x,&y);assert(x==4); /* right wins */
+    subtick_direction(SUBTICK_UP|SUBTICK_DOWN,straight,diagonal,&x,&y);assert(y==-4);   /* up wins */
+    subtick_direction(SUBTICK_UP|SUBTICK_LEFT,straight,diagonal,&x,&y);assert(x==-3&&y==-3);
+    subtick_direction(SUBTICK_DOWN|SUBTICK_RIGHT|SUBTICK_FOCUS,straight,diagonal,&x,&y);assert(x==1.5f&&y==1.5f);
+    assert(subtick_clamp(5,10,100)==10);assert(subtick_clamp(200,10,100)==110);assert(subtick_clamp(50,10,100)==50);
+    puts("PASS: sub-tick slices sum to one frame, stand aside when unarmed or stalled, direction and clamp");
+}
 int main(int argc,char** argv) {
-    assert(argc==2);game=fixed_games[0];test_clock();test_history();test_patches(argv[1]);return 0;
+    assert(argc==2);game=fixed_games[0];test_clock();test_history();test_subtick();test_patches(argv[1]);return 0;
 }

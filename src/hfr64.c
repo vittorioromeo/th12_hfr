@@ -11,6 +11,7 @@
 #include "../third_party/minhook/include/MinHook.h"
 #include "backends/fixed_history.h"
 #include "backends/fixed_clock.h"
+#include "backends/subtick.h"
 #include "fixed_identity.h"
 #include "ui/ui_api.h"
 void hfr_d3d11_overlay(void* swap);
@@ -20,19 +21,26 @@ static uintptr_t base;
 static HMODULE module;
 static FILE* logfile;
 static char ini[MAX_PATH];
-static int fps=0, rate=60, interpolate=1, vsync=0, debug=0;
+static int fps=0, rate=60, interpolate=1, vsync=0, debug=0, subtick=0;
 static int major=1, guard_failed=0, depth=0;
 static uint64_t ticks, frames, samples, blends;
 static double phase, frequency, deadline;
 static struct FixedClock logic_clock;
 static HANDLE timer;
 static struct FixedPose history[16384];
+/* These three live in the relay page so the relocated movement site can reach them with a
+   RIP-relative displacement; the DLL's own globals may be further than 2 GB from the game. */
+static float* player_factor; static unsigned char* player_ran;
+static struct SubtickPlayer subtick_player;
+static uint64_t subtick_moves, subtick_polls; static double subtick_poll_max;
 typedef uintptr_t (*UpdateFn)(void*);
+typedef uint32_t (*PollFn)(uintptr_t);
 typedef void (*DrawFn)(void);
 typedef uintptr_t (*SpriteFn)(void*,void*,uintptr_t);
 static SpriteFn sprite_original, rotated_original;
 static SpriteFn vm_start_original[2];
 static void set_rate(void);
+static int subtick_active(void);
 static void report(const char* fmt, ...) {
     if (!logfile) return;
     va_list ap; va_start(ap,fmt); vfprintf(logfile,fmt,ap); va_end(ap);
@@ -58,7 +66,37 @@ static void set_rate(void) {
     if (guard_failed) rate=60;
     deadline=0;
     memset(history,0,sizeof history);
-    LOG("rate=%d, fixed simulation=60, interpolate=%d, vsync=%d",rate,interpolate,vsync);
+    LOG("rate=%d, fixed simulation=60, interpolate=%d, subtick=%d, vsync=%d",rate,interpolate,subtick,vsync);
+}
+/* Sub-tick player movement is a gameplay change, so it stays off unless asked for, and
+   steps aside whenever its premises do not hold: at 60 Hz there is nothing between frames,
+   during replay playback the input word comes from the file rather than the device, and a
+   failed draw guard already means the frame structure is not understood. */
+static int subtick_active(void) {
+    return subtick && rate > 60 && player_factor && !guard_failed &&
+           !*(const unsigned char*)(base + game->replay_playing);
+}
+/* One slice of the current frame's player motion, using input polled at this instant. */
+static void subtick_move(double tau) {
+    double dt = subtick_slice(&subtick_player, tau, subtick_active() && subtick_player.armed);
+    if (dt <= 0.0) return;
+    double t0 = now();
+    uint32_t input = ((PollFn)(base + game->input_poll))(0);
+    double cost = (now() - t0) / frequency;
+    if (cost > subtick_poll_max) subtick_poll_max = cost;
+    ++subtick_polls;
+    unsigned char* player = (unsigned char*)(base + game->player);
+    const float* straight = (const float*)(player + game->pl_speed_straight);
+    const float* diagonal = (const float*)(player + game->pl_speed_diagonal);
+    float dx, dy;
+    subtick_direction(input, straight, diagonal, &dx, &dy);
+    if (dx == 0 && dy == 0) return;
+    float* position = (float*)(player + game->pl_position);
+    const float* scale = (const float*)(player + game->pl_scale);
+    const float* bounds = (const float*)(base + game->bounds);
+    position[0] = subtick_clamp(position[0] + dx * scale[0] * (float)dt, bounds[0], bounds[2]);
+    position[1] = subtick_clamp(position[1] + dy * scale[1] * (float)dt, bounds[1], bounds[3]);
+    ++subtick_moves;
 }
 /* Scheduling uses elapsed time: a blocked Present must not slow the simulation just
    because the requested presentation rate exceeds the actual display rate. At most
@@ -68,9 +106,16 @@ static uintptr_t update_first(void* result) {
     major=fixed_clock_step(&logic_clock,now(),frequency,rate,&phase);
     if (major) {
         ++ticks;
+        /* 1.0 reproduces the original instruction exactly, so with the feature off the
+           relocated site is bit-identical to the game's own code. */
+        if (player_factor) *player_factor=subtick_active()?0.0f:1.0f;
+        if (player_ran) *player_ran=0;
         uintptr_t r=((UpdateFn)(base+game->update))(result);
+        subtick_player.armed=player_ran && *player_ran;
+        subtick_move((double)ticks+phase);
         return (unsigned char)r; /* AH=0 is the post-update relay's normal path. */
     }
+    subtick_move((double)ticks+phase);
     return 0x100; /* AL=0 (normal), AH=1 (skip native audio/fast-forward bookkeeping). */
 }
 static uintptr_t update_extra(void* result) {
@@ -128,7 +173,7 @@ static uintptr_t sprite(SpriteFn original,void* manager,void* vm,uintptr_t flags
     memcpy(&age,p+game->vm_age,sizeof age);
     struct FixedPose* h=history_slot((uintptr_t)vm,1);
     ++samples;
-    int changed=h && fixed_pose(h,(uintptr_t)vm,script,ticks,age,saved,phase,out);
+    int changed=h && fixed_pose(h,(uintptr_t)vm,script,ticks,age,saved,phase,subtick_active(),out);
     if (changed) {memcpy(p+game->vm_position,out,sizeof out);++blends;}
     ++depth;
     uintptr_t result=original(manager,vm,flags);
@@ -158,14 +203,18 @@ static int wait_frame(void) {
             else SwitchToThread();
         } else YieldProcessor();
     }
-    static double last; static uint64_t ft,ut,st,bt;
+    static double last; static uint64_t ft,ut,st,bt,pt;
     t=now();
-    if (!last) {last=t;ft=frames;ut=ticks;st=samples;bt=blends;}
+    if (!last) {last=t;ft=frames;ut=ticks;st=samples;bt=blends;pt=subtick_polls;}
     if (t-last>=frequency*2) {
         double seconds=(t-last)/frequency;
         LOG("stats seconds=%.3f presents=%.2f updates=%.2f frames=%llu ticks=%llu samples=%llu blends=%llu guard=%s api=%d",seconds,
             (frames-ft)/seconds,(ticks-ut)/seconds,(unsigned long long)frames,(unsigned long long)ticks,
             (unsigned long long)(samples-st),(unsigned long long)(blends-bt),guard_failed?"FAILED":"ok",*(int*)(base+game->graphics_api));
+        if (subtick_polls) LOG("subtick %s: %llu input polls (%.2f/s), longest %.2f ms, %llu player moves",
+            subtick_active()?"on":"standing by",(unsigned long long)subtick_polls,(subtick_polls-pt)/seconds,
+            subtick_poll_max*1000.0,(unsigned long long)subtick_moves);
+        pt=subtick_polls;subtick_poll_max=0;
         last=t;ft=frames;ut=ticks;st=samples;bt=blends;
     }
     return !major;
@@ -221,6 +270,35 @@ static int prepare_patches(void) {
     if (!rel32(p+21,(uintptr_t)p+25,base+game->post_update_resume)) return 0;
     memset(b,0x90,12);b[0]=0xe9;
     if (!rel32(b+1,base+game->post_update+5,(uintptr_t)p) || !patch_bytes(base+game->post_update,b,12,NULL)) return 0;
+    /* Player movement. The two multiplies that turn a held direction into this frame's step
+       gain a factor the sub-tick pass owns; the site is relocated whole so the store between
+       them -- the facing direction the animation triggers already consumed -- keeps its place.
+       A byte store records that the site ran, which is how the pass knows the player is in a
+       state that moves at all: paused, dying and between stages it simply never executes. */
+    if (game->player_motion && relay_used+80<=4096) {
+        unsigned char* data=relay_page+relay_used;relay_used+=16;
+        player_factor=(float*)data;*player_factor=1.0f;
+        player_ran=data+4;*player_ran=0;
+        const unsigned char* site=(const unsigned char*)(base+game->player_motion);
+        unsigned char* q=relay_page+relay_used;relay_used+=64;size_t k=0;
+        memcpy(q+k,site,8);k+=8;                                        /* mulss xmm6,[rdi+scale.x] */
+        q[k]=0xf3;q[k+1]=0x0f;q[k+2]=0x59;q[k+3]=0x35;                  /* mulss xmm6,[rip+factor]  */
+        if (!rel32(q+k+4,(uintptr_t)(q+k+8),(uintptr_t)player_factor)) return 0;
+        k+=8;
+        memcpy(q+k,site+8,8);k+=8;                                      /* movss [rdi+facing],xmm7  */
+        memcpy(q+k,site+16,8);k+=8;                                     /* mulss xmm7,[rdi+scale.y] */
+        q[k]=0xf3;q[k+1]=0x0f;q[k+2]=0x59;q[k+3]=0x3d;                  /* mulss xmm7,[rip+factor]  */
+        if (!rel32(q+k+4,(uintptr_t)(q+k+8),(uintptr_t)player_factor)) return 0;
+        k+=8;
+        q[k]=0xc6;q[k+1]=0x05;q[k+6]=1;                                 /* mov byte [rip+ran],1     */
+        if (!rel32(q+k+2,(uintptr_t)(q+k+7),(uintptr_t)player_ran)) return 0;
+        k+=7;
+        q[k]=0xe9;                                                      /* jmp back                 */
+        if (!rel32(q+k+1,(uintptr_t)(q+k+5),base+game->player_motion_resume)) return 0;
+        memset(b,0x90,game->player_motion_size);b[0]=0xe9;
+        if (!rel32(b+1,base+game->player_motion+5,(uintptr_t)q) ||
+            !patch_bytes(base+game->player_motion,b,game->player_motion_size,NULL)) return 0;
+    }
     DWORD old;
     if (!VirtualProtect(relay_page,4096,PAGE_EXECUTE_READ,&old)) return 0;
     FlushInstructionCache(GetCurrentProcess(),relay_page,4096);return 1;
@@ -255,6 +333,7 @@ __declspec(dllexport) DWORD WINAPI hfr_start(void* unused) {
     /* Experimental backend uses its own opt-out to avoid changing x86 defaults. */
     vsync=GetPrivateProfileIntA("fixed60","vsync",0,ini)!=0;
     interpolate=GetPrivateProfileIntA("fixed60","interpolate",1,ini)!=0;
+    subtick=GetPrivateProfileIntA("fixed60","subtick",0,ini)!=0;
     debug=GetPrivateProfileIntA("hfr","debug",0,ini)!=0;
     menu_key_code=GetPrivateProfileIntA("video","menu_key",VK_F11,ini);
     if (menu_key_code<0 || menu_key_code>255) menu_key_code=VK_F11;

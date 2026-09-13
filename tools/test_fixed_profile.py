@@ -4,6 +4,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import os
 import tempfile
 import pefile
 
@@ -24,15 +25,21 @@ for rva, size, values in re.findall(r"\{(0x[0-9a-f]+), (\d+), \{([^}]+)\}\}", ta
     count += 1
 assert count >= 14
 helpers = [root / "build/touhou_hfr.exe", root / "build/touhou_hfr64.exe"]
+# The launchers are Windows binaries; away from Windows, run them the way the rest of the
+# suite does so this check is not silently skipped on a development machine.
+runner = [] if os.name == "nt" else ["wine"]
+def check(helper, argument):
+    return subprocess.run(runner + [str(helper), "--check", str(argument)],
+                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode
 for helper in helpers:
-    assert subprocess.run([str(helper), "--check", str(exe)]).returncode == 0
-    assert subprocess.run([str(helper), "--check", str(root / "README.md")]).returncode == 2
+    assert check(helper, exe) == 0
+    assert check(helper, root / "README.md") == 2
 with tempfile.TemporaryDirectory(prefix="hfr-profile-test-") as directory:
     altered = Path(directory) / "th06nc.exe"
     mutation = bytearray(data)
     mutation[pe.get_offset_from_rva(0x45D82)] ^= 1
     altered.write_bytes(mutation)
     for helper in helpers:
-        assert subprocess.run([str(helper), "--check", str(altered)]).returncode == 2
+        assert check(helper, altered) == 2
 assert hashlib.sha256(exe.read_bytes()).hexdigest() == expected_hash
 print(f"PASS: {count} x64 signatures, both launcher checks, modified/non-PE rejection, original unchanged")

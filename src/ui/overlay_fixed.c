@@ -7,6 +7,8 @@ int hfr_ui_get(int id) {
     case UI_FPS: return fps;
     case UI_VSYNC: return vsync;
     case UI_ENEMY_INTERP: return interpolate;
+    case UI_SUBTICK_INPUT: return subtick;
+    case UI_SUBTICK_AVAILABLE: return game->player_motion!=0;
     case UI_DEBUG: return debug;
     default: return 0;
     }
@@ -16,6 +18,7 @@ void hfr_ui_set(int id,int value) {
     case UI_FPS: fps=value<=0?0:(value<60?60:(value>1000?1000:value));pending_rate=1;break;
     case UI_VSYNC: vsync=!!value;break;
     case UI_ENEMY_INTERP: interpolate=!!value;memset(history,0,sizeof history);break;
+    case UI_SUBTICK_INPUT: subtick=!!value;memset(history,0,sizeof history);break;
     case UI_DEBUG: debug=!!value;break;
     }
 }
@@ -26,11 +29,12 @@ static void save_int(const char* section,const char* key,int value) {
 void hfr_ui_save(void) {
     save_int("hfr","fps",fps);save_int("hfr","debug",debug);
     save_int("fixed60","vsync",vsync);save_int("fixed60","interpolate",interpolate);
+    save_int("fixed60","subtick",subtick);
 }
 void hfr_ui_status(char* out,int n) {
     snprintf(out,n,"%s | %d FPS target | 60 Hz gameplay%s",game->name,rate,guard_failed?" | DRAW GUARD FAILED":"");
 }
-void hfr_ui_scale_info(char* out,int n) {snprintf(out,n,"D3D11 | native game scaling | position interpolation prototype");}
+void hfr_ui_scale_info(char* out,int n) {snprintf(out,n,"D3D11 | native game scaling | %s",subtick_active()?"sub-tick player movement":"position interpolation");}
 int hfr_ui_menu_key(void) {return menu_key_code;}
 int hfr_ui_simulation_locked(void) {return 0;} /* Presentation never reconfigures native simulation. */
 int hfr_ui_simulation_patched(void) {return 1;}

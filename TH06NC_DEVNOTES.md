@@ -766,4 +766,150 @@ the same inputs/replays; cover all characters, shots, bosses, lasers, bombs, dea
 items, pause, replay recording/playback and fast-forward. Explicitly test resizing,
 fullscreen, alt-tab and multiple monitors. Expand the state guard and audit
 draw-triggered changes. Next extend visual coverage and port D3D11 video using shared
-shader/menu code. Fractional gameplay and high-rate input remain a separate project.
+shader/menu code. Fractional gameplay of the world at large remains a separate project;
+the player's own motion and input were taken to the display rate in section 14, which
+also records why the same approach does not extend to bullets.
+
+## 14. Sub-tick player movement (2026-09-13)
+
+### Why the player, and only the player, first
+
+Section 7 established that this engine has no fractional-speed float: motion and discrete
+events share one callback, and every timer is an integer increment. Running the update list
+N times with a scaled speed — the TH10–13 design — would therefore run scripts, collisions,
+spawns and RNG N times as well. That remains true and is still the blocker for general
+sub-stepping.
+
+The player is the one object where that does not apply. Its per-frame displacement is
+produced by a single site, is derived only from the input word and four speed constants,
+and nothing else in the frame depends on *when* within the frame it happened — the hit test,
+the shot origin and the item magnet all read the player position once, at the native tick,
+and they still do. So the player's motion can be taken over completely without touching a
+single discrete event, which is what this section implements.
+
+What it buys, concretely: input is sampled once per drawn frame rather than once per 60 Hz
+frame, and a direction change is acted on within the frame it is made. At 360 Hz that is
+six samples per frame and up to 2.8 ms of input latency instead of 16.7 ms. Holding one
+direction still covers exactly the stock distance per 60 Hz frame.
+
+What it does not buy: enemies, bullets, lasers, items, effects, scripts, collisions, graze,
+shot cadence and RNG all still run at exactly 60 Hz, unchanged. This is not general
+high-rate gameplay, and it is not a step toward it that can be extended object by object —
+see "Why bullets cannot follow" below.
+
+### The site and the accounting
+
+| RVA | Meaning | Evidence |
+| --- | --- | --- |
+| `0x69388`, 24 bytes | `mulss xmm6,[rdi+0x7710]; movss [rdi+0x78a0],xmm7; mulss xmm7,[rdi+0x7714]` — the two multiplies that turn a held direction into this frame's step | static; relocated whole |
+| `0x693a0` | resume: `addss` of the products into the position, then the native clamp | static |
+| `0x4ff3a0` | player object | section 7 |
+| `+0x7710`, `+0x7714` | per-axis step scale the game applies to the chosen speed | static |
+| `+0x7730`, `+0x7734` | position X, Y | section 7 |
+| `+0x789c`, `+0x78a0` | facing, stored *before* both multiplies and consumed by the animation triggers | static |
+| `+0x7860`, `+0x7864` | straight speed, unfocused and focused | static |
+| `+0x7868`, `+0x786c` | diagonal speed, unfocused and focused | static |
+| `0x4ff0e0` | playfield clamp: min X, min Y, width, height as four floats | static |
+| `0x12be0` | the device input poll, returning the input word in EAX | static; sole caller `0x79c70` |
+| `0x4f27b2` | non-zero while a replay is driving the input word | static, at `0x6ba40` |
+
+Input bits confirmed at the movement switch: `0x04` focus, `0x10` up, `0x20` down,
+`0x40` left, `0x80` right. Right beats left and up beats down, exactly as the native
+switch orders them; focus and diagonal select one of the four speeds above.
+
+The relocated site gains `mulss xmm<n>,[rip+factor]` after each of the two multiplies, plus
+a `mov byte [rip+ran],1`. Both operands live in the relay page, which is allocated within
+rel32 reach of the image, because the DLL's own globals may be further away than that. The
+relay is a leaf: it stores, it never touches RSP or a nonvolatile register, and it jumps
+back to `0x693a0`. **With the feature off the factor is `1.0f`, so the relocated site is
+arithmetically identical to the original instruction stream and the game is bit-identical
+to stock.** That is the property the default depends on.
+
+Time is counted in frames as `tau = completed native ticks + phase`. On every presented
+iteration the pass applies `(tau_now - tau_last) x displacement(input polled now)` and
+advances `tau_last`, whether or not it is in charge; when it is in charge the native factor
+is `0.0f` and the native step applies nothing. Between two native ticks the slices
+therefore sum to exactly `1.0` frames of time, and the remainder of a frame is applied at
+the next native tick, after the native update, with input polled there. Turning the feature
+on or off mid-play costs at most one frame of player movement and cannot double-apply,
+because `tau_last` tracks the clock in both states.
+
+The pass stands aside, leaving the native step at `1.0f`, whenever its premises fail:
+the feature is off, the presentation rate is 60, a replay is driving the input word, the
+draw guard has already failed, or the movement site did not run on the previous native
+tick. That last condition is what makes pause, menus, dialogue, death and stage
+transitions safe without enumerating them: the byte the relay stores is set only when the
+game itself decided to move the player, so if the game stops moving the player, so does
+the pass, one frame later.
+
+### Sprites are predicted, not interpolated, while it is on
+
+Interpolation draws every sprite one native frame behind, which is self-consistent while
+everything on screen is equally late. Once the player is authoritative and current, a bullet
+drawn a frame behind is a frame of bullet travel away from where it really is, exactly at
+the distance where that matters. So while sub-tick movement is on, `fixed_pose` continues
+past the current native position instead of approaching it (`predict`), which for an object
+whose velocity only changes at native ticks is the position sub-stepping would have
+produced. The player's own VM is unaffected either way: its position changes within a
+native tick, which the history already treats as a reason to leave it alone.
+
+This is not offered as a separate user setting. It is the partner of sub-tick movement and
+follows it; with sub-tick movement off, the interpolation path is exactly as section 13
+left it.
+
+### Replays
+
+The native replay stores one input word per 60 Hz frame. Sub-tick movement puts the player
+somewhere that word cannot describe, so a replay recorded with it on will not play back
+faithfully — the divergence is real, not cosmetic. The feature disables itself while
+`0x4f27b2` is set, so native and previously recorded replays play back correctly; it does
+not and cannot make its own recordings faithful. Recording a sub-tick run honestly would
+mean carrying the sub-frame input stream in a sidecar and reading it back on playback,
+which the replay format work in section 8 has not reached. Until then the setting is off by
+default, the menu says so, and score runs should leave it off.
+
+### Why bullets cannot follow
+
+The obvious next step — sub-step bullets the same way — does not work, and the reason is
+worth recording so it is not attempted twice. In `0x10870` the per-bullet motion is
+immediately followed, in the same loop body, by the off-screen cull, the player hit test
+and the graze test, all reading the position the motion just produced. Scaling the native
+motion to a fraction so a sub-step pass can own the rest would run those tests against a
+bullet that has only partly moved, which changes when bullets kill and graze. Keeping the
+native motion whole and adding sub-steps on top would double the travel. The only correct
+version sub-steps the collision too, which is a gameplay change that needs its own design
+and its own validation, not an extension of this one. The same argument applies to lasers
+and to the item magnet.
+
+Recorded for a future attempt: bullet states and their per-frame motion are
+1 (`pos += vel`), 2, 3 and 4 (`pos += vel/2`, `/2.5`, `/3`, at `0x110f0` onward) and 5
+(`pos += vel*0.5`); the pool is 640 entries of `0x620` bytes at manager `0x3ec2a0 + 8`,
+velocity `+0x08`, position `+0x30`, state `+0x44`, and the 64-entry laser loop follows it.
+
+### Configuration and validation
+
+```ini
+[fixed60]
+subtick=0     ; sub-tick player movement; inert at 60 Hz and during replay playback
+```
+
+F11 → Timing toggles it live and explains the replay consequence; the interpolation toggle
+is disabled while it is on, because sub-tick movement supplies the smoothing. The stats
+line gains `subtick on|standing by: N input polls (rate), longest X ms, M player moves` —
+the poll cost is logged because the device poll is the game's own and is called once per
+drawn frame; if it turns out to be expensive at high rates, that line is where it will show.
+
+`test64.sh` / `test64.ps1` cover: slices summing to one frame and standing aside when
+unarmed, stalled or moving backwards; the full direction table including right-over-left,
+up-over-down, focus and both diagonals; the clamp; prediction against interpolation in the
+pose history; and the emitted movement relay executed in Unicorn, checking that the factor
+scales both axes, that the facing store survives, that the ran byte is set and that no
+register or stack slot is disturbed. The patch transaction test now commits seven patches.
+There is now a POSIX `build64.sh`/`test64.sh` as well, and the profile test runs the
+launchers under Wine when the host is not Windows.
+
+**Not validated:** any of this in the running game. It has never been played. The first
+things to check are that the player still stops at the playfield edges, that focus and
+diagonal speeds feel stock, that holding a direction for a second covers the same distance
+as with the setting off, that pause/unpause/death/bombs do not displace the player, and
+that a replay recorded with the setting *off* still plays back byte-for-byte.

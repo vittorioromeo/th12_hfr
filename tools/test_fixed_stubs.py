@@ -6,6 +6,7 @@ from unicorn import Uc, UC_ARCH_X86, UC_MODE_64, UC_HOOK_CODE
 from unicorn.x86_const import (
     UC_X86_REG_RAX, UC_X86_REG_RBX, UC_X86_REG_RDI, UC_X86_REG_RSI,
     UC_X86_REG_R13, UC_X86_REG_RIP, UC_X86_REG_RSP,
+    UC_X86_REG_XMM6, UC_X86_REG_XMM7,
 )
 
 plan = json.load(open(sys.argv[1], encoding="utf-8"))
@@ -63,3 +64,35 @@ for minor in (False, True):
     assert uc.reg_read(UC_X86_REG_RSP) == 0x100800
 
 print("PASS: emitted x64 post-update and wait relays, both branches, registers and stack balance")
+
+# The player movement relay: the two per-frame multiplies gain the sub-tick factor, the
+# facing store and the resume are unchanged, and it must clobber nothing.
+PLAYER_MOTION, PLAYER_RESUME = 0x69388, 0x693a0
+SCALE_X, SCALE_Y, FACING_Y = 0x7710, 0x7714, 0x78a0
+for factor, expect_flag in ((1.0, 1), (0.0, 1)):
+    uc, put = machine()
+    player = 0x200000
+    put(player, bytes(0x8000))
+    uc.mem_write(player + SCALE_X, struct.pack("<f", 3.0))
+    uc.mem_write(player + SCALE_Y, struct.pack("<f", 5.0))
+    # The factor and the "site ran" byte live in the first 16 bytes of the relay page.
+    uc.mem_write(relay + 16 * 5 + 32, struct.pack("<fI", factor, 0))
+    uc.reg_write(UC_X86_REG_RDI, player)
+    uc.reg_write(UC_X86_REG_RBX, 0xbeef)
+    uc.reg_write(UC_X86_REG_RSI, 0xcafe)
+    for register, value in ((UC_X86_REG_XMM6, 2.0), (UC_X86_REG_XMM7, 7.0)):
+        uc.reg_write(register, struct.unpack("<I", struct.pack("<f", value))[0])
+    uc.emu_start(base + PLAYER_MOTION, base + PLAYER_RESUME, count=30)
+    assert uc.reg_read(UC_X86_REG_RIP) == base + PLAYER_RESUME
+    x = struct.unpack("<f", struct.pack("<I", uc.reg_read(UC_X86_REG_XMM6) & 0xFFFFFFFF))[0]
+    y = struct.unpack("<f", struct.pack("<I", uc.reg_read(UC_X86_REG_XMM7) & 0xFFFFFFFF))[0]
+    assert x == 2.0 * 3.0 * factor, (x, factor)
+    assert y == 7.0 * 5.0 * factor, (y, factor)
+    # The facing value the animation triggers consume is stored before either multiply.
+    assert struct.unpack("<f", uc.mem_read(player + FACING_Y, 4))[0] == 7.0
+    assert uc.mem_read(relay + 16 * 5 + 36, 1)[0] == expect_flag
+    assert uc.reg_read(UC_X86_REG_RDI) == player
+    assert uc.reg_read(UC_X86_REG_RBX) == 0xbeef and uc.reg_read(UC_X86_REG_RSI) == 0xcafe
+    assert uc.reg_read(UC_X86_REG_RSP) == 0x100800
+
+print("PASS: emitted player movement relay scales the step, keeps facing, records the site and clobbers nothing")

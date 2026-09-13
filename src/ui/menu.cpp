@@ -332,9 +332,27 @@ void draw_timing_section(void) {
         ImGui::EndCombo();
     }
     if (hfr_ui_get(UI_FIXED_LOGIC)) {
-        help("How often a picture is drawn. Gameplay and input stay at 60 Hz.");
+        bool subtick = hfr_ui_get(UI_SUBTICK_INPUT) != 0;
+        help("How often a picture is drawn. Enemies, bullets and scripts still run at 60 Hz.");
+        ImGui::BeginDisabled(!hfr_ui_get(UI_SUBTICK_AVAILABLE));
+        toggle("Sub-tick player movement", UI_SUBTICK_INPUT);
+        ImGui::EndDisabled();
+        ImGui::TextWrapped("Polls your input and moves the player once per drawn frame instead of once per 60 Hz frame, so a "
+                           "direction change takes effect within the frame you make it. Holding one direction still travels "
+                           "exactly the stock distance per 60 Hz frame. Everything else -- collision, shooting, scripts, "
+                           "enemies and bullets -- still runs at 60 Hz, and sprites are predicted forward instead of "
+                           "interpolated back so they line up with where the player really is.");
+        ImGui::TextWrapped("This changes where the player is at each 60 Hz boundary, so a replay recorded with it on will "
+                           "not play back faithfully. It switches itself off during replay playback. Turn it off for score "
+                           "runs and for anything you intend to submit.");
+        ImGui::Spacing();
+        ImGui::BeginDisabled(subtick);
         toggle("Interpolate sprite positions", UI_ENEMY_INTERP);
-        ImGui::TextWrapped("Experimental: interpolates sprite positions between native frames. Adds up to one 60 Hz frame of visual delay. Collision, shooting, input and replays use the native simulation. Rotation, animation frames, lasers and 3D backgrounds are not interpolated yet.");
+        ImGui::EndDisabled();
+        ImGui::TextWrapped(subtick
+            ? "Sub-tick movement supplies the smoothing while it is on."
+            : "Smooths sprite motion between native frames, at up to one 60 Hz frame of visual delay. Rotation, "
+              "animation frames, lasers and 3D backgrounds are not smoothed yet.");
         ImGui::EndDisabled();
         return;
     }
