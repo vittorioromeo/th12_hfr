@@ -1,8 +1,13 @@
 #pragma once
 #include <stdint.h>
 #include <stddef.h>
+#include "../dim_classes.h"
 struct FixedSignature { uint32_t rva; unsigned char size; unsigned char bytes[32]; };
 struct GuardRange { uint32_t rva, bytes, count, stride; };
+/* Which dimming class a sprite belongs to, by the draw callback that is running. Coarser than
+   the x86 rules (which also match the ANM file, layer and script index) because one New Classic
+   callback has not yet been seen drawing two classes. */
+struct DimRule { uint32_t draw_callback; int category; };
 struct FixedGame {
     const char* name;
     const char* executable;
@@ -21,6 +26,13 @@ struct FixedGame {
     uint32_t vm_start[2];
     unsigned vm_position, vm_age, vm_script, vm_flags;
     unsigned vm_rotation, vm_scale;   /* radians x/y/z, and the x/y size multipliers */
+    /* The VM's packed draw colour: three colour bytes then alpha in the top byte, copied
+       verbatim into the global the draw path reads. Dimming scales it in place. */
+    unsigned vm_colour;
+    /* The draw runner's per-node dispatch, relocated so the runtime knows which callback is
+       drawing; that is what a sprite is classified by. Same shape as the update runner's. */
+    uint32_t draw_dispatch, draw_dispatch_resume; unsigned draw_dispatch_size;
+    const struct DimRule* dim_rules; size_t dim_rule_count;
     uint32_t fps_counter;             /* the game's own presented-frame count for its readout */
     uint32_t update_list, draw_list;  /* the two list sentinels, for the node diagnostic */
     unsigned node_priority, node_callback, node_next, node_argument;

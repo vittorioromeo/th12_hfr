@@ -229,3 +229,36 @@ for minor in (0, 1):
     assert uc.reg_read(UC_X86_REG_RSP) == 0x100800
 
 print("PASS: emitted projectile relays scale motion, and gate the switch, counters, timers and lasers")
+
+# --- the draw dispatch records which node's callback is running -----------------------------
+# The relay must record the node, run the callback with the stack the callback always saw,
+# forget the node afterwards, and leave the return value alone for the `cmp eax,2` that follows.
+NODE = 0x500000
+CALLBACK = 0x520000
+for ret in (1, 2):
+    uc, put = machine()
+    put(NODE, bytes(0x40))
+    put(CALLBACK, b"\xc3")                       # the callback: ret
+    put(plan["draw_node"] & ~4095, bytes(4096))
+    uc.mem_write(NODE + 8, struct.pack("<Q", CALLBACK))
+    uc.mem_write(NODE + 0x38, struct.pack("<Q", 0xABCDEF))
+    seen = {}
+    def watch(u, address, size, unused):
+        if address == CALLBACK:
+            seen["node"] = struct.unpack("<Q", u.mem_read(plan["draw_node"], 8))[0]
+            seen["rcx"] = u.reg_read(UC_X86_REG_RCX)
+            seen["rsp"] = u.reg_read(UC_X86_REG_RSP)
+            u.reg_write(UC_X86_REG_RAX, ret)
+    uc.hook_add(UC_HOOK_CODE, watch)
+    uc.reg_write(UC_X86_REG_RBX, NODE)
+    uc.emu_start(base + 0x3c030, base + 0x3c03a, count=40)
+    assert uc.reg_read(UC_X86_REG_RIP) == base + 0x3c03a
+    assert seen["node"] == NODE, seen              # recorded while the callback runs
+    assert seen["rcx"] == 0xABCDEF, seen           # the node's argument still reaches it
+    assert seen["rsp"] == 0x1007F8, seen           # one return address, as the original call
+    assert struct.unpack("<Q", uc.mem_read(plan["draw_node"], 8))[0] == 0   # forgotten after
+    assert uc.reg_read(UC_X86_REG_RAX) == ret      # the dispatch's own return value survives
+    assert uc.reg_read(UC_X86_REG_RBX) == NODE
+    assert uc.reg_read(UC_X86_REG_RSP) == 0x100800
+
+print("PASS: emitted draw dispatch records the running node, preserves the callback's argument, stack and result")

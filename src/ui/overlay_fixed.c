@@ -11,6 +11,18 @@ int hfr_ui_get(int id) {
     case UI_SUBSTEP: return substep;
     case UI_SUBTICK_AVAILABLE: return game->player_motion!=0;
     case UI_SUBSTEP_AVAILABLE: return game->projectile!=0;
+    case UI_DIM_AVAILABLE: return game->dim_rule_count!=0 && game->vm_colour!=0;
+    case UI_DIM_CLASSES: {
+        int mask=0;
+        for (size_t i=0;i<game->dim_rule_count;++i) {
+            int c=game->dim_rules[i].category;
+            if (c>=0 && c<DIM_COUNT) mask|=1<<c;
+        }
+        return mask;
+    }
+    case UI_DIM_BACKGROUND: case UI_DIM_ITEMS: case UI_DIM_EFFECTS:
+    case UI_DIM_SPECIAL: case UI_DIM_PLAYER_SHOTS:
+        return dim_percent[id-UI_DIM_BACKGROUND];
     case UI_DEBUG: return debug;
     default: return 0;
     }
@@ -25,6 +37,9 @@ void hfr_ui_set(int id,int value) {
        keeps the whole-frame step the native pass already gave it and the slices start
        clean at the next frame. */
     case UI_SUBSTEP: substep=!!value;proj_slice.moved_to=0;memset(history,0,sizeof history);break;
+    case UI_DIM_BACKGROUND: case UI_DIM_ITEMS: case UI_DIM_EFFECTS:
+    case UI_DIM_SPECIAL: case UI_DIM_PLAYER_SHOTS:
+        dim_percent[id-UI_DIM_BACKGROUND]=value<0?0:(value>100?100:value);break;
     case UI_DEBUG: debug=!!value;break;
     }
 }
@@ -36,6 +51,8 @@ void hfr_ui_save(void) {
     save_int("hfr","fps",fps);save_int("hfr","debug",debug);
     save_int("fixed60","vsync",vsync);save_int("fixed60","interpolate",interpolate);
     save_int("fixed60","subtick",subtick);save_int("fixed60","substep",substep);
+    for (int i=0;i<DIM_COUNT;++i) {char key[32];snprintf(key,sizeof key,"dim_%s",DIM_NAMES[i]);
+                                  save_int("video",key,dim_percent[i]);}
 }
 void hfr_ui_status(char* out,int n) {
     snprintf(out,n,"%s | %d FPS target | 60 Hz gameplay%s",game->name,rate,guard_failed?" | DRAW GUARD FAILED":"");

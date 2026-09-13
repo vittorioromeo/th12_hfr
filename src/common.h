@@ -30,9 +30,7 @@ static void logf_(const char* fmt, ...) {
 /* Built-in filters occupy the first indices; shader filters are appended after them. */
 enum { FILTER_NEAREST = 0, FILTER_BILINEAR = 1, FILTER_SHARP = 2, FILTER_BUILTIN_COUNT };
 
-/* Classes of drawing the dimming can fade (dimming.c); the INI keys are dim_<name>. */
-enum { DIM_BACKGROUND = 0, DIM_ITEMS, DIM_EFFECTS, DIM_SPECIAL, DIM_PLAYER_SHOTS, DIM_COUNT, DIM_NONE = -1 };
-static const char* const DIM_NAMES[DIM_COUNT] = { "background", "items", "effects", "special", "player_shots" };
+#include "dim_classes.h"
 
 /* ------------------------------------------------------------------ config */
 static struct {

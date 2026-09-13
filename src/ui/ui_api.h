@@ -30,6 +30,7 @@ enum {
     UI_DIM_SPECIAL,          /* ... the game's own extra class (hfr_ui_dim_special_name says which) */
     UI_DIM_PLAYER_SHOTS,     /* ... the player's own shots */
     UI_DIM_AVAILABLE,        /* read-only: this game's draw order is known to the patch */
+    UI_DIM_CLASSES,          /* read-only: bitmask of the DIM_* classes this game can actually fade */
     UI_SHARPEN,              /* index into the post-process registry; -1 for none */
     UI_SHARPEN_STRENGTH,     /* 0..100 percent */
     UI_CURSOR,               /* the mouse pointer in borderless fullscreen: 0 as the game does (hidden), 1 visible, 2 visible while moving */
@@ -40,6 +41,8 @@ enum {
     UI_SUBSTEP_AVAILABLE,     /* read-only: this game's projectile update is described */
     UI_SETTING_COUNT
 };
+
+#include "../dim_classes.h"
 
 /* Implemented by the runtime (C). */
 int         hfr_ui_get(int id);

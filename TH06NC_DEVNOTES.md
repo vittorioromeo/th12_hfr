@@ -1470,3 +1470,86 @@ and the node-list walk that says what the game is actually running right now. Bo
 read-only. There is also a `[fixed60] diag_seconds=N` key that runs the game for N seconds
 and quits, which is what let this be diagnosed and fixed without the owner at the machine.
 It defaults to 0 and should stay there.
+
+## 21. Dimming: the machinery, and the map it still needs (2026-09-13)
+
+Dimming fades what competes with the bullets — background, items, effects, the player's own
+shots — so the bullets are the most visible thing on screen. The x86 runtime's implementation
+is described at the top of `src/core/dimming.c`; this is the New Classic half.
+
+### What the two runtimes have to do differently
+
+The x86 backend fades at the **Direct3D** level: the sprite manager batches quads and flushes
+them as one `DrawPrimitiveUP`, so a draw call on its own says nothing about which object it
+belongs to. It therefore wraps the draw dispatch *and* the VM draw, flushes the batch around
+each classified VM so its quads are a draw call of their own, and fades the vertex colours (or
+`D3DRS_TEXTUREFACTOR`) of that call.
+
+New Classic needs none of that, because this runtime already wraps **every** VM draw — all
+three entry points (§20). Fading the VM's own colour before the draw and putting it back
+afterwards is the same pattern the position, rotation and scale smoothing already uses, and it
+changes the *source* rather than the emitted geometry, so batching is irrelevant. No D3D11
+hooks, no flushing.
+
+### The colour, and which byte is alpha
+
+The VM's packed draw colour is the dword at **`+0xec`**. Every draw path copies it byte for
+byte into a global draw colour at `0xa6eaf0`: `+0xef`→`0xa6eaf3` and so on down. Twenty-one
+writers, no reader that an address scan can see (the consumer takes it through a register, the
+§16 trap again).
+
+Which byte is alpha was settled from the writers rather than assumed: the bullet draw does
+`or dword [vm+0xec], 0xffffff`, which forces the low three bytes to `0xff` and leaves the
+fourth alone, and the ANM interpreter writes `[vm+0xef]` on its own at `0x6b1e`. So **alpha is
+the top byte at `+0xef`** and the three colour channels are below it — ordinary `0xAARRGGBB`.
+
+Fading scales alpha only. The x86 runtime scales alpha for most classes and the colour where
+alpha would do nothing (additive blending, and the background class, which fades towards
+black); this backend cannot yet tell a VM's blend mode, so **additive effects will not fade**
+until it can. That is a known gap, not an oversight.
+
+### Knowing what is being drawn
+
+The draw runner's per-node dispatch is the same ten straight-line bytes as the update runner's:
+
+```text
+0x3c030  mov rax,[rbx+8]      ; the node's callback
+0x3c034  mov rcx,[rbx+0x38]   ; its argument
+0x3c038  call rax
+0x3c03a  cmp eax,2            ; the return value decides what the runner does next
+```
+
+It is relocated to a relay that records the node before the call and forgets it after. The
+relay pushes nothing, so the callback sees the stack it always saw, and `mov` sets no flags, so
+the `cmp eax,2` still reads the callback's own result. The Unicorn test checks all four of
+those: the node recorded during the call, the argument still in `rcx`, one return address on
+the stack, and the result preserved.
+
+Nothing branches into the interior of that range. That was checked with the `.pdata`-based
+scanner rather than the linear one — and doing so caught that the linear scan had been missing
+the `je 0x3c030` at `0x3c03d` entirely. **Every site the runtime already patches was re-checked
+the same way; all fourteen are clean**, with branches only to their first byte.
+
+### What is missing: the map
+
+A class is decided by which draw callback is running, and the rule table currently has exactly
+one entry: `0x2b310` → effects, from the registration scan in §6. That is enough to prove the
+machinery but it is not the feature. The other classes need the **in-game** draw list, and §6's
+static map is not a substitute — §20 is what happens when a static map is trusted.
+
+So the runtime now logs, every stats window, how many sprites each draw callback drew:
+
+```text
+sprites by callback: 12@2b310=1840 14@11940=9021 10@38290=402 ...
+```
+
+One ordinary play session produces that for a stage, and the node-list log now prints whenever
+the registered set *changes* rather than only for the first few seconds, so the same session
+also yields the list for every screen it passes through. Filling in items, player shots and the
+background is then a table edit, not an investigation.
+
+The menu reflects this honestly: `UI_DIM_CLASSES` is a new read-only bitmask of the classes a
+game can actually fade, and the shared menu disables the sliders a game has no rule for and
+says why. The x86 runtime returns all of them. Background dimming will need more than a rule
+in any case — the x86 blends a black quad over the viewport before the first world-priority
+callback, which here means drawing a quad in D3D11 at the right point in the draw list.

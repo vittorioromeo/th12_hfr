@@ -83,7 +83,7 @@ static void test_patches(const char* output) {
     assert(!memcmp((void*)(base+game->update_calls[0]),site_expected(base+game->update_calls[0],5),5));
     bad[0]^=1;
     VirtualFree(relay_page,0,MEM_RELEASE);relay_page=NULL;relay_used=0;
-    assert(prepare_patches());assert(g_patch_count==14);
+    assert(prepare_patches());assert(g_patch_count==15);
     for (size_t i=0;i<g_patch_count;++i) assert(!memcmp((void*)g_patches[i].addr,g_patches[i].before,g_patches[i].size));
     assert(patch_commit());
     for (size_t i=0;i<g_patch_count;++i) assert(!memcmp((void*)g_patches[i].addr,g_patches[i].after,g_patches[i].size));
@@ -103,11 +103,11 @@ static void test_patches(const char* output) {
     *player_factor=1.0f;*player_ran=0;
     FILE* f=fopen(output,"w");assert(f);
     fprintf(f,"{\"base\":%llu,\"relay\":%llu,\"factor\":%llu,\"ran\":%llu,"
-              "\"proj_minor\":%llu,\"proj_dt\":%llu,\"proj_ran\":%llu,\"relay_hex\":\"",
+              "\"proj_minor\":%llu,\"proj_dt\":%llu,\"proj_ran\":%llu,\"draw_node\":%llu,\"relay_hex\":\"",
         (unsigned long long)base,(unsigned long long)(uintptr_t)relay_page,
         (unsigned long long)(uintptr_t)player_factor,(unsigned long long)(uintptr_t)player_ran,
         (unsigned long long)(uintptr_t)proj_minor,(unsigned long long)(uintptr_t)proj_dt,
-        (unsigned long long)(uintptr_t)proj_ran);
+        (unsigned long long)(uintptr_t)proj_ran,(unsigned long long)(uintptr_t)draw_node);
     hex(f,relay_page,relay_used);fprintf(f,"\",\"patches\":[");
     for(size_t i=0;i<g_patch_count;++i) {
         fprintf(f,"%s{\"rva\":%llu,\"hex\":\"",i?",":"",(unsigned long long)(g_patches[i].addr-base));

@@ -295,12 +295,19 @@ void draw_display_section(void) {
         { UI_DIM_PLAYER_SHOTS, "Fade player shots","Fades your own shots (and options) so the enemy's are what you see." },
         { UI_DIM_SPECIAL,      special,            "This game's own extra class of thing that competes with bullets." },
     };
+    /* A game may know how to fade only some of these. Showing a slider that cannot do
+       anything is worse than not showing it, so the ones this game has no rule for are
+       disabled and say so. */
+    int classes = hfr_ui_get(UI_DIM_CLASSES);
     for (auto& d : dims) {
         if (!d.label) continue;
+        bool known = (classes & (1 << (d.id - UI_DIM_BACKGROUND))) != 0;
         int v = hfr_ui_get(d.id);
         char label[64]; snprintf(label, sizeof label, d.id == UI_DIM_SPECIAL ? "Fade %s" : "%s", d.label);
+        ImGui::BeginDisabled(!known);
         if (ImGui::SliderInt(label, &v, 0, 100, "%d%%")) hfr_ui_set(d.id, v);
-        help(d.tip);
+        ImGui::EndDisabled();
+        help(known ? d.tip : "This game's patch does not know which draws belong to this class yet.");
     }
     ImGui::EndDisabled();
 }

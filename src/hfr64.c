@@ -9,12 +9,12 @@
 #include <string.h>
 #include <math.h>
 #include "../third_party/minhook/include/MinHook.h"
+#include "ui/ui_api.h"
 #include "backends/fixed_history.h"
 #include "backends/fixed_clock.h"
 #include "backends/subtick.h"
 #include "backends/substep.h"
 #include "fixed_identity.h"
-#include "ui/ui_api.h"
 void hfr_d3d11_overlay(void* swap);
 
 static const struct FixedGame* game;
@@ -38,9 +38,31 @@ static float* player_factor; static unsigned char* player_ran;
    projectiles are being updated at all -- paused, between stages and in menus they are
    not, and the pass must not move anything. */
 static unsigned char* proj_minor; static float* proj_dt; static unsigned char* proj_ran;
+/* The node whose draw callback is running, written by the relocated draw dispatch and cleared
+   when it returns; NULL outside the runner. A sprite's class is decided by it. */
+static const unsigned char** draw_node;
+static int dim_percent[DIM_COUNT];
+static uint64_t dim_faded;
 static double measured_present, measured_update;   /* last stats window, for the menu */
 static uint64_t sprite_calls, sprite_skipped_off, sprite_skipped_stack;
-static int listed_nodes;
+static int listed_nodes; static char listed_signature[512];
+/* Which draw callback drew how many sprites, over a stats window. This is what identifies a
+   dimming class: the profile's rule table is keyed by callback, and guessing which callback
+   is which is how earlier sections of the notes went wrong. */
+#define CENSUS 24
+static struct { uint32_t rva; short prio; uint64_t count; } census[CENSUS];
+static void census_add(void) {
+    if (!draw_node || !*draw_node) return;
+    const unsigned char* node=*draw_node;
+    uintptr_t fn=*(const uintptr_t*)(node+game->node_callback);
+    if (fn<=base || fn>=base+game->image_size) return;
+    uint32_t rva=(uint32_t)(fn-base);
+    for (int i=0;i<CENSUS;++i) {
+        if (census[i].count && census[i].rva!=rva) continue;
+        census[i].rva=rva; census[i].prio=*(const short*)(node+game->node_priority);
+        ++census[i].count; return;
+    }
+}
 static struct SubtickPlayer proj_slice; static uint64_t proj_passes;
 static struct SubtickPlayer subtick_player;
 static uint64_t subtick_moves, subtick_polls; static double subtick_poll_max;
@@ -199,7 +221,18 @@ static void log_lists(const char* when) {
             }
             node=*(const unsigned char* const*)(node+game->node_next);
         }
-        if (count) LOG("%s (%u nodes)",line,count);
+        if (count) {
+            /* Print only when the set has changed: one ordinary session then yields the map
+               for every screen it passed through, instead of only the first few seconds. */
+            size_t at=strlen(listed_signature);
+            if (!strstr(listed_signature,line)) {
+                LOG("%s (%u nodes)",line,count);
+                if (at+strlen(line)+2<sizeof listed_signature) {
+                    memcpy(listed_signature+at,line,strlen(line)+1);
+                    listed_signature[at+strlen(line)]='\n'; listed_signature[at+strlen(line)+1]=0;
+                }
+            }
+        }
     }
 }
 static void draw_frame(void) {
@@ -228,6 +261,27 @@ static void reset_vm(void* vm) {
 }
 static uintptr_t vm_start_0(void* m,void* v,uintptr_t script) {reset_vm(v);return vm_start_original[0](m,v,script);}
 static uintptr_t vm_start_1(void* m,void* v,uintptr_t script) {reset_vm(v);return vm_start_original[1](m,v,script);}
+/* Which class is being drawn right now, from the callback the draw runner is in. */
+static int dim_class(void) {
+    if (!draw_node || !game->dim_rule_count) return DIM_NONE;
+    const unsigned char* node=*draw_node;
+    if (!node) return DIM_NONE;
+    uintptr_t fn=*(const uintptr_t*)(node+game->node_callback);
+    if (fn<=base || fn>=base+game->image_size) return DIM_NONE;
+    uint32_t rva=(uint32_t)(fn-base);
+    for (size_t i=0;i<game->dim_rule_count;++i)
+        if (game->dim_rules[i].draw_callback==rva) return game->dim_rules[i].category;
+    return DIM_NONE;
+}
+/* Fade a sprite by scaling its alpha, which is the top byte of the VM's packed colour. The
+   x86 runtime scales alpha for most classes and the colour only where alpha would do nothing
+   (additive blending, and the background class); this backend cannot yet tell a VM's blend
+   mode, so it scales alpha only and additive effects will not fade until it can. */
+static uint32_t dim_fade_colour(uint32_t colour,int percent) {
+    uint32_t alpha=(colour>>24)&0xff;
+    alpha=alpha*(uint32_t)(100-percent)/100u;
+    return (colour&0x00ffffffu)|(alpha<<24);
+}
 static uintptr_t sprite(SpriteFn original,void* manager,void* vm,uintptr_t flags) {
     ++sprite_calls;
     if (depth || !vm || !interpolate || guard_failed || rate==60) {
@@ -249,7 +303,7 @@ static uintptr_t sprite(SpriteFn original,void* manager,void* vm,uintptr_t flags
     memcpy(turn,p+game->vm_rotation,sizeof turn);
     memcpy(size,p+game->vm_scale,sizeof size);
     struct FixedPose* h=history_slot((uintptr_t)vm,1);
-    ++samples;
+    ++samples; census_add();
     int predict=subtick_active();
     int changed=h && fixed_pose(h,(uintptr_t)vm,script,ticks,age,saved,phase,predict,out);
     /* Rotation and scale ride on the same decision: a menu that spins or grows a step per
@@ -258,9 +312,21 @@ static uintptr_t sprite(SpriteFn original,void* manager,void* vm,uintptr_t flags
     if (changed) {memcpy(p+game->vm_position,out,sizeof out);++blends;}
     if (turned) {memcpy(p+game->vm_rotation,turn_out,sizeof turn_out);
                  memcpy(p+game->vm_scale,size_out,sizeof size_out);}
+    /* Dimming rides on the same wrap: scale the colour the game is about to copy into its
+       draw colour, then put it back, exactly as the position is handled. */
+    int klass=game->vm_colour?dim_class():DIM_NONE;
+    int percent=(klass>=0 && klass<DIM_COUNT)?dim_percent[klass]:0;
+    uint32_t colour=0;
+    if (percent>0) {
+        memcpy(&colour,p+game->vm_colour,sizeof colour);
+        uint32_t faded=dim_fade_colour(colour,percent);
+        memcpy(p+game->vm_colour,&faded,sizeof faded);
+        ++dim_faded;
+    }
     ++depth;
     uintptr_t result=original(manager,vm,flags);
     --depth;
+    if (percent>0) memcpy(p+game->vm_colour,&colour,sizeof colour);
     /* Restore only what we wrote: preserve the original function's native behavior. */
     if (changed) memcpy(p+game->vm_position,saved,sizeof saved);
     if (turned) {memcpy(p+game->vm_rotation,turn,sizeof turn);
@@ -320,7 +386,17 @@ static int wait_frame(void) {
             (unsigned long long)sprite_calls,(unsigned long long)sprite_skipped_off,
             (unsigned long long)sprite_skipped_stack,(unsigned long long)samples,
             (unsigned long long)blends);
-        if (listed_nodes<6) {listed_nodes++;log_lists("registered");}
+        {   /* sprites per draw callback: the map a dimming rule table is built from */
+            char line[480]; int n=0; n+=snprintf(line+n,sizeof line-n,"sprites by callback:");
+            for (int i=0;i<CENSUS && census[i].count;++i)
+                if (n<(int)sizeof line-24)
+                    n+=snprintf(line+n,sizeof line-n," %d@%x=%llu",census[i].prio,
+                        (unsigned)census[i].rva,(unsigned long long)census[i].count);
+            if (census[0].count) LOG("%s",line);
+            memset(census,0,sizeof census);
+        }
+        if (dim_faded) LOG("dimming: %llu sprites faded",(unsigned long long)dim_faded);
+        log_lists("registered");
         if ((subtick && subtick_polls==pt) || (substep && proj_passes==qt))
             LOG("idle: subtick=%d(+%llu polls, armed=%d) substep=%d(+%llu passes, armed=%d) "
                 "rate=%d guard=%d player_ran=%d proj_ran=%d suspect[%x]=%u",
@@ -371,7 +447,7 @@ static int prepare_patches(void) {
     }
     if (!relay_page) return 0;
     data_page=relay_page+4096;player_factor=NULL;player_ran=NULL;
-    proj_minor=NULL;proj_dt=NULL;proj_ran=NULL;
+    proj_minor=NULL;proj_dt=NULL;proj_ran=NULL;draw_node=NULL;
     patch_begin();
     if (!queue_call(game->update_calls[0],update_first) || !queue_call(game->update_calls[1],update_extra) ||
         !queue_call(game->draw_call,draw_frame) || !queue_call(game->present_call,present)) return 0;
@@ -482,6 +558,29 @@ static int prepare_patches(void) {
         if (!rel32(b+1,base+game->proj_laser_growth+5,(uintptr_t)l) ||
             !patch_bytes(base+game->proj_laser_growth,b,game->proj_laser_growth_size,NULL)) return 0;
     }
+    /* The draw runner's per-node dispatch: record the node, run the callback, forget it. A
+       leaf that pushes nothing, so the callback sees the stack it always saw; and `mov` sets
+       no flags, so the `cmp eax,2` that follows still reads the callback's return value. */
+    if (game->draw_dispatch) {
+        draw_node=(const unsigned char**)(data_page+24); *draw_node=NULL;
+        if (relay_used+64>4096) return 0;
+        unsigned char* d=relay_page+relay_used;relay_used+=64;size_t k=0;
+        d[k]=0x48;d[k+1]=0x89;d[k+2]=0x1d;                      /* mov [rip+draw_node],rbx */
+        if (!rel32(d+k+3,(uintptr_t)(d+k+7),(uintptr_t)draw_node)) return 0;
+        k+=7;
+        memcpy(d+k,(const void*)(base+game->draw_dispatch),game->draw_dispatch_size);
+        k+=game->draw_dispatch_size;
+        d[k]=0x48;d[k+1]=0xc7;d[k+2]=0x05;                      /* mov qword [rip+draw_node],0 */
+        memset(d+k+7,0,4);
+        if (!rel32(d+k+3,(uintptr_t)(d+k+11),(uintptr_t)draw_node)) return 0;
+        k+=11;
+        d[k]=0xe9;
+        if (!rel32(d+k+1,(uintptr_t)(d+k+5),base+game->draw_dispatch_resume)) return 0;
+        k+=5;
+        memset(b,0x90,game->draw_dispatch_size);b[0]=0xe9;
+        if (!rel32(b+1,base+game->draw_dispatch+5,(uintptr_t)d) ||
+            !patch_bytes(base+game->draw_dispatch,b,game->draw_dispatch_size,NULL)) return 0;
+    }
     if (game->player_motion && relay_used+64<=4096) {
         /* These two are written every frame, so they belong on the page that stays writable. */
         player_factor=(float*)data_page;*player_factor=1.0f;
@@ -543,6 +642,11 @@ __declspec(dllexport) DWORD WINAPI hfr_start(void* unused) {
     interpolate=GetPrivateProfileIntA("fixed60","interpolate",1,ini)!=0;
     subtick=GetPrivateProfileIntA("fixed60","subtick",0,ini)!=0;
     substep=GetPrivateProfileIntA("fixed60","substep",0,ini)!=0;
+    for (int i=0;i<DIM_COUNT;++i) {
+        char key[32]; snprintf(key,sizeof key,"dim_%s",DIM_NAMES[i]);
+        int v=GetPrivateProfileIntA("video",key,0,ini);
+        dim_percent[i]=v<0?0:(v>100?100:v);
+    }
     /* Unattended diagnostics: run for this many seconds, then log and quit. 0 disables
        it, which is the default and what any normal install has. */
     diag_seconds=GetPrivateProfileIntA("fixed60","diag_seconds",0,ini);

@@ -26,6 +26,7 @@ int hfr_ui_get(int id) {
     case UI_MAX_FRAME_LATENCY:  return cfg.max_frame_latency;
     case UI_FPS:                return cfg.fps;
     case UI_SUBSTEP:            return cfg.substep;
+    case UI_DIM_CLASSES:        return (1 << DIM_COUNT) - 1;   /* every class has rules here */
     case UI_SUBTICK_INPUT:      return cfg.subtick_input;
     case UI_ENEMY_INTERP:       return cfg.enemy_interp;
     case UI_DEBUG:              return cfg.debug;

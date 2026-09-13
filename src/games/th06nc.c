@@ -27,6 +27,7 @@ static const struct FixedSignature th06nc_signatures[] = {
     {0x10982, 9, {0x0f,0xb7,0x53,0x44,0x8b,0xca,0x41,0x2b,0xcc}},
     {0x11298, 7, {0x66,0xff,0x83,0x04,0x06,0x00,0x00}},
     {0x11562, 11, {0x8b,0x43,0x2c,0x89,0x43,0x28,0xff,0xc0,0x89,0x43,0x2c}},
+    {0x3c030, 10, {0x48,0x8b,0x43,0x08,0x48,0x8b,0x4b,0x38,0xff,0xd0}},
     {0x1161d, 12, {0xf3,0x0f,0x10,0x8b,0x58,0x02,0x00,0x00,0xf3,0x0f,0x58,0x0b}},
     {0x11714, 7, {0x8b,0x43,0xf8,0x48,0x8d,0x53,0x0c}},
     {0x11796, 9, {0x41,0x89,0x07,0xff,0xc0,0x41,0x89,0x47,0x04}},
@@ -42,6 +43,14 @@ static const struct GuardRange th06nc_guards[] = {
     {0x4ff7a8, 8, 1, 0},              /* player shot timer */
     {0xa6ec40, 8, 1, 0},              /* RNG count/state */
     {0xa6ec60, 8, 1, 0},              /* game input current/previous */
+};
+/* Which draw callback draws what. Taken from the registration scan in TH06NC_DEVNOTES §6 and
+   NOT yet confirmed against a running stage -- the per-callback sprite census in the log is
+   what will confirm it, and until then only the classes listed here dim at all. The bullet
+   and laser callback is deliberately absent: bullets are the thing everything else is being
+   faded for. */
+static const struct DimRule th06nc_dim[] = {
+    {0x2b310, DIM_EFFECTS},      /* the eff*.anm effect manager's draw, priority 12 */
 };
 static const struct FixedGame th06nc_game = {
     .name = "TH06 New Classic (experimental)", .executable = "th06nc.exe",
@@ -78,5 +87,8 @@ static const struct FixedGame th06nc_game = {
     .proj_laser_timer = 0x11714, .proj_laser_timer_resume = 0x1171b,
     .proj_laser_timer_skip = 0x1172f, .proj_laser_timer_size = 7,
     .proj_epoch = 0x11796, .proj_epoch_resume = 0x1179f, .proj_epoch_size = 9,
+    .vm_colour = 0xec,
+    .draw_dispatch = 0x3c030, .draw_dispatch_resume = 0x3c03a, .draw_dispatch_size = 10,
+    .dim_rules = th06nc_dim, .dim_rule_count = sizeof th06nc_dim / sizeof *th06nc_dim,
     .guards = th06nc_guards, .guard_count = sizeof th06nc_guards / sizeof *th06nc_guards,
 };
