@@ -1679,3 +1679,17 @@ the way TH11's or TH13's do, so the menu shows that slider disabled.
 `tools/test_fixed_profile.py` now requires every dimming rule to name a real function entry
 (one with a `.pdata` record) and every pool to lie inside the image, so a rule that could never
 match cannot be committed silently.
+
+### Postscript: the x64 test suite was never failing
+
+`test64.sh` had looked broken for several sessions -- the harness and both launcher checks
+died with `Bad EXE format`, and the checks were skipped on the assumption that the
+environment could not run PE32+. It can. The default `wine` on this box is the 32-bit
+loader; `/usr/lib/wine/wine64` with its own prefix runs everything. The script now finds it,
+and `tools/test_fixed_profile.py` honours `RUN64`, so the full suite -- clock, history,
+slices, schedule, the patch transaction, Unicorn execution of every emitted relay, and the
+signature and launcher checks -- runs again.
+
+It immediately earned its keep: `test_patches` asserts the exact number of patches the
+profile installs, and the item fix made it 16. A count that has to be updated by hand is
+precisely the point; a patch appearing without anyone noticing is what it is there to stop.

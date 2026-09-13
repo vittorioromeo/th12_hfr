@@ -39,14 +39,14 @@ assert rules, "no dimming rules"
 for rva, category in rules:
     assert int(rva, 16) in entries, f"dim rule {rva} ({category}) is not a function entry"
 pools = re.findall(r"\{(0x[0-9a-f]+), (0x[0-9a-f]+), (\d+), (DIM_\w+)\}", source)
-for rva, stride, count, category in pools:
-    last = int(rva, 16) + int(stride, 16) * int(count)
+for rva, stride, entries, category in pools:
+    last = int(rva, 16) + int(stride, 16) * int(entries)
     assert last <= pe.OPTIONAL_HEADER.SizeOfImage, f"dim pool {rva} ({category}) leaves the image"
 
 helpers = [root / "build/touhou_hfr.exe", root / "build/touhou_hfr64.exe"]
 # The launchers are Windows binaries; away from Windows, run them the way the rest of the
 # suite does so this check is not silently skipped on a development machine.
-runner = [] if os.name == "nt" else ["wine"]
+runner = [] if os.name == "nt" else [os.environ.get("RUN64", "wine")]
 def check(helper, argument):
     return subprocess.run(runner + [str(helper), "--check", str(argument)],
                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode

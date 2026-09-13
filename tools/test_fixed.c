@@ -83,7 +83,7 @@ static void test_patches(const char* output) {
     assert(!memcmp((void*)(base+game->update_calls[0]),site_expected(base+game->update_calls[0],5),5));
     bad[0]^=1;
     VirtualFree(relay_page,0,MEM_RELEASE);relay_page=NULL;relay_used=0;
-    assert(prepare_patches());assert(g_patch_count==15);
+    assert(prepare_patches());assert(g_patch_count==16);
     for (size_t i=0;i<g_patch_count;++i) assert(!memcmp((void*)g_patches[i].addr,g_patches[i].before,g_patches[i].size));
     assert(patch_commit());
     for (size_t i=0;i<g_patch_count;++i) assert(!memcmp((void*)g_patches[i].addr,g_patches[i].after,g_patches[i].size));

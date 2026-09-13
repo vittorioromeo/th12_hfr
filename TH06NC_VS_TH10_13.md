@@ -22,7 +22,7 @@ runtime is described in [DEVNOTES_RUNTIME.md](DEVNOTES_RUNTIME.md).
 | Simulation | runs at the tick rate, sub-stepped | 60 Hz, with selected systems sub-stepped |
 | High-rate motion | player, bullets, items, lasers (not TH10), **both ANM managers** | player, enemy bullets, lasers (items deliberately 60 Hz, §22) |
 | Sprite smoothing | interpolation for what is not sub-stepped | interpolation or prediction for everything else |
-| Code patches | 65–101 verified sites per game | 27 frozen signatures, 15 patches |
+| Code patches | 65–101 verified sites per game | 27 frozen signatures, 16 patches |
 | Video features | scaling, filters, sharpening, dimming, internal resolution | dimming only |
 | Replays | extended format, per-tick input, recorded and played back | native format only, unextended |
 
@@ -192,7 +192,7 @@ compiled into both.
 | `src/backends/subtick.h` | 57 | the τ slice accounting and the direction table |
 | `src/backends/substep.h` | 61 | the exact dyadic sub-step schedule |
 | `src/backends/fixed_game.h` | 51 | the profile: every RVA the runtime needs |
-| `src/games/th06nc.c` | 82 | the profile's values, 24 frozen signatures and 7 guard ranges |
+| `src/games/th06nc.c` | 123 | the profile's values, 27 frozen signatures, 7 guard ranges and the dimming map |
 | `src/ui/overlay_fixed.c` | 65 | the x64 side of the settings API |
 | `src/ui/menu_dx11.cpp`, `src/ui/overlay_dx11.cpp` | 78 | the D3D11 ImGui backend |
 | `tools/porting/xrefs64.py` | 53 | AMD64 xrefs decoded from real function boundaries |
@@ -223,7 +223,7 @@ by hand. Two of them changed in the port:
 
 | | TH10–13 | New Classic |
 | --- | --- | --- |
-| Signature/preflight tests | yes, per game | yes, 24 signatures |
+| Signature/preflight tests | yes, per game | yes, 27 signatures, plus every dimming rule and pool |
 | Scheduler tests | yes | yes, eight rates |
 | Emitted machine code executed in Unicorn | yes, per game | yes, all 9 relays |
 | Replay round-trip tests | yes | n/a |
