@@ -45,7 +45,7 @@ static int dim_percent[DIM_COUNT];
 static uint64_t dim_faded;
 static double measured_present, measured_update;   /* last stats window, for the menu */
 static uint64_t sprite_calls, sprite_skipped_off, sprite_skipped_stack;
-static int listed_nodes, listed_full; static char listed_signature[512];
+static int listed_full; static char listed_signature[512];
 /* Which draw callback drew how many sprites, over a stats window. This is what identifies a
    dimming class: the profile's rule table is keyed by callback, and guessing which callback
    is which is how earlier sections of the notes went wrong. */
@@ -63,12 +63,13 @@ static void census_add(void) {
         ++census[i].count; return;
     }
 }
-static struct SubtickPlayer proj_slice; static uint64_t proj_passes;
+static struct SubtickPlayer proj_slice; static uint64_t proj_passes, items_skipped;
 static struct SubtickPlayer subtick_player;
 static uint64_t subtick_moves, subtick_polls; static double subtick_poll_max;
 typedef uintptr_t (*UpdateFn)(void*);
 typedef uint32_t (*PollFn)(uintptr_t);
 typedef uintptr_t (*ProjFn)(uintptr_t);
+typedef uintptr_t (*ItemFn)(void*);
 typedef void (*DrawFn)(void);
 typedef uintptr_t (*SpriteFn)(void*,void*,uintptr_t);
 static SpriteFn sprite_original, rotated_original, menu_sprite_original;
@@ -153,6 +154,16 @@ static void projectiles_slice(double tau) {
     *proj_minor = 0;
     *proj_dt = 0.0f;
     ++proj_passes;
+}
+/* The projectile callback's first act, before it looks at a single bullet, is to update the
+   item pool. That is a whole-frame step -- fall speed accumulates 0.03 a frame toward a
+   terminal 3.0, the collection and off-screen tests read the stepped position, and collecting
+   an item awards score and power -- so on a sub-step pass it has to stand aside entirely, or
+   items fall at the tick rate. Rendering still shows them moving smoothly, because each item
+   carries its own sprite VM and the sprite hook interpolates that like any other. */
+static uintptr_t item_update(void* pool) {
+    if (proj_minor && *proj_minor) {++items_skipped;return 0;}
+    return ((ItemFn)(base+game->item_update))(pool);
 }
 /* Scheduling uses elapsed time: a blocked Present must not slow the simulation just
    because the requested presentation rate exceeds the actual display rate. At most
@@ -267,6 +278,19 @@ static void reset_vm(void* vm) {
 static uintptr_t vm_start_0(void* m,void* v,uintptr_t script) {reset_vm(v);return vm_start_original[0](m,v,script);}
 static uintptr_t vm_start_1(void* m,void* v,uintptr_t script) {reset_vm(v);return vm_start_original[1](m,v,script);}
 /* Which class is being drawn right now, from the callback the draw runner is in. */
+/* A VM that belongs to one of the profile's pools is classified by the pool, whatever callback
+   is drawing it: the item pool shares its callback with the bullets. `rva` is the first entry's
+   VM, so an address matches only if it is that VM or an exact multiple of the stride past it. */
+static int dim_pool_class(const unsigned char* vm) {
+    for (size_t i=0;i<game->dim_pool_count;++i) {
+        const struct DimPool* p=&game->dim_pools[i];
+        uintptr_t first=base+p->rva;
+        if ((uintptr_t)vm<first) continue;
+        uintptr_t offset=(uintptr_t)vm-first;
+        if (offset%p->stride==0 && offset/p->stride<p->count) return p->category;
+    }
+    return DIM_NONE;
+}
 static int dim_class(void) {
     if (!draw_node || !game->dim_rule_count) return DIM_NONE;
     const unsigned char* node=*draw_node;
@@ -282,9 +306,16 @@ static int dim_class(void) {
    x86 runtime scales alpha for most classes and the colour only where alpha would do nothing
    (additive blending, and the background class); this backend cannot yet tell a VM's blend
    mode, so it scales alpha only and additive effects will not fade until it can. */
-static uint32_t dim_fade_colour(uint32_t colour,int percent) {
-    uint32_t alpha=(colour>>24)&0xff;
-    alpha=alpha*(uint32_t)(100-percent)/100u;
+static uint32_t dim_fade_colour(uint32_t colour,int percent,int klass) {
+    uint32_t keep=(uint32_t)(100-percent);
+    /* The background is drawn opaque over the playfield's own fill, so lowering its alpha
+       would change nothing; it is darkened by scaling its colour instead, which is what the
+       x86 backend does for this one class. Everything else fades by alpha. */
+    if (klass==DIM_BACKGROUND) {
+        uint32_t r=((colour>>16)&0xff)*keep/100u, g=((colour>>8)&0xff)*keep/100u, b=(colour&0xff)*keep/100u;
+        return (colour&0xff000000u)|(r<<16)|(g<<8)|b;
+    }
+    uint32_t alpha=((colour>>24)&0xff)*keep/100u;
     return (colour&0x00ffffffu)|(alpha<<24);
 }
 static uintptr_t sprite(SpriteFn original,void* manager,void* vm,uintptr_t flags) {
@@ -319,12 +350,13 @@ static uintptr_t sprite(SpriteFn original,void* manager,void* vm,uintptr_t flags
                  memcpy(p+game->vm_scale,size_out,sizeof size_out);}
     /* Dimming rides on the same wrap: scale the colour the game is about to copy into its
        draw colour, then put it back, exactly as the position is handled. */
-    int klass=game->vm_colour?dim_class():DIM_NONE;
+    int klass=game->vm_colour?dim_pool_class(p):DIM_NONE;
+    if (klass==DIM_NONE && game->vm_colour) klass=dim_class();
     int percent=(klass>=0 && klass<DIM_COUNT)?dim_percent[klass]:0;
     uint32_t colour=0;
     if (percent>0) {
         memcpy(&colour,p+game->vm_colour,sizeof colour);
-        uint32_t faded=dim_fade_colour(colour,percent);
+        uint32_t faded=dim_fade_colour(colour,percent,klass);
         memcpy(p+game->vm_colour,&faded,sizeof faded);
         ++dim_faded;
     }
@@ -410,9 +442,11 @@ static int wait_frame(void) {
                 rate,guard_failed,player_ran?*player_ran:-1,proj_ran?*proj_ran:-1,
                 (unsigned)game->replay_suspect,
                 game->replay_suspect?*(const unsigned char*)(base+game->replay_suspect):0);
-        if (proj_passes) LOG("substep %s: %llu projectile passes (%.2f/s, %.2f per frame)",
+        if (proj_passes) LOG("substep %s: %llu projectile passes (%.2f/s, %.2f per frame), "
+            "%llu item updates held back",
             substep_active()?"on":"standing by",(unsigned long long)proj_passes,
-            (proj_passes-qt)/seconds,(double)(proj_passes-qt)/(double)(ticks-ut?ticks-ut:1));
+            (proj_passes-qt)/seconds,(double)(proj_passes-qt)/(double)(ticks-ut?ticks-ut:1),
+            (unsigned long long)items_skipped);
         if (subtick_polls) LOG("subtick %s: %llu input polls (%.2f/s), longest %.2f ms, %llu player moves",
             subtick_active()?"on":"standing by",(unsigned long long)subtick_polls,(subtick_polls-pt)/seconds,
             subtick_poll_max*1000.0,(unsigned long long)subtick_moves);
@@ -562,6 +596,9 @@ static int prepare_patches(void) {
         memset(b,0x90,game->proj_laser_growth_size);b[0]=0xe9;
         if (!rel32(b+1,base+game->proj_laser_growth+5,(uintptr_t)l) ||
             !patch_bytes(base+game->proj_laser_growth,b,game->proj_laser_growth_size,NULL)) return 0;
+        /* The items the callback updates before any bullet: a whole call redirected rather
+           than a block relocated, because nothing of it is wanted on a sub-step pass. */
+        if (game->item_call && !queue_call(game->item_call,item_update)) return 0;
     }
     /* The draw runner's per-node dispatch: record the node, run the callback, forget it. A
        leaf that pushes nothing, so the callback sees the stack it always saw; and `mov` sets

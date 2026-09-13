@@ -20,10 +20,10 @@ runtime is described in [DEVNOTES_RUNTIME.md](DEVNOTES_RUNTIME.md).
 | Architecture | x86, Direct3D 9(Ex) | AMD64, Direct3D 11 (DxLib) |
 | Install | `dinput8.dll` proxy or launcher | launcher only (`touhou_hfr.exe` → `touhou_hfr64.exe`) |
 | Simulation | runs at the tick rate, sub-stepped | 60 Hz, with selected systems sub-stepped |
-| High-rate motion | player, bullets, items, lasers (not TH10), **both ANM managers** | player, enemy bullets, lasers |
+| High-rate motion | player, bullets, items, lasers (not TH10), **both ANM managers** | player, enemy bullets, lasers (items deliberately 60 Hz, §22) |
 | Sprite smoothing | interpolation for what is not sub-stepped | interpolation or prediction for everything else |
-| Code patches | 65–101 verified sites per game | 24 frozen signatures, 14 patches |
-| Video features | scaling, filters, sharpening, dimming, internal resolution | none |
+| Code patches | 65–101 verified sites per game | 27 frozen signatures, 15 patches |
+| Video features | scaling, filters, sharpening, dimming, internal resolution | dimming only |
 | Replays | extended format, per-tick input, recorded and played back | native format only, unextended |
 
 ---
@@ -129,8 +129,17 @@ its own window handling.
 | Coexistence check against other patches (vpatch, OILP, wrappers) | yes | no |
 | Cursor visibility in borderless fullscreen | yes | yes (shared code) |
 
-Porting the scaler, filters and dimming would mean a Direct3D 11 implementation of each; the
+Porting the scaler, filters and sharpening would mean a Direct3D 11 implementation of each; the
 shader sources and the menu that drives them are already shared and would not need rewriting.
+
+**Dimming is the exception, and it went the other way.** The x86 runtime fades at the Direct3D
+level because its sprite manager batches quads into one draw call, so it has to flush the batch
+around each classified object and fade the vertex colours. New Classic's runtime already wraps
+every VM draw for interpolation, so it fades the VM's own colour before the draw and puts it
+back after -- no D3D11 work at all, and about a tenth of the code. What it lacks instead is the
+x86 rules' resolution: those match on ANM file, layer and script index, while this one matches
+on the running draw callback, plus address arithmetic for the one class (items) that shares a
+callback with something that must not fade. See [§22](TH06NC_DEVNOTES.md).
 
 ---
 
@@ -146,8 +155,8 @@ shader sources and the menu that drives them are already shared and would not ne
 This is the one genuine functional gap rather than a cosmetic one. New Classic's native replay
 stores one input word per 60 Hz frame, which cannot describe a player who moved from six input
 samples, nor bullets whose collision was tested six times. There is also **no automatic guard**:
-the byte previously believed to mean "a replay is playing" turned out to mark gameplay being in
-progress and to be read by nothing but the fps display
+the byte previously believed to mean "a replay is playing" turned out to be set during ordinary play,
+so it cannot mean playback in progress
 ([§17](TH06NC_DEVNOTES.md#17-why-neither-feature-had-ever-run-and-what-the-fps-readout-counts-2026-09-13)),
 so both features must be switched off by hand before watching a replay. Closing this — a sidecar
 carrying the sub-frame input stream, read back on playback — is the next piece of real work, and

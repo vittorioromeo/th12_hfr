@@ -18,6 +18,10 @@ int hfr_ui_get(int id) {
             int c=game->dim_rules[i].category;
             if (c>=0 && c<DIM_COUNT) mask|=1<<c;
         }
+        for (size_t i=0;i<game->dim_pool_count;++i) {
+            int c=game->dim_pools[i].category;
+            if (c>=0 && c<DIM_COUNT) mask|=1<<c;
+        }
         return mask;
     }
     case UI_DIM_BACKGROUND: case UI_DIM_ITEMS: case UI_DIM_EFFECTS:

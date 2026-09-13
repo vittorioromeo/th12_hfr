@@ -26,7 +26,10 @@ change an outcome —
 see [§18](TH06NC_DEVNOTES.md#18-lasers-and-where-the-parity-with-th10-13-actually-is-2026-09-13).
 Neither setting is safe for replays: the native format stores one input word per 60 Hz frame,
 and nothing disables them automatically, so turn them off before recording or watching one.
-New Classic does not have TH10–13's video enhancements. See
+Dimming is the one video feature New Classic shares with TH10–13: the background, items,
+effects and your own shots can each be faded so the bullets stand out, from the same F11 menu
+and the same `dim_*` settings. Scaling, filters, sharpening and internal resolution are still
+TH10–13 only. See
 [what New Classic has and TH10–13 do not, and the other way round](TH06NC_VS_TH10_13.md) and
 [the complete research record](TH06NC_DEVNOTES.md).
 
@@ -35,7 +38,7 @@ and selects its adapter; TH10–13 share their scheduler, input, replay and Dire
 The same launcher dispatches New Classic to its separate x64 runtime. Menu contents,
 menu-key handling, patch transactions and the x64 executable registry are shared.
 
-**Current build: v0.4.19-test.** Supported executable layouts:
+**Current build: v0.4.20-test.** Supported executable layouts:
 
 | Game | Version | Executables | State |
 | --- | --- | --- | --- |
@@ -43,7 +46,7 @@ menu-key handling, patch transactions and the x64 executable registry are shared
 | Touhou 11 — Subterranean Animism | v1.00a | `th11.exe`, `th11e.exe` | supported |
 | Touhou 12 — Undefined Fantastic Object | v1.00b | `th12.exe`, `th12e.exe` | supported |
 | Touhou 13 — Ten Desires | v1.00c | `th13.exe`, `th13e.exe` | supported |
-| Touhou Koumakyou: New Classic | verified SHA-256 in [notes](TH06NC_DEVNOTES.md#2-product-and-inspected-build) | `th06nc.exe` | experimental: fixed 60 Hz + sprite interpolation, optional sub-tick player movement and sub-stepped projectiles |
+| Touhou Koumakyou: New Classic | verified SHA-256 in [notes](TH06NC_DEVNOTES.md#2-product-and-inspected-build) | `th06nc.exe` | experimental: fixed 60 Hz + sprite interpolation, dimming, optional sub-tick player movement and sub-stepped projectiles |
 
 The current source fixes TH10's recurring HFR hitches accompanied by a brief
 `0.0fps` reading: its native FPS watchdog mistook rates above 65 FPS for a broken
@@ -125,7 +128,7 @@ what it claimed, see [§17](TH06NC_DEVNOTES.md#17-why-neither-feature-had-ever-r
 32-bit `dinput8.dll` proxy in this x64 game. The generic `install.ps1` workflow below is
 for TH10–13. Bundled `th06c.exe` (Classic) is different and is not supported.
 
-Download/extract `touhou_hfr_v0.4.19-test.zip` and close the game.
+Download/extract `touhou_hfr_v0.4.20-test.zip` and close the game.
 
 For a fresh installation, copy these four files next to the game executable:
 
@@ -246,7 +249,7 @@ For New Classic, also install **64-bit MinGW-w64 GCC/G++** (default
 ```powershell
 .\build64.ps1
 .\test64.ps1 -GameExe 'C:\Program Files (x86)\Steam\steamapps\common\th06nc\th06nc.exe'
-.\package.ps1 -Version '0.4.19-th06nc-prototype' -IncludeExperimental64
+.\package.ps1 -Version '0.4.20-th06nc-prototype' -IncludeExperimental64
 ```
 
 Run `build.ps1` first: `test64.ps1` checks both launcher architectures. The x64 tests

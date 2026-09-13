@@ -32,9 +32,9 @@ cannot share object code. What each does and does not do is set out side by side
 | Window | `src/core/window.c` | Resize border, aspect snapping, borderless fullscreen, deferred reset |
 | In-game menu | `src/ui/` , `third_party/imgui` | Dear ImGui overlay; `ui_api.h` is the whole C/C++ interface |
 | Game adapters | `src/games/th10.c`, `th11.c`, `th12.c`, `th13.c` | Actual game addresses, exact x86 hooks and sprite placement |
-| **x64 runtime** | `src/hfr64.c` | The New Classic runtime end to end: fixed clock, patch transaction, emitted relays, sub-stepping, D3D11 and sprite hooks |
+| **x64 runtime** | `src/hfr64.c` | The New Classic runtime end to end: fixed clock, patch transaction, emitted relays, sub-stepping, dimming, D3D11 and sprite hooks |
 | x64 support headers | `src/backends/fixed_clock.h`, `fixed_history.h`, `fixed_game.h`, `subtick.h`, `substep.h` | Fixed 60 Hz clock, pose history and smoothing, the game profile, sub-tick slice accounting, the dyadic sub-step schedule |
-| x64 game adapter | `src/games/th06nc.c` | New Classic's addresses, frozen signatures and guard ranges |
+| x64 game adapter | `src/games/th06nc.c` | New Classic's addresses, frozen signatures, guard ranges and dimming rules |
 | x64 UI and renderer | `src/ui/overlay_fixed.c`, `src/ui/menu_dx11.cpp`, `src/ui/overlay_dx11.cpp` | The x64 side of `ui_api.h` and the D3D11 ImGui backend |
 | x64 tests | `tools/test_fixed.c`, `tools/test_fixed_stubs.py`, `tools/test_fixed_profile.py` | Clock, history, schedule and patch transaction; Unicorn execution of every emitted AMD64 relay; signature and launcher checks |
 | Launcher | `src/launcher.c` | Detect and launch a supported executable using the common identity code |

@@ -32,6 +32,9 @@ static const struct FixedSignature th06nc_signatures[] = {
     {0x11714, 7, {0x8b,0x43,0xf8,0x48,0x8d,0x53,0x0c}},
     {0x11796, 9, {0x41,0x89,0x07,0xff,0xc0,0x41,0x89,0x47,0x04}},
     {0x1102c, 26, {0xf3,0x0f,0x10,0x53,0x30,0xf3,0x0f,0x58,0x53,0x08,0x48,0x8b,0x83,0x50,0x01,0x00,0x00,0xf3,0x0f,0x11,0x53,0x30,0xf3,0x0f,0x10,0x4b}},
+    /* The item pool's update, called from the projectile manager's prologue (section 22). */
+    {0x108e7, 5, {0xe8,0x94,0x20,0x03,0x00}},
+    {0x42980, 16, {0x48,0x8b,0xc4,0x48,0x89,0x48,0x08,0x55,0x56,0x48,0x81,0xec,0xd8,0x00,0x00,0x00}},
     {0x11046, 26, {0x0c,0xf3,0x0f,0x58,0x4b,0x34,0xf3,0x0f,0x11,0x4b,0x34,0xf3,0x0f,0x10,0x43,0x10,0xf3,0x0f,0x58,0x43,0x38,0xf3,0x0f,0x11,0x43,0x38}},
 };
 /* Gameplay state that rendering must never advance. VM render caches are excluded. */
@@ -44,14 +47,38 @@ static const struct GuardRange th06nc_guards[] = {
     {0xa6ec40, 8, 1, 0},              /* RNG count/state */
     {0xa6ec60, 8, 1, 0},              /* game input current/previous */
 };
-/* Which draw callback draws what. Taken from the registration scan in TH06NC_DEVNOTES §6 and
-   NOT yet confirmed against a running stage -- the per-callback sprite census in the log is
-   what will confirm it, and until then only the classes listed here dim at all. The bullet
-   and laser callback is deliberately absent: bullets are the thing everything else is being
-   faded for. */
+/* Which draw callback draws what. Each line below was settled from the decompilation and then
+   checked against the per-callback sprite census the log prints while a stage is running (the
+   counts quoted are sprites per two-second window at 144 Hz, so divide by ~288 for per frame).
+   Guessing this is how earlier sections of the notes went wrong, so nothing is listed here that
+   was not read out of the function itself.
+
+     0x78290  priority 5   stage background layers 0 and 1   (~26000: the backdrop's tiles)
+     0x78390  priority 6   stage background layers 2 and 3   (~720)
+     0x6a210  priority 9   the player's 80-entry shot pool at player+0x420, stride 0x170,
+     0x6a430  priority 11  drawn in two passes filtered on the entry's type word (1 then 2)
+     0x2b310  priority 12  the 512-entry effect pool, stride 0x198
+     0x11940  priority 14  bullets, lasers AND items -- see th06nc_pools
+     0x38290  priority 10  enemies          0x3cd20  priority 15  the HUD's digits
+     0x6a130  priority 7   the bomb/death screen darkener: a filled rect, no sprites at all
+
+   The bullet and laser callback is deliberately absent: bullets are the thing everything else
+   is being faded for. Nothing here is classified DIM_SPECIAL; New Classic has no extra class
+   of its own that competes with bullets the way TH11's or TH13's do. */
 static const struct DimRule th06nc_dim[] = {
-    {0x2b310, DIM_EFFECTS},      /* the eff*.anm effect manager's draw, priority 12 */
+    {0x78290, DIM_BACKGROUND},
+    {0x78390, DIM_BACKGROUND},
+    {0x6a210, DIM_PLAYER_SHOTS},
+    {0x6a430, DIM_PLAYER_SHOTS},
+    {0x2b310, DIM_EFFECTS},
 };
+/* Items are drawn by the bullet callback, so they can only be told apart by address. The pool
+   is 1024 entries of 0x160 at 0xbaf0d8; each entry carries its sprite VM at +0x38, which is
+   why the bullet draw reads 0xbaf1d8 (entry 0's VM position field, 0xbaf110 + 0xc8). */
+static const struct DimPool th06nc_pools[] = {
+    {0xbaf110, 0x160, 1024, DIM_ITEMS},
+};
+
 static const struct FixedGame th06nc_game = {
     .name = "TH06 New Classic (experimental)", .executable = "th06nc.exe",
     .sha256 = "07850c8c6e469c0e82c13423e6d0d096a88d693455bdacacbb44c0aa3bcce473",
@@ -87,8 +114,10 @@ static const struct FixedGame th06nc_game = {
     .proj_laser_timer = 0x11714, .proj_laser_timer_resume = 0x1171b,
     .proj_laser_timer_skip = 0x1172f, .proj_laser_timer_size = 7,
     .proj_epoch = 0x11796, .proj_epoch_resume = 0x1179f, .proj_epoch_size = 9,
+    .item_call = 0x108e7, .item_update = 0x42980,
     .vm_colour = 0xec,
     .draw_dispatch = 0x3c030, .draw_dispatch_resume = 0x3c03a, .draw_dispatch_size = 10,
     .dim_rules = th06nc_dim, .dim_rule_count = sizeof th06nc_dim / sizeof *th06nc_dim,
+    .dim_pools = th06nc_pools, .dim_pool_count = sizeof th06nc_pools / sizeof *th06nc_pools,
     .guards = th06nc_guards, .guard_count = sizeof th06nc_guards / sizeof *th06nc_guards,
 };

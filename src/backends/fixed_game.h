@@ -8,6 +8,11 @@ struct GuardRange { uint32_t rva, bytes, count, stride; };
    the x86 rules (which also match the ANM file, layer and script index) because one New Classic
    callback has not yet been seen drawing two classes. */
 struct DimRule { uint32_t draw_callback; int category; };
+/* Some classes share a draw callback with something that must not fade: items are drawn by the
+   same callback as the bullets they have to stand out against. Those are matched by the VM's
+   own address instead -- a pool is a fixed array of fixed-stride entries each carrying a VM at
+   a fixed offset, so membership is exact arithmetic, not a guess. Pools are checked first. */
+struct DimPool { uint32_t rva; uint32_t stride, count; int category; };
 struct FixedGame {
     const char* name;
     const char* executable;
@@ -33,6 +38,7 @@ struct FixedGame {
        drawing; that is what a sprite is classified by. Same shape as the update runner's. */
     uint32_t draw_dispatch, draw_dispatch_resume; unsigned draw_dispatch_size;
     const struct DimRule* dim_rules; size_t dim_rule_count;
+    const struct DimPool* dim_pools; size_t dim_pool_count;
     uint32_t fps_counter;             /* the game's own presented-frame count for its readout */
     uint32_t update_list, draw_list;  /* the two list sentinels, for the node diagnostic */
     unsigned node_priority, node_callback, node_next, node_argument;
@@ -58,6 +64,12 @@ struct FixedGame {
     uint32_t proj_laser_growth, proj_laser_growth_resume; unsigned proj_laser_growth_size;
     uint32_t proj_laser_timer, proj_laser_timer_resume, proj_laser_timer_skip; unsigned proj_laser_timer_size;
     uint32_t proj_epoch, proj_epoch_resume; unsigned proj_epoch_size;
+    /* The item pool is not a projectile, but the projectile callback updates it before it
+       touches a single bullet: `item_call` is that call and `item_update` its target. Item
+       motion is a whole-frame step -- fall speed accumulates toward a terminal velocity and
+       the collection tests read the stepped position -- so a sub-step pass must not make it,
+       or items fall at the tick rate instead of at 60 Hz (section 22). */
+    uint32_t item_call, item_update;
     const struct GuardRange* guards;
     size_t guard_count;
 };

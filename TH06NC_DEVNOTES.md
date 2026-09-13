@@ -1278,11 +1278,15 @@ Replay playback is no longer guarded, because the flag that was guarding it neve
 what it claimed. Watching a replay with either feature on will now drive the player from
 the device as well as from the file, which looks wrong; it cannot damage the replay, since
 playback does not write, and both features remain off by default. **Finding the real
-playback flag is the first task of the next session** -- and this time it wants a live
-check, not an address scan: the scan is what produced both this error and section 16's.
+playback flag is still open** -- and this time it wants a live check, not an address scan:
+the scan is what produced this error, section 16's, and the dead-code claim corrected above.
+That the three functions are live is the way in: whichever of them writes the input global
+runs only during playback, so the byte its caller tests is the flag.
 
 The lesson for the whole project: a reference found by linear decoding is a candidate, not
-a fact. Before a byte is allowed to gate anything, something reachable has to read it.
+a fact, and so is an *absence* of references found the same way. Before a byte is allowed to
+gate anything, something reachable has to read it -- and before a function is called dead,
+the search for its callers has to have been done with `xrefs64.py`, not `xrefs`.
 
 ## 18. Lasers, and where the parity with TH10-13 actually is (2026-09-13)
 
@@ -1553,3 +1557,125 @@ game can actually fade, and the shared menu disables the sliders a game has no r
 says why. The x86 runtime returns all of them. Background dimming will need more than a rule
 in any case — the x86 blends a black quad over the viewport before the first world-priority
 callback, which here means drawing a quad in D3D11 at the right point in the draw list.
+
+## 22. Items fell at the tick rate, and the finished dimming map (2026-09-13)
+
+The owner reported the first substantive gameplay fault of the sub-step work: *"the items are
+falling very fast, it seems like item gravity is not scaled by delta time."* They were right
+about the symptom and, as it turned out, about the cause -- but not about where it lived.
+
+### Looking in the wrong place first
+
+The obvious suspect was the item manager in the update list, `12@3cc50`, which is gated by the
+pause flag and calls `0x3fca0` and `0x3eee0`. Both have exactly one caller, `0x3cc50` runs from
+the 60 Hz update only, and `projectiles_slice` calls nothing but `0x10870` -- so by that route
+items cannot be stepped more than once a frame. `0x3fca0` even *contains* a plausible-looking
+fall integration (a 0x120-stride loop clamping `[rbx+8]` toward `[rbx+4]` by ±0.01/0.02), which
+is exactly the kind of near-miss that costs an hour. It is the HUD: the 0x120 stride is an ANM
+VM, and the surrounding code formats `"BONUS %8d"`.
+
+What settled it was asking the decompilation a question instead of reading it. Items fall, so
+some float is accumulated by a small constant every frame; over the whole binary there are only
+two places where a float field is incremented by a constant smaller than 0.5:
+
+```text
+0x373b0  += 0.3     (the enemy manager, an option's approach speed)
+0x42980  += 0.03    <-- one line, and the whole bug
+```
+
+`0x42980` is the item pool: 1024 entries of 0x160 at `0xbaf0d8`, position at `+0x10`, velocity
+at `+0x1c`, type at `+0x34`, and a sprite VM embedded at `+0x38`. Its motion is
+
+```c
+pos += vel;                               /* x, y, z */
+if (vel.y >= 3.0) vel.y = 3.0;            /* terminal */
+else               vel.y += 0.03;         /* gravity  */
+if (pos.y >= 464.0) despawn;
+```
+
+with an auto-collect branch that re-aims the velocity at the player at a flat speed of 8, and a
+`switch` on the type that awards power, points, lives and bombs. And its single caller is
+
+```text
+0x108e7  call 0x42980        -- inside the projectile manager, before it touches one bullet
+```
+
+That is the function `projectiles_slice` calls once per sub-step. At 360 Hz items were being
+stepped six times a frame: six gravity accumulations, six position steps, six collection tests.
+Nothing was wrong with the item code; it was being run five extra times.
+
+### The fix
+
+Items are the "gate the discrete" half of the rule, not the "scale the continuous" half. Their
+motion is inseparable from the scoring and collection the same pass performs, and running that
+six times a frame is not something a `dt` multiply makes safe. So the whole call stands aside:
+`item_call` (`0x108e7`) is redirected to a runtime function that calls `item_update`
+(`0x42980`) only when the pass flag is clear. On a native tick items behave exactly as the
+unmodified game's do, and `substep ...: N item updates held back` in the log says so.
+
+They do not look 60 Hz, either: each item's sprite is an ordinary VM, so the sprite hook
+interpolates its position like everything else.
+
+A guard range over the pool's position and velocity (`{0xbaf0e8, 24, 1024, 0x160}`) was written
+and then deliberately removed. The draw guard's job is to prove *rendering* advances no
+gameplay state, and nothing in the draw path was shown to leave the item pool alone -- a spawn
+from a draw callback would trip it and silently drop the whole patch to 60 Hz. An untested
+guard that can disable the mod is worse than no guard. It belongs in a session that can watch a
+stage run with it armed.
+
+### What this says about the sub-step audit
+
+§16 enumerated what `0x10870` does and gated each 60 Hz block inside it. Every one of those was
+a block *within* the bullet loops. The item call is three instructions into the prologue, before
+the loops start, and it was never considered because the function had already been labelled
+"the projectile manager". **A callback is not the thing it is named after.** The remaining
+sub-step surface should be re-read for the same mistake: what else does a gated function do
+before it reaches the thing it was gated for?
+
+### The dimming map, finished
+
+§21 shipped the machinery with one provisional rule. The in-game draw list and the per-callback
+sprite census from the owner's play session, read against the decompilation, settle the rest:
+
+| callback | priority | what it draws | class |
+| --- | --- | --- | --- |
+| `0x78290` | 5 | stage background layers 0 and 1 | background |
+| `0x78390` | 6 | stage background layers 2 and 3 | background |
+| `0x6a130` | 7 | the bomb/death screen darkener — a filled rect, no sprites | — |
+| `0x6a210` | 9 | the player's shot pool, entries of type 1 | player shots |
+| `0x6a430` | 11 | the same pool, entries of type 2 | player shots |
+| `0x38290` | 10 | enemies | — |
+| `0x2b310` | 12 | the 512-entry effect pool | effects |
+| `0x11940` | 14 | bullets, lasers **and items** | — |
+| `0x3cd20` | 15 | the HUD's digits | — |
+
+The player's shots are one pool of 80 entries at `player+0x420`, stride 0x170, with the VM at
+`+0x08` and a type word at `+0x00`; the two callbacks walk it twice, filtering on that word, so
+the shots draw at two different depths. Neither draws the player itself, which is what makes
+this class safe to fade -- the mistake the owner had already found in TH10-12's x86 rules.
+
+Two things did not fit the callback-keyed rule table, and both are now handled:
+
+**Items share a callback with bullets.** Fading `0x11940` would fade the thing everything else
+is being faded *for*. But the item pool is a fixed array at a fixed address, so its VMs are
+identifiable by arithmetic: a new `DimPool` rule matches a VM whose address is `0xbaf110` plus
+an exact multiple of `0x160`, under 1024 of them. Pools are checked before callbacks. The same
+mechanism is what any future class that shares a callback should use. (`0x11940` reads
+`0xbaf1d8` -- entry 0's VM position field, `0xbaf110 + 0xc8` -- which is independent
+confirmation of both the pool base and the VM offset.)
+
+**The background will not fade by alpha.** It is drawn over the playfield's own fill, so
+lowering its alpha changes nothing visible. The x86 backend has the same problem and solves it
+by scaling the *colour* for this one class rather than the alpha, and the x64 runtime now does
+the same. This replaces §21's stated plan of blending a D3D11 quad before the first
+world-priority callback: no quad, no D3D11 work, one branch in `dim_fade_colour`. If a stage
+turns out to draw its background through a blend mode where colour scaling is also inert, the
+game's own rect filler at `0x75be0` -- which `0x6a130` uses for the bomb darkener, with the
+playfield rect `(236,16)-(620,464)` and `alpha<<24` -- is the ready-made fallback.
+
+New Classic gets no `DIM_SPECIAL`: it has no extra class of its own that competes with bullets
+the way TH11's or TH13's do, so the menu shows that slider disabled.
+
+`tools/test_fixed_profile.py` now requires every dimming rule to name a real function entry
+(one with a `.pdata` record) and every pool to lie inside the image, so a rule that could never
+match cannot be committed silently.
