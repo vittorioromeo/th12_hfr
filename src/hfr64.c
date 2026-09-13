@@ -22,7 +22,7 @@ static uintptr_t base;
 static HMODULE module;
 static FILE* logfile;
 static char ini[MAX_PATH];
-static int fps=0, rate=60, interpolate=1, vsync=0, debug=0, subtick=0;
+static int fps=0, rate=60, interpolate=1, vsync=0, debug=0, subtick=0, substep=0;
 static int major=1, guard_failed=0, depth=0;
 static uint64_t ticks, frames, samples, blends;
 static double phase, frequency, deadline;
@@ -32,16 +32,25 @@ static struct FixedPose history[16384];
 /* These three live in the relay page so the relocated movement site can reach them with a
    RIP-relative displacement; the DLL's own globals may be further than 2 GB from the game. */
 static float* player_factor; static unsigned char* player_ran;
+/* Sub-stepped projectiles: `proj_minor` is 1 while a sub-step pass is running, so the
+   gated 60 Hz blocks stand aside; `proj_dt` scales the bullet motion. `proj_ran` is set
+   by the manager's frame counter, which only advances on a full pass, so it says whether
+   projectiles are being updated at all -- paused, between stages and in menus they are
+   not, and the pass must not move anything. */
+static unsigned char* proj_minor; static float* proj_dt; static unsigned char* proj_ran;
+static struct SubtickPlayer proj_slice; static uint64_t proj_passes;
 static struct SubtickPlayer subtick_player;
 static uint64_t subtick_moves, subtick_polls; static double subtick_poll_max;
 typedef uintptr_t (*UpdateFn)(void*);
 typedef uint32_t (*PollFn)(uintptr_t);
+typedef uintptr_t (*ProjFn)(uintptr_t);
 typedef void (*DrawFn)(void);
 typedef uintptr_t (*SpriteFn)(void*,void*,uintptr_t);
 static SpriteFn sprite_original, rotated_original;
 static SpriteFn vm_start_original[2];
 static void set_rate(void);
 static int subtick_active(void);
+static int substep_active(void);
 static void report(const char* fmt, ...) {
     if (!logfile) return;
     va_list ap; va_start(ap,fmt); vfprintf(logfile,fmt,ap); va_end(ap);
@@ -67,7 +76,7 @@ static void set_rate(void) {
     if (guard_failed) rate=60;
     deadline=0;
     memset(history,0,sizeof history);
-    LOG("rate=%d, fixed simulation=60, interpolate=%d, subtick=%d, vsync=%d",rate,interpolate,subtick,vsync);
+    LOG("rate=%d, fixed simulation=60, interpolate=%d, subtick=%d, substep=%d, vsync=%d",rate,interpolate,subtick,substep,vsync);
 }
 /* Sub-tick player movement is a gameplay change, so it stays off unless asked for, and
    steps aside whenever its premises do not hold: at 60 Hz there is nothing between frames,
@@ -99,6 +108,29 @@ static void subtick_move(double tau) {
     position[1] = subtick_clamp(position[1] + dy * scale[1] * (float)dt, bounds[1], bounds[3]);
     ++subtick_moves;
 }
+/* Sub-stepped projectiles run the bullet/laser callback again between native ticks with
+   the 60 Hz blocks gated off, so bullets move -- and are culled, grazed and collided --
+   several times per frame. It stands aside on the same terms as sub-tick movement, and
+   additionally whenever the last full pass did not run the callback at all: paused,
+   between stages and in menus the manager's frame counter does not advance, and nothing
+   should be moved. */
+static int substep_active(void) {
+    return substep && rate > 60 && proj_dt && proj_minor && !guard_failed &&
+           !*(const unsigned char*)(base + game->replay_playing);
+}
+/* One slice of the current frame's projectile motion. The slices of a frame sum to exactly
+   one frame, and the native pass contributes none of it, so at every native tick the
+   bullets are where the unmodified game would have put them. */
+static void projectiles_slice(double tau) {
+    double dt = subtick_slice(&proj_slice, tau, substep_active() && proj_slice.armed);
+    if (dt <= 0.0) return;
+    *proj_dt = (float)dt;
+    *proj_minor = 1;
+    ((ProjFn)(base + game->projectile))(base + game->projectile_arg);
+    *proj_minor = 0;
+    *proj_dt = 0.0f;
+    ++proj_passes;
+}
 /* Scheduling uses elapsed time: a blocked Present must not slow the simulation just
    because the requested presentation rate exceeds the actual display rate. At most
    one native update is made per outer loop; severe stalls retain native slowdown. */
@@ -106,16 +138,23 @@ static uintptr_t update_first(void* result) {
     if (pending_rate) {pending_rate=0;set_rate();}
     major=fixed_clock_step(&logic_clock,now(),frequency,rate,&phase);
     if (major) {
+        /* Finish the outgoing frame's projectile motion before the next frame's logic sees
+           it, so the 60 Hz pass reads exactly the positions the unmodified game would. */
+        projectiles_slice((double)ticks + 1.0);
         ++ticks;
         /* 1.0 reproduces the original instruction exactly, so with the feature off the
            relocated site is bit-identical to the game's own code. */
         if (player_factor) *player_factor=subtick_active()?0.0f:1.0f;
         if (player_ran) *player_ran=0;
+        if (proj_dt) *proj_dt=substep_active()?0.0f:1.0f;
+        if (proj_ran) *proj_ran=0;
         uintptr_t r=((UpdateFn)(base+game->update))(result);
         subtick_player.armed=player_ran && *player_ran;
+        proj_slice.armed=proj_ran && *proj_ran;
         subtick_move((double)ticks+phase);
         return (unsigned char)r; /* AH=0 is the post-update relay's normal path. */
     }
+    projectiles_slice((double)ticks+phase);
     subtick_move((double)ticks+phase);
     return 0x100; /* AL=0 (normal), AH=1 (skip native audio/fast-forward bookkeeping). */
 }
@@ -204,18 +243,21 @@ static int wait_frame(void) {
             else SwitchToThread();
         } else YieldProcessor();
     }
-    static double last; static uint64_t ft,ut,st,bt,pt;
+    static double last; static uint64_t ft,ut,st,bt,pt,qt;
     t=now();
-    if (!last) {last=t;ft=frames;ut=ticks;st=samples;bt=blends;pt=subtick_polls;}
+    if (!last) {last=t;ft=frames;ut=ticks;st=samples;bt=blends;pt=subtick_polls;qt=proj_passes;}
     if (t-last>=frequency*2) {
         double seconds=(t-last)/frequency;
         LOG("stats seconds=%.3f presents=%.2f updates=%.2f frames=%llu ticks=%llu samples=%llu blends=%llu guard=%s api=%d",seconds,
             (frames-ft)/seconds,(ticks-ut)/seconds,(unsigned long long)frames,(unsigned long long)ticks,
             (unsigned long long)(samples-st),(unsigned long long)(blends-bt),guard_failed?"FAILED":"ok",*(int*)(base+game->graphics_api));
+        if (proj_passes) LOG("substep %s: %llu projectile passes (%.2f/s, %.2f per frame)",
+            substep_active()?"on":"standing by",(unsigned long long)proj_passes,
+            (proj_passes-qt)/seconds,(double)(proj_passes-qt)/(double)(ticks-ut?ticks-ut:1));
         if (subtick_polls) LOG("subtick %s: %llu input polls (%.2f/s), longest %.2f ms, %llu player moves",
             subtick_active()?"on":"standing by",(unsigned long long)subtick_polls,(subtick_polls-pt)/seconds,
             subtick_poll_max*1000.0,(unsigned long long)subtick_moves);
-        pt=subtick_polls;subtick_poll_max=0;
+        pt=subtick_polls;qt=proj_passes;subtick_poll_max=0;
         last=t;ft=frames;ut=ticks;st=samples;bt=blends;
     }
     return !major;
@@ -251,6 +293,7 @@ static int prepare_patches(void) {
     }
     if (!relay_page) return 0;
     data_page=relay_page+4096;player_factor=NULL;player_ran=NULL;
+    proj_minor=NULL;proj_dt=NULL;proj_ran=NULL;
     patch_begin();
     if (!queue_call(game->update_calls[0],update_first) || !queue_call(game->update_calls[1],update_extra) ||
         !queue_call(game->draw_call,draw_frame) || !queue_call(game->present_call,present)) return 0;
@@ -280,6 +323,81 @@ static int prepare_patches(void) {
        them -- the facing direction the animation triggers already consumed -- keeps its place.
        A byte store records that the site ran, which is how the pass knows the player is in a
        state that moves at all: paused, dying and between stages it simply never executes. */
+    /* Sub-stepped projectiles. Each gate has the same shape: test the pass flag, then either
+       run the relocated bytes and resume, or jump past the block. The flag is tested before
+       the relocated instructions so the flags they set are the ones that survive -- the state
+       switch's `sub ecx,r12d` is read by the `je` at its resume. */
+    if (game->projectile) {
+        proj_minor=data_page+8; *proj_minor=0;
+        proj_dt=(float*)(data_page+12); *proj_dt=1.0f;
+        proj_ran=data_page+16; *proj_ran=0;
+        struct Gate { uint32_t site, resume, skip; unsigned size; int mark; } gates[] = {
+            {game->proj_states, game->proj_states_resume, game->proj_states_skip, game->proj_states_size, 0},
+            {game->proj_offscreen, game->proj_offscreen_resume, game->proj_offscreen_resume, game->proj_offscreen_size, 0},
+            {game->proj_timer, game->proj_timer_resume, game->proj_timer_resume, game->proj_timer_size, 0},
+            {game->proj_lasers, game->proj_lasers_resume, game->proj_lasers_skip, game->proj_lasers_size, 0},
+            {game->proj_epoch, game->proj_epoch_resume, game->proj_epoch_resume, game->proj_epoch_size, 1},
+        };
+        for (size_t i=0;i<sizeof gates/sizeof *gates;++i) {
+            const struct Gate* g=&gates[i];
+            if (relay_used+96>4096) return 0;
+            unsigned char* q=relay_page+relay_used;relay_used+=96;size_t k=0;
+            q[k]=0x80;q[k+1]=0x3d;q[k+6]=0x00;              /* cmp byte [rip+minor],0 */
+            if (!rel32(q+k+2,(uintptr_t)(q+k+7),(uintptr_t)proj_minor)) return 0;
+            k+=7;
+            size_t branch=k; q[k]=0x75;k+=2;                /* jne skip; filled in below */
+            if (g->site==game->proj_lasers) {
+                /* The laser loop's head reloads a constant into a callee-saved register the
+                   epilogue restores anyway, so the skip path can leave it alone; the RIP
+                   displacement has to be recomputed for the relay's address. */
+                memcpy(q+k,(const void*)(base+g->site),5);
+                if (!rel32(q+k+5,(uintptr_t)(q+k+9),base+game->proj_lasers_const)) return 0;
+                k+=9;
+            } else {
+                memcpy(q+k,(const void*)(base+g->site),g->size);k+=g->size;
+            }
+            if (g->mark) {                                  /* mov byte [rip+ran],1 */
+                q[k]=0xc6;q[k+1]=0x05;q[k+6]=1;
+                if (!rel32(q+k+2,(uintptr_t)(q+k+7),(uintptr_t)proj_ran)) return 0;
+                k+=7;
+            }
+            q[k]=0xe9;                                      /* jmp resume */
+            if (!rel32(q+k+1,(uintptr_t)(q+k+5),base+g->resume)) return 0;
+            k+=5;
+            q[branch+1]=(unsigned char)(k-(branch+2));      /* jne lands on the skip jump */
+            q[k]=0xe9;                                      /* skip: jump past the block */
+            if (!rel32(q+k+1,(uintptr_t)(q+k+5),base+g->skip)) return 0;
+            k+=5;
+            memset(b,0x90,g->size);b[0]=0xe9;
+            if (!rel32(b+1,base+g->site+5,(uintptr_t)q) ||
+                !patch_bytes(base+g->site,b,g->size,NULL)) return 0;
+        }
+        /* The motion itself is not relocated but rewritten: each axis gains a multiply by the
+           sub-step's length before it is added to the position. Off, the length is 1.0 and
+           the multiply is exact, so the result is bit-identical to the original adds. */
+        if (relay_used+96>4096) return 0;
+        unsigned char* m=relay_page+relay_used;relay_used+=96;size_t k=0;
+        static const unsigned char axis[3][3]={{0x53,0x30,0x08},{0x4b,0x34,0x0c},{0x43,0x38,0x10}};
+        for (int a=0;a<3;++a) {
+            const unsigned char* x=axis[a];
+            m[k]=0xf3;m[k+1]=0x0f;m[k+2]=0x10;m[k+3]=x[0];m[k+4]=x[2];k+=5;   /* movss xmmN,[rbx+vel] */
+            m[k]=0xf3;m[k+1]=0x0f;m[k+2]=0x59;m[k+3]=(unsigned char)((x[0]&0x38)|0x05);
+            if (!rel32(m+k+4,(uintptr_t)(m+k+8),(uintptr_t)proj_dt)) return 0; /* mulss xmmN,[rip+dt] */
+            k+=8;
+            m[k]=0xf3;m[k+1]=0x0f;m[k+2]=0x58;m[k+3]=x[0];m[k+4]=x[1];k+=5;   /* addss xmmN,[rbx+pos] */
+            m[k]=0xf3;m[k+1]=0x0f;m[k+2]=0x11;m[k+3]=x[0];m[k+4]=x[1];k+=5;   /* movss [rbx+pos],xmmN */
+            if (a==0) {   /* the load the original interleaved here; the cull reads it */
+                static const unsigned char load[]={0x48,0x8b,0x83,0x50,0x01,0x00,0x00};
+                memcpy(m+k,load,sizeof load);k+=sizeof load;
+            }
+        }
+        m[k]=0xe9;
+        if (!rel32(m+k+1,(uintptr_t)(m+k+5),base+game->proj_motion_resume)) return 0;
+        k+=5;
+        memset(b,0x90,game->proj_motion_size);b[0]=0xe9;
+        if (!rel32(b+1,base+game->proj_motion+5,(uintptr_t)m) ||
+            !patch_bytes(base+game->proj_motion,b,game->proj_motion_size,NULL)) return 0;
+    }
     if (game->player_motion && relay_used+64<=4096) {
         /* These two are written every frame, so they belong on the page that stays writable. */
         player_factor=(float*)data_page;*player_factor=1.0f;
@@ -340,6 +458,7 @@ __declspec(dllexport) DWORD WINAPI hfr_start(void* unused) {
     vsync=GetPrivateProfileIntA("fixed60","vsync",0,ini)!=0;
     interpolate=GetPrivateProfileIntA("fixed60","interpolate",1,ini)!=0;
     subtick=GetPrivateProfileIntA("fixed60","subtick",0,ini)!=0;
+    substep=GetPrivateProfileIntA("fixed60","substep",0,ini)!=0;
     debug=GetPrivateProfileIntA("hfr","debug",0,ini)!=0;
     menu_key_code=GetPrivateProfileIntA("video","menu_key",VK_F11,ini);
     if (menu_key_code<0 || menu_key_code>255) menu_key_code=VK_F11;

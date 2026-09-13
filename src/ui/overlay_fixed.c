@@ -8,7 +8,9 @@ int hfr_ui_get(int id) {
     case UI_VSYNC: return vsync;
     case UI_ENEMY_INTERP: return interpolate;
     case UI_SUBTICK_INPUT: return subtick;
+    case UI_SUBSTEP: return substep;
     case UI_SUBTICK_AVAILABLE: return game->player_motion!=0;
+    case UI_SUBSTEP_AVAILABLE: return game->projectile!=0;
     case UI_DEBUG: return debug;
     default: return 0;
     }
@@ -19,6 +21,10 @@ void hfr_ui_set(int id,int value) {
     case UI_VSYNC: vsync=!!value;break;
     case UI_ENEMY_INTERP: interpolate=!!value;memset(history,0,sizeof history);break;
     case UI_SUBTICK_INPUT: subtick=!!value;memset(history,0,sizeof history);break;
+    /* Forget where the projectile motion had got to, so the frame the switch is thrown in
+       keeps the whole-frame step the native pass already gave it and the slices start
+       clean at the next frame. */
+    case UI_SUBSTEP: substep=!!value;proj_slice.moved_to=0;memset(history,0,sizeof history);break;
     case UI_DEBUG: debug=!!value;break;
     }
 }
@@ -29,7 +35,7 @@ static void save_int(const char* section,const char* key,int value) {
 void hfr_ui_save(void) {
     save_int("hfr","fps",fps);save_int("hfr","debug",debug);
     save_int("fixed60","vsync",vsync);save_int("fixed60","interpolate",interpolate);
-    save_int("fixed60","subtick",subtick);
+    save_int("fixed60","subtick",subtick);save_int("fixed60","substep",substep);
 }
 void hfr_ui_status(char* out,int n) {
     snprintf(out,n,"%s | %d FPS target | 60 Hz gameplay%s",game->name,rate,guard_failed?" | DRAW GUARD FAILED":"");

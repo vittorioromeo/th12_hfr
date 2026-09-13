@@ -1041,3 +1041,109 @@ block gated, with the register effects of each accounted for); then the enemy, i
 effect callbacks. Each conversion needs its own frozen signatures and its own Unicorn test,
 and none of it should be enabled by default until a native-versus-patched comparison over
 the same replay shows the same outcomes.
+
+## 16. Sub-stepped bullets (2026-09-13)
+
+Section 15 left the projectile work mapped but not done, and one question open. Both are
+answered here: bullets now advance a fraction of a frame at a time, with their culling,
+grazing and collision evaluated at every step.
+
+### The open question, answered
+
+The death test for ordinary bullets is `0x6a980`, called from `0x11418` inside the
+projectile callback. Section 15 could not find it because it reads the player's hitbox
+radius as `[rbx+0x774c]` off the player pointer in `rcx`, not through the absolute address
+`0x506aec` the xref scan was looking for. **A register-relative access to a known global is
+invisible to an address xref scan** -- worth remembering, because the same scan is what
+produced the (wrong) conclusion that only two places read that radius.
+
+`0x6a980` takes the player, the bullet's position and its size, and returns non-zero on
+contact: first `0x6a8c0` (the bullet-cancel boxes at `player+0x7754`, returning 2), then a
+circle test of `min(w,h)*0.5 + player+0x774c` against the distance to `player+0x7730`. It
+runs only for bullets whose graze flag `+0x618` is already set, which is a neat
+optimisation -- nothing can hit you that has not first come close enough to graze.
+
+Because that test lives inside the callback, **sub-stepping the callback sub-steps player
+death**. This is the part that makes the feature a gameplay change rather than a smoothing
+trick: a bullet fast enough to jump from one side of the player to the other between two
+60 Hz frames is not tested against the player at all in the stock game, and now is. It
+makes the game harder.
+
+### How it runs
+
+The callback is not re-entered through the update runner; the dispatch gate designed in
+section 15 was not needed and is not emitted. On a sub-step pass the runtime calls
+`0x10870` directly with the manager `0x3ec2a0`, having set a flag that five relocated
+blocks test. Everything that must stay at 60 Hz stands aside:
+
+| RVA | Block | On a sub-step pass |
+| --- | --- | --- |
+| `0x10982` | the state switch, and with it the whole state machine to `0x11021` | skipped: jumps to `0x11021` |
+| `0x11298` | the off-screen frame counter `+0x604` | not incremented |
+| `0x11562` | the per-bullet timer `+0x28`/`+0x2c` | not advanced |
+| `0x11604` | the laser loop's head | skipped: jumps to the epilogue at `0x11740` |
+| `0x11796` | the manager's own frame counter, and the byte that records a full pass | not advanced |
+
+What still runs is the motion at `0x1102c`, the off-screen test, the cancel-box test, graze
+and the hit test. The motion block is rewritten rather than relocated: each axis loads the
+velocity, multiplies it by the step's length and adds it to the position. With the feature
+off the length is `1.0`, and multiplying a float by one is exact, so the result is
+bit-identical to the original three adds -- checked against awkward values (2^24, 0.1+0.2,
+denormals) in the Unicorn test, not just asserted.
+
+The accounting is the same τ bookkeeping as the player's: the slices of a frame sum to
+exactly one frame, and the native pass contributes none of it (its factor is 0). So at
+every 60 Hz boundary the bullets are exactly where the unmodified game would have put them,
+and the state machine, the spawner and everything downstream read stock positions. The
+finishing slice is applied at the top of the next boundary, before that frame's logic, so
+the last position tested each frame is the true end-of-frame position.
+
+Three properties made this far safer than it first looked:
+
+- **Graze is once per bullet** (`+0x618`), so testing it six times a frame cannot inflate
+  the counter, the score or the effect spawns.
+- **No animation advances on the ordinary path.** The VM work at `0x11434`-`0x11543` is the
+  cancel effect, reached only when the hit test fires and the bullet's state changes, so it
+  cannot repeat.
+- **Nothing branches into any of the six patched ranges.** That was checked by decoding
+  every branch in `.text` before a single byte was written, and is what makes relocating
+  them legitimate.
+
+Only the first five bytes of the 52-byte motion block are replaced, because one patch
+carries at most 32 bytes; the remaining 47 are unreachable for the same reason. Both halves
+are frozen so the whole block is still verified before anything is patched.
+
+### What it does not do
+
+Lasers, enemies, items, effects, the player's own shots and every script still run at
+60 Hz. Bullets fired by an enemy still appear on frame boundaries; they just fly smoothly
+and hit accurately once they exist.
+
+Interpolation needs no special handling: `fixed_pose` already invalidates a VM whose
+position changes within a native tick, which is exactly what a sub-stepped bullet does, so
+those sprites are drawn where they are rather than smoothed from stale poses.
+
+Toggling the setting off midway through a frame gives that one frame the slices it had
+already taken plus a whole native step -- at most one extra frame of bullet travel, once.
+Toggling it on costs nothing, because the accounting is reset so the frame in question
+keeps the whole-frame step it already had.
+
+Positions accumulate across slices instead of being computed in one multiply, so a bullet's
+position can differ from stock by a few units in the last place. It is far below any hitbox
+and unbiased, but it is not bit-identity, and a replay recorded with the feature on will not
+play back faithfully in any case -- the setting disables itself during playback.
+
+### Validation
+
+`test64.sh` executes every emitted relay in Unicorn: the motion at step lengths 1.0, 0.25
+and 0 (positions, the descriptor load the cull depends on, the `xmm2`/`xmm1` the cull reads,
+and that nothing else is clobbered); the state switch in both directions including that the
+zero flag from `sub ecx,r12d` survives to the `je` at its resume; the off-screen counter,
+the per-bullet timer and the manager counter each incrementing only on a full pass; the
+laser head reaching the loop or the epilogue; and the full thirteen-patch transaction.
+
+**Not validated in the running game.** The things to watch for are bullets moving at the
+right speed overall (a wrong factor would show as everything flying at six times speed or
+crawling), graze counts matching a stock run roughly, animations not running fast, lasers
+behaving normally, and dying to things that used to miss -- that last one is the feature
+working, not a bug.
