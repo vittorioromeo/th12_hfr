@@ -30,5 +30,9 @@ try {
     if($LASTEXITCODE){throw 'x64 runtime link failed'}
     & $compilerPath -std=gnu11 -O2 -Wall -Wextra -Wno-unused-function -static-libgcc src/launcher64.c -o build/touhou_hfr64.exe -lbcrypt
     if($LASTEXITCODE){throw 'x64 launcher build failed'}
-    Write-Output 'Built the experimental x64 fixed-clock runtime and launcher helper.'
+    # The dxgi.dll proxy: the game loads it by name, so this is how the patch installs
+    # itself when Steam is the launcher. Built alone; it forwards and nothing more.
+    & $compilerPath -std=gnu11 -O2 -Wall -Wextra -shared -s -static-libgcc src/proxy_dxgi.c -o build/dxgi.dll
+    if($LASTEXITCODE){throw 'dxgi proxy build failed'}
+    Write-Output 'Built the experimental x64 fixed-clock runtime, its dxgi proxy and the launcher helper.'
 } finally {Pop-Location;$env:PATH=$savedPath}

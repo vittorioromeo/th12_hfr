@@ -1773,3 +1773,144 @@ settings queried is the set of controls offered. It asserts every dimming contro
 with *and* without a video backend, that the scaler's appear only with one, and that a game
 with no dimming rules still gets the sliders (disabled, saying why) rather than nothing.
 Reinstating the early-out makes it fail with ten named lines.
+
+## 23. The Steam build, and the door DxLib leaves open (2026-09-13)
+
+The owner bought New Classic on Steam, copied the patch into
+`steamapps\common\th06nc\`, and found that launching from Steam did not load the patch at
+all, while launching anything from the folder produced a Steam dialog — *"An error occurred
+while launching this game: Game configuration unavailable"* — and no game.
+
+### It was never the patch
+
+The first thing to check was the obvious one, and it came back clean: the Steam executable's
+SHA-256 is `07850c8c…`, **byte-identical to the copy every section above was written
+against**. The profile applies unchanged. And `touhou_hfr.log` in the Steam folder said
+
+```text
+Verified TH06 New Classic (experimental)
+Installed at image=00007ff615dc0000 relay=00007ff615db0000; original executable unchanged
+```
+
+so the launcher had started the game, injected, verified 27 signatures and committed all 16
+patches. The patch worked perfectly and then the process vanished.
+
+`main` explains it in five instructions:
+
+```text
+0x678a0  sub rsp, 0x28
+0x678a4  call 0x8f890
+0x678a9  mov ecx, 0x48afc6                    ; the Steam app id, 4763590
+0x678ae  call [SteamAPI_RestartAppIfNecessary]
+0x678b4  test al, al
+0x678b6  jne 0x678e5                          ; -> mov rax, -1 ; ret
+```
+
+`SteamAPI_RestartAppIfNecessary` returns true when the process was **not** launched by Steam.
+It then asks Steam to run the app — Valve's documentation describes it as effectively
+`steam://run/<appid>` — and the caller is expected to exit immediately, which this one does.
+So any process Steam did not start kills itself and hands off; the launcher's injection goes
+with the process it was made into, and the relaunch Steam then attempts is the dialog the
+owner saw. Double-clicking `th06nc.exe` does exactly the same thing. **Nothing here is
+specific to the patch**, which is why no amount of looking at the patch would have found it.
+
+### Why there was no proxy to fall back on
+
+The x86 games are installed by a `dinput8.dll` proxy: the game imports it, so the game loads
+the patch itself however it was started. §10 recorded that New Classic has no equivalent, and
+its import table is the reason — the whole of it is `steam_api64.dll`, `KERNEL32`, `USER32`,
+`ole32`, the MSVC runtime and the UCRT api-sets. Nothing proxiable, and proxying
+`steam_api64.dll` is not something this patch will do.
+
+But an import table is not the whole story. DxLib resolves Direct3D at run time, and the
+strings it does it with are in the binary:
+
+```text
+0x2cd878  u"dxgi.dll の読み込み.... "
+0x2cd8a0  u"dxgi.dll"
+0x2cd8d8  u"d3d11.dll の読み込み.... "
+0x2cd958  u"CreateDXGIFactory2 のアドレスを取得します.... "
+```
+
+`LoadLibraryW(L"dxgi.dll")` — a **bare name**, which Windows resolves against the executable's
+own directory before System32, because dxgi is not a KnownDLL. That is the same door ReShade
+and Special K go through on thousands of games, and it was open here the whole time.
+
+### `src/proxy_dxgi.c`
+
+A `dxgi.dll` beside `th06nc.exe` is therefore loaded by the game itself, on every launch,
+whoever started it — including Steam, which stays the launcher, so the overlay, playtime and
+achievements are untouched and `RestartAppIfNecessary` correctly returns false.
+
+The proxy forwards all 57 exports of the real library. One list in `src/dxgi_exports.h` is
+used three times — to declare each name for export, to emit its stub, and to resolve its real
+address — so the three cannot disagree. Each stub is one instruction:
+
+```asm
+CreateDXGIFactory1: jmp *real_CreateDXGIFactory1(%rip)
+```
+
+which preserves every register and the stack exactly, so it is transparent to any calling
+convention and to a caller that passes arguments this file has never heard of. A name this
+Windows build does not have resolves to a stub returning `E_NOTIMPL`, which is what calling an
+absent export would have produced anyway.
+
+Two decisions are worth recording.
+
+**The real library is asked for by full path, and the answer is checked.** The loader answers
+a bare name with whatever module of that base name is already loaded, which here would be the
+proxy itself — every forwarded call would then jump back into its own stub. Windows
+distinguishes the two by path (the x86 `dinput8.dll` proxy has resolved the system dinput8
+this way since the first release, on the owner's own machine), but **Wine does not**: it
+returns the same module for `C:\Windows\System32\dxgi.dll` as for the proxy's own path, with
+`LOAD_WITH_ALTERED_SEARCH_PATH` and `LOAD_LIBRARY_SEARCH_SYSTEM32` making no difference. So
+the proxy compares what it got against its own module handle and, if they match, forwards
+nothing: a game that reports it cannot create a device, rather than one that hangs. The test
+loads the proxy from a copy under a different name, because a loader that keys modules by base
+name cannot hold the proxy and the system library open at once and there would be nothing to
+compare against.
+
+**The runtime starts on the first factory call, not in `DllMain`.** Starting it from `DllMain`
+would run MinHook's thread enumeration under the loader lock; starting it from a thread spawned
+there would race the game to the frame loop it is about to patch. `CreateDXGIFactory2` is
+neither: the game calls it while initialising Direct3D, on its own main thread, with the frame
+loop not yet running — the same quiet moment the launcher used to get by suspending the process.
+
+The proxy is deliberately incurious. It does not know which game it is in, does not read the
+INI, and does nothing at all if `touhou_hfr64.dll` is absent; the runtime checks the
+executable's fingerprint itself and declines to patch anything it does not recognise. Dropped
+into a folder with some other Direct3D 11 game, it forwards and nothing else.
+
+### The launcher still has a job
+
+It is the only way to install the patch *before*
+the game executes its first instruction rather than when Direct3D starts. To use it on Steam,
+the game's launch options become
+
+```text
+"…\touhou_hfr64.exe" %command%
+```
+
+so Steam starts the launcher and the launcher starts the game: the process tree is Steam's,
+the restart check passes, and the injection survives. The launcher now passes any arguments
+after the executable straight through, and waits for the game to exit when Steam started it —
+under `%command%` it stands in for the game, so Steam stops counting the session if it
+returns early. Both are inert on every other path.
+
+### What was considered and not done
+
+**`steam_appid.txt`.** A file containing the app id next to the executable makes
+`RestartAppIfNecessary` return false unconditionally; Valve documents it, and it is not an
+ownership bypass — `SteamAPI_Init` still requires the client running, the same OS user and a
+license. It would have made the launcher work by itself. It was not done because the proxy
+solves the problem without putting a new file in the game's folder, and because Valve is
+explicit that the file is a development aid that shipping builds should not contain.
+
+**Attaching to a running game, as thprac does.** thprac's README says plainly that its folder
+method *"will NOT work with Steam games"*, and its Steam path is to `ShellExecute` the exe,
+let it hand off to Steam, then poll every 100 ms for whatever process Steam eventually starts
+and inject into that. It is the right design for a tool that must cope with any launcher, and
+it is worth having if the proxy ever turns out not to be loaded on some machine. It was not
+done now because it patches a process that is already running its frame loop — every patch
+site would need a thread-suspension and instruction-pointer check the suspended-at-entry path
+gets for free — and the proxy makes it unnecessary.

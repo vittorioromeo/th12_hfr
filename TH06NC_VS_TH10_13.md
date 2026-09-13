@@ -18,7 +18,7 @@ runtime is described in [DEVNOTES_RUNTIME.md](DEVNOTES_RUNTIME.md).
 | --- | --- | --- |
 | State | supported | experimental |
 | Architecture | x86, Direct3D 9(Ex) | AMD64, Direct3D 11 (DxLib) |
-| Install | `dinput8.dll` proxy or launcher | launcher only (`touhou_hfr.exe` → `touhou_hfr64.exe`) |
+| Install | `dinput8.dll` proxy or launcher | `dxgi.dll` proxy, or the launcher |
 | Simulation | runs at the tick rate, sub-stepped | 60 Hz, with selected systems sub-stepped |
 | High-rate motion | player, bullets, items, lasers (not TH10), **both ANM managers** | player, enemy bullets, lasers (items deliberately 60 Hz, §22) |
 | Sprite smoothing | interpolation for what is not sub-stepped | interpolation or prediction for everything else |
@@ -196,11 +196,14 @@ compiled into both.
 | `src/games/th06nc.c` | 129 | the profile's values, 27 frozen signatures, 7 guard ranges and the dimming map |
 | `src/ui/overlay_fixed.c` | 86 | the x64 side of the settings API |
 | `src/ui/menu_dx11.cpp`, `src/ui/overlay_dx11.cpp` | 78 | the D3D11 ImGui backend |
-| `src/launcher64.c` | 88 | the x64 launcher the shared launcher dispatches to |
+| `src/launcher64.c` | 111 | the x64 launcher, also usable as a Steam `%command%` wrapper |
+| `src/proxy_dxgi.c` | 144 | the `dxgi.dll` the game loads itself (§23) |
+| `src/dxgi_exports.h` | 63 | the one list of the real library's 57 exports |
 | `src/fixed_identity.h` | 14 | the x64 executable registry |
 | `tools/test_fixed.c` | 187 | the x64 harness: clock, history, slices, schedule, transaction |
 | `tools/test_fixed_stubs.py` | 264 | Unicorn execution of every emitted AMD64 relay |
 | `tools/test_fixed_profile.py` | 65 | signatures, dimming rules and pools, launcher checks |
+| `tools/test_dxgi_proxy.c` | 94 | the proxy against the system's real dxgi.dll |
 | `tools/porting/xrefs64.py` | 53 | AMD64 xrefs decoded from real function boundaries |
 
 **Not used by the x64 build at all**: the whole of `src/core/` except `patch.c` — the scheduler,

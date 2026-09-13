@@ -21,4 +21,8 @@ done
 $CXX -shared -static -static-libgcc -static-libstdc++ -o build/touhou_hfr64.dll build/obj64/*.o \
     -ldxgi -ld3d11 -ld3dcompiler -ldxguid -lbcrypt -lgdi32 -ldwmapi
 $CC $CFLAGS -static-libgcc src/launcher64.c -o build/touhou_hfr64.exe -lbcrypt
-echo "Built the experimental x64 fixed-clock runtime and launcher helper."
+# The dxgi.dll proxy: the game loads it by name, so this is how the patch installs itself
+# when Steam is the launcher. Deliberately built on its own -- it must not pull in the
+# runtime, the menu or the CRT beyond what a forwarding stub needs.
+$CC $CFLAGS -shared -s -static-libgcc src/proxy_dxgi.c -o build/dxgi.dll
+echo "Built the experimental x64 fixed-clock runtime, its dxgi proxy and the launcher helper."

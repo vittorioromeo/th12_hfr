@@ -36,7 +36,8 @@ cannot share object code. What each does and does not do is set out side by side
 | x64 support headers | `src/backends/fixed_clock.h`, `fixed_history.h`, `fixed_game.h`, `subtick.h`, `substep.h` | Fixed 60 Hz clock, pose history and smoothing, the game profile, sub-tick slice accounting, the dyadic sub-step schedule |
 | x64 game adapter | `src/games/th06nc.c` | New Classic's addresses, frozen signatures, guard ranges and dimming rules |
 | x64 UI and renderer | `src/ui/overlay_fixed.c`, `src/ui/menu_dx11.cpp`, `src/ui/overlay_dx11.cpp` | The x64 side of `ui_api.h` and the D3D11 ImGui backend |
-| x64 tests | `tools/test_fixed.c`, `tools/test_fixed_stubs.py`, `tools/test_fixed_profile.py` | Clock, history, schedule and patch transaction; Unicorn execution of every emitted AMD64 relay; signature and launcher checks |
+| x64 install | `src/proxy_dxgi.c`, `src/dxgi_exports.h` | The `dxgi.dll` the game loads itself, forwarding all 57 exports; how the patch installs when Steam is the launcher (TH06NC_DEVNOTES §23) |
+| x64 tests | `tools/test_fixed.c`, `tools/test_fixed_stubs.py`, `tools/test_fixed_profile.py`, `tools/test_dxgi_proxy.c` | Clock, history, schedule and patch transaction; Unicorn execution of every emitted AMD64 relay; signature and launcher checks; the dxgi proxy against the system's real one |
 | Launcher | `src/launcher.c`, `src/launcher64.c`, `src/fixed_identity.h` | Detect and launch a supported executable using the common identity code; x64 games are handed to the x64 launcher |
 | Tests | `tools/test_hfr.c`, `tools/test_*.h`, `tools/test_*_stubs.py` | Native shared-runtime tests and emulation of emitted x86 hooks |
 | Build | `build.sh`/`build.ps1` (x86), `build64.sh`/`build64.ps1` (x64) | Two independent builds; `package.sh`/`package.ps1` ship both when asked |

@@ -36,9 +36,19 @@ static int remote_call(HANDLE process,uintptr_t fn,void* param,DWORD* result) {
     int ok=WaitForSingleObject(t,15000)==WAIT_OBJECT_0 && GetExitCodeThread(t,result);
     CloseHandle(t);return ok;
 }
+/* Steam sets these for a process it launches, and a child inherits them. Their presence is
+   how we know Steam started us, which decides two things: the game's own
+   SteamAPI_RestartAppIfNecessary will return false (so it will not exit and ask Steam to
+   relaunch it, throwing our injection away), and we should stay alive until it closes, or
+   Steam stops counting the session. This is the `%command%` launch-option path; the dxgi
+   proxy is the one that needs no configuration at all. */
+static int launched_by_steam(void) {
+    return GetEnvironmentVariableA("SteamAppId",NULL,0)!=0 ||
+           GetEnvironmentVariableA("SteamGameId",NULL,0)!=0;
+}
 int main(int argc,char** argv) {
     if (argc==3 && !strcmp(argv[1],"--check")) return identify(argv[2])?0:2;
-    char dir[MAX_PATH],exe[MAX_PATH],dll[MAX_PATH],command[MAX_PATH+4];
+    char dir[MAX_PATH],exe[MAX_PATH],dll[MAX_PATH],command[4096];
     if (!GetModuleFileNameA(NULL,dir,sizeof dir) || strlen(dir)>MAX_PATH-32) return fail("Launcher path is too long.");
     char* slash=strrchr(dir,'\\');if (!slash) return 1;*slash=0;
     snprintf(dll,sizeof dll,"%s\\touhou_hfr64.dll",dir);
@@ -62,7 +72,16 @@ int main(int argc,char** argv) {
     FreeLibrary(local);
     if (!entry) return fail("The x64 runtime has no initialization entry point.");
     char working[MAX_PATH];strcpy(working,exe);slash=strrchr(working,'\\');if (!slash) return 1;*slash=0;
-    snprintf(command,sizeof command,"\"%s\"",exe);
+    /* Anything after the executable is the game's own command line and is passed straight
+       through. Steam's `%command%` expands to the executable followed by whatever arguments
+       the app is configured with, so this is what makes the launcher usable as a wrapper. */
+    int used=snprintf(command,sizeof command,"\"%s\"",exe);
+    for (int i=2;i<argc && used>0 && used<(int)sizeof command;++i) {
+        int wrote=snprintf(command+used,sizeof command-used,
+                           strchr(argv[i],' ')?" \"%s\"":" %s",argv[i]);
+        if (wrote<0 || wrote>=(int)sizeof command-used) return fail("The game's command line is too long.");
+        used+=wrote;
+    }
     STARTUPINFOA si={0};si.cb=sizeof si;PROCESS_INFORMATION pi={0};
     if (!CreateProcessA(exe,command,NULL,NULL,FALSE,CREATE_SUSPENDED,NULL,working,&si,&pi)) return fail("Cannot start the game.");
     const char* error=NULL;DWORD result=0;
@@ -82,6 +101,10 @@ int main(int argc,char** argv) {
     if (error) TerminateProcess(pi.hProcess,1);
     else {ResumeThread(pi.hThread);printf("Started pid=%lu\n",pi.dwProcessId);}
     if (remote) VirtualFreeEx(pi.hProcess,remote,0,MEM_RELEASE);
+    /* Under Steam this process stands in for the game, so it has to outlive it. Started any
+       other way it would only leave a console window open for the whole session. */
+    if (!error && launched_by_steam() && !GetEnvironmentVariableA("HFR_TEST_MODE",NULL,0))
+        WaitForSingleObject(pi.hProcess,INFINITE);
     CloseHandle(pi.hThread);CloseHandle(pi.hProcess);
     return error?fail(error):0;
 }

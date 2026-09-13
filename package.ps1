@@ -13,7 +13,7 @@ foreach($file in @('dinput8.dll','touhou_hfr.dll','touhou_hfr.exe','touhou_hfr.i
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot "build/$file") -Destination $package
 }
 if($IncludeExperimental64) {
-    foreach($file in @('touhou_hfr64.exe','touhou_hfr64.dll')) {
+    foreach($file in @('touhou_hfr64.exe','touhou_hfr64.dll','dxgi.dll')) {
         Copy-Item -LiteralPath (Join-Path $PSScriptRoot "build/$file") -Destination $package
     }
 }

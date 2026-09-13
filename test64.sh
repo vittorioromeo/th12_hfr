@@ -24,4 +24,8 @@ $CC -std=gnu11 -O2 -Wall -Wextra -Wno-unused-function -Wno-unused-parameter -sta
     build/obj64/hde64.o -lbcrypt -o build/tests/test_fixed.exe
 $RUN ./build/tests/test_fixed.exe build/tests/fixed-plan.json
 python3 tools/test_fixed_stubs.py build/tests/fixed-plan.json
+# The dxgi proxy against the system's real dxgi.dll: every export reachable, the factory
+# call answering exactly as the real library does, and inert in a process that is not the game.
+$CC -std=gnu11 -O1 -Wall -Wextra -o build/tests/test_dxgi_proxy.exe tools/test_dxgi_proxy.c -lole32
+$RUN ./build/tests/test_dxgi_proxy.exe build/dxgi.dll
 python3 tools/test_fixed_profile.py "$1"

@@ -19,6 +19,11 @@ try {
     if($LASTEXITCODE){throw 'x64 native regression failed'}
     & $pythonPath tools/test_fixed_stubs.py build/tests/fixed-plan.json
     if($LASTEXITCODE){throw 'x64 machine-code regression failed'}
+    # The dxgi proxy against this machine's real dxgi.dll.
+    & $compilerPath -std=gnu11 -O1 -Wall -Wextra -o build/tests/test_dxgi_proxy.exe tools/test_dxgi_proxy.c -lole32
+    if($LASTEXITCODE){throw 'dxgi proxy test build failed'}
+    & ./build/tests/test_dxgi_proxy.exe build/dxgi.dll
+    if($LASTEXITCODE){throw 'dxgi proxy regression failed'}
     & $pythonPath tools/test_fixed_profile.py $fixture
     if($LASTEXITCODE){throw 'x64 profile and launcher regression failed'}
 } finally {Pop-Location;$env:PATH=$savedPath}
