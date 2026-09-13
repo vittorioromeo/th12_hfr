@@ -1227,3 +1227,73 @@ check, not an address scan: the scan is what produced both this error and sectio
 
 The lesson for the whole project: a reference found by linear decoding is a candidate, not
 a fact. Before a byte is allowed to gate anything, something reachable has to read it.
+
+## 18. Lasers, and where the parity with TH10-13 actually is (2026-09-13)
+
+### Lasers
+
+A laser is a beam from a fixed origin whose head advances and whose tail follows. The head
+is at `[rbx]` and grows by the speed at `[rbx+0x258]` (`0x1161d`); the tail at `[rbx-4]`
+follows once the gap exceeds the maximum at `[rbx+0x274]`, by the game's own rule, so
+scaling that one add sub-steps the entire beam. Its per-laser timer and animation step
+(`0x11714`: the timer pair at `[rbx-0xc]`/`[rbx-8]`, then the VM call at `0x1172a`) are
+gated like every other 60 Hz block.
+
+The laser loop is no longer skipped wholesale on a sub-step pass -- the gate at `0x11604`
+that did so is gone, replaced by these two. Its state machine needs no gate of its own:
+every transition is driven by the timer reaching a duration and resets that timer, so with
+the timer frozen between native ticks a transition cannot fire twice.
+
+### What that completes
+
+Both ways the player can die are now evaluated at the display rate, and this is the first
+time that can be stated with the evidence in hand:
+
+- **Bullets.** `0x6a980`'s circle test, on contact, spawns two effects and writes
+  `player+0x7898 = 2` -- the dying state. That field is absolute `0x506c38`, the byte
+  section 16 saw being read elsewhere; the write is register-relative off the player
+  pointer, which is exactly why no address scan ever found a writer for it. It is guarded
+  by `player+0x7898 == 0`, so a second contact in the same frame cannot kill twice, which
+  is what makes running the test six times a frame safe.
+- **Lasers.** `0x6aba0` writes the same field at `0x6ad3e`, and its loop now runs on every
+  sub-step too.
+
+So the set of things that can kill you, graze you or cancel a bullet is fully sub-tick.
+
+### The honest parity check
+
+The remaining systems are enemies, the player's shots, items and effects, and it is worth
+recording why sub-stepping them was **not** done rather than leaving it as an open task
+someone repeats the analysis for.
+
+TH10-13 interpolate enemy sprites rather than sub-stepping enemies, and this runtime already
+interpolates (or predicts) every sprite. For the others, the decisive point is where the
+discrete effect lands:
+
+- **The player's shots** are boxes on the player object (`player+0x7754`, 16 of them); their
+  motion is at `0x69a36` (`[rbx+0x13c] += [rbx+8]`). The damage they do is applied on the
+  *enemy* side, at `0x37a6c`, as `add [enemy+0x234], -0xa` for each overlapping box. Nothing
+  consumes the shot there, so that test must stay at 60 Hz -- running it per sub-step would
+  multiply damage by the sub-step count. With the damage fixed at 60 Hz and the slices
+  summing to exactly one frame, sub-stepping the shot's motion cannot change a single
+  outcome. It would move the drawn sprite, which interpolation already does.
+- **Enemies** move at `0x374e9` (`[+0xb4] += [+0x1088]`), pool `0xaa1e98`, 256 entries of
+  `0x10b0`, active while `[+0xbc]` is negative. Same conclusion, plus a cost: the motion is
+  followed by an optional clamp to per-enemy bounds, so a slice pass would have to reproduce
+  that clamp or let bounded enemies overshoot and snap back once a frame -- a new visual
+  artefact in exchange for nothing.
+- **Items and effects** are the same argument again.
+
+So the gameplay-relevant work is complete, and the remaining sub-stepping would buy exact
+drawn positions in place of interpolated ones. That is a rendering improvement, worth doing
+one day, but it is not what "high tick rate gameplay" means and it should not be sold as
+such.
+
+### The one real functional gap
+
+TH10-13 record their sub-tick input into the replay and reproduce it on playback. This
+runtime does not: the native format stores one input word per 60 Hz frame, so a run recorded
+with sub-tick movement or sub-stepped projectiles on will not replay faithfully, and there
+is no guard left that disables the features during playback (section 17). Closing that --
+a sidecar carrying the sub-frame input stream, read back on playback -- is the next piece of
+real work, and it is what would make these features usable for anything scored.

@@ -37,8 +37,8 @@ struct FixedGame {
     uint32_t proj_states, proj_states_resume, proj_states_skip; unsigned proj_states_size;
     uint32_t proj_offscreen, proj_offscreen_resume; unsigned proj_offscreen_size;
     uint32_t proj_timer, proj_timer_resume; unsigned proj_timer_size;
-    uint32_t proj_lasers, proj_lasers_resume, proj_lasers_skip; unsigned proj_lasers_size;
-    uint32_t proj_lasers_const;          /* the constant the relocated laser setup reloads */
+    uint32_t proj_laser_growth, proj_laser_growth_resume; unsigned proj_laser_growth_size;
+    uint32_t proj_laser_timer, proj_laser_timer_resume, proj_laser_timer_skip; unsigned proj_laser_timer_size;
     uint32_t proj_epoch, proj_epoch_resume; unsigned proj_epoch_size;
     const struct GuardRange* guards;
     size_t guard_count;

@@ -112,7 +112,7 @@ TIMER_PREV, TIMER_CUR, STATE, OFFSCREEN = 0x28, 0x2c, 0x44, 0x604
 
 def projectile_machine(minor):
     uc, put = machine()
-    put(BULLET, bytes(0x700))
+    put(BULLET, bytes(0x900))
     put(plan["proj_minor"] & ~4095, bytes(4096))
     put(base + 0x30cdbc, struct.pack("<f", 1.5707964))   # the constant the laser setup reloads
     uc.mem_write(MINOR, bytes([minor]))
@@ -198,12 +198,34 @@ for minor in (0, 1):
     # only a full pass records that projectiles were updated at all
     assert uc.mem_read(RAN, 1)[0] == (0 if minor else 1)
 
-# --- the laser loop is skipped entirely on a sub-step pass ---------------------------------
+# --- a laser's head grows by its speed scaled the same way ---------------------------------
+LASER, HEAD, SPEED = 0x300200, 0x0, 0x258
+for dt in (1.0, 0.25):
+    uc, _ = projectile_machine(0)
+    uc.mem_write(DT, struct.pack("<f", dt))
+    uc.reg_write(UC_X86_REG_RBX, LASER)
+    uc.mem_write(LASER + HEAD, struct.pack("<f", 40.0))
+    uc.mem_write(LASER + SPEED, struct.pack("<f", 6.0))
+    uc.emu_start(base + 0x1161d, base + 0x11629, count=30)
+    assert uc.reg_read(UC_X86_REG_RIP) == base + 0x11629
+    got = struct.unpack("<f", struct.pack("<I", uc.reg_read(UC_X86_REG_XMM1) & 0xFFFFFFFF))[0]
+    assert got == 40.0 + 6.0 * dt, (dt, got)
+    assert struct.unpack("<f", uc.mem_read(LASER + HEAD, 4))[0] == 40.0   # stored later, not here
+    assert uc.reg_read(UC_X86_REG_RSP) == 0x100800
+
+# --- a laser's own timer and animation step only on a full pass ----------------------------
 for minor in (0, 1):
     uc, _ = projectile_machine(minor)
-    target = base + (0x11740 if minor else 0x11610)
-    uc.emu_start(base + 0x11604, target, count=30)
+    uc.reg_write(UC_X86_REG_RBX, LASER)
+    uc.mem_write(LASER - 8, struct.pack("<i", 5))
+    target = base + (0x1172f if minor else 0x1171b)
+    uc.emu_start(base + 0x11714, target, count=30)
     assert uc.reg_read(UC_X86_REG_RIP) == target
+    if not minor:
+        # the relocated pair leaves the timer in eax and the VM pointer in rdx for the
+        # call that follows; the call itself is left in place at its original address
+        assert uc.reg_read(UC_X86_REG_RAX) == 5
+        assert uc.reg_read(UC_X86_REG_RDX) == LASER + 0xc
     assert uc.reg_read(UC_X86_REG_RSP) == 0x100800
 
 print("PASS: emitted projectile relays scale motion, and gate the switch, counters, timers and lasers")

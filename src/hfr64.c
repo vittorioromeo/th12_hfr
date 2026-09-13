@@ -346,7 +346,7 @@ static int prepare_patches(void) {
             {game->proj_states, game->proj_states_resume, game->proj_states_skip, game->proj_states_size, 0},
             {game->proj_offscreen, game->proj_offscreen_resume, game->proj_offscreen_resume, game->proj_offscreen_size, 0},
             {game->proj_timer, game->proj_timer_resume, game->proj_timer_resume, game->proj_timer_size, 0},
-            {game->proj_lasers, game->proj_lasers_resume, game->proj_lasers_skip, game->proj_lasers_size, 0},
+            {game->proj_laser_timer, game->proj_laser_timer_resume, game->proj_laser_timer_skip, game->proj_laser_timer_size, 0},
             {game->proj_epoch, game->proj_epoch_resume, game->proj_epoch_resume, game->proj_epoch_size, 1},
         };
         for (size_t i=0;i<sizeof gates/sizeof *gates;++i) {
@@ -357,16 +357,7 @@ static int prepare_patches(void) {
             if (!rel32(q+k+2,(uintptr_t)(q+k+7),(uintptr_t)proj_minor)) return 0;
             k+=7;
             size_t branch=k; q[k]=0x75;k+=2;                /* jne skip; filled in below */
-            if (g->site==game->proj_lasers) {
-                /* The laser loop's head reloads a constant into a callee-saved register the
-                   epilogue restores anyway, so the skip path can leave it alone; the RIP
-                   displacement has to be recomputed for the relay's address. */
-                memcpy(q+k,(const void*)(base+g->site),5);
-                if (!rel32(q+k+5,(uintptr_t)(q+k+9),base+game->proj_lasers_const)) return 0;
-                k+=9;
-            } else {
-                memcpy(q+k,(const void*)(base+g->site),g->size);k+=g->size;
-            }
+            memcpy(q+k,(const void*)(base+g->site),g->size);k+=g->size;
             if (g->mark) {                                  /* mov byte [rip+ran],1 */
                 q[k]=0xc6;q[k+1]=0x05;q[k+6]=1;
                 if (!rel32(q+k+2,(uintptr_t)(q+k+7),(uintptr_t)proj_ran)) return 0;
@@ -408,6 +399,21 @@ static int prepare_patches(void) {
         memset(b,0x90,game->proj_motion_size);b[0]=0xe9;
         if (!rel32(b+1,base+game->proj_motion+5,(uintptr_t)m) ||
             !patch_bytes(base+game->proj_motion,b,game->proj_motion_size,NULL)) return 0;
+        /* A laser's head advances by its speed the same way, so the same multiply sub-steps
+           the beam; the tail follows the head by the game's own maximum-gap rule. */
+        if (relay_used+48>4096) return 0;
+        unsigned char* l=relay_page+relay_used;relay_used+=48;k=0;
+        memcpy(l+k,(const void*)(base+game->proj_laser_growth),8);k+=8;  /* movss xmm1,[rbx+speed] */
+        l[k]=0xf3;l[k+1]=0x0f;l[k+2]=0x59;l[k+3]=0x0d;                   /* mulss xmm1,[rip+dt]    */
+        if (!rel32(l+k+4,(uintptr_t)(l+k+8),(uintptr_t)proj_dt)) return 0;
+        k+=8;
+        memcpy(l+k,(const void*)(base+game->proj_laser_growth+8),4);k+=4;/* addss xmm1,[rbx]       */
+        l[k]=0xe9;
+        if (!rel32(l+k+1,(uintptr_t)(l+k+5),base+game->proj_laser_growth_resume)) return 0;
+        k+=5;
+        memset(b,0x90,game->proj_laser_growth_size);b[0]=0xe9;
+        if (!rel32(b+1,base+game->proj_laser_growth+5,(uintptr_t)l) ||
+            !patch_bytes(base+game->proj_laser_growth,b,game->proj_laser_growth_size,NULL)) return 0;
     }
     if (game->player_motion && relay_used+64<=4096) {
         /* These two are written every frame, so they belong on the page that stays writable. */

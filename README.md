@@ -12,10 +12,14 @@ off by default and **untested in the running game**, additionally moves the play
 display rate, so input is sampled every drawn frame rather than every 60 Hz frame; the rest
 of the world — bullets, enemies, scripts, collisions — still runs at 60 Hz, and that is a
 deliberate limit rather than a temporary one. A second optional setting, also off by default and also untested in
-the running game, sub-steps enemy bullets: they advance a fraction of a frame at a time and
-their culling, grazing and collision run at every step, so a bullet that would have jumped
-past you between two 60 Hz frames can now hit you — it makes the game harder, not just
-smoother. Lasers, enemies, items and scripts still run at 60 Hz. New Classic does not have
+the running game, sub-steps enemy bullets and lasers: they advance a fraction of a frame at a
+time and their culling, grazing and collision run at every step, so a projectile that would
+have jumped past you between two 60 Hz frames can now hit you — it makes the game harder,
+not just smoother. Both ways the player can die are now evaluated at the display rate.
+Enemies, the player's shots, items and every script still run at 60 Hz, which is deliberate:
+their discrete effects (enemy damage above all) are applied once per 60 Hz frame, so
+sub-stepping their motion could not change an outcome — see
+[§18](TH06NC_DEVNOTES.md#18-lasers-and-where-the-parity-with-th10-13-actually-is-2026-09-13). New Classic does not have
 TH10–13's video enhancements. See
 [the prototype instructions and complete research record](TH06NC_DEVNOTES.md#13-experimental-prototype-2026-09-13)
 and [the sub-tick player movement notes](TH06NC_DEVNOTES.md#14-sub-tick-player-movement-2026-09-13).
@@ -25,7 +29,7 @@ and selects its adapter; TH10–13 share their scheduler, input, replay and Dire
 The same launcher dispatches New Classic to its separate x64 runtime. Menu contents,
 menu-key handling, patch transactions and the x64 executable registry are shared.
 
-**Current build: v0.4.15-test.** Supported executable layouts:
+**Current build: v0.4.16-test.** Supported executable layouts:
 
 | Game | Version | Executables | State |
 | --- | --- | --- | --- |
@@ -33,7 +37,7 @@ menu-key handling, patch transactions and the x64 executable registry are shared
 | Touhou 11 — Subterranean Animism | v1.00a | `th11.exe`, `th11e.exe` | supported |
 | Touhou 12 — Undefined Fantastic Object | v1.00b | `th12.exe`, `th12e.exe` | supported |
 | Touhou 13 — Ten Desires | v1.00c | `th13.exe`, `th13e.exe` | supported |
-| Touhou Koumakyou: New Classic | verified SHA-256 in [notes](TH06NC_DEVNOTES.md#2-product-and-inspected-build) | `th06nc.exe` | experimental: fixed 60 Hz + sprite interpolation, optional sub-tick player movement and sub-stepped bullets |
+| Touhou Koumakyou: New Classic | verified SHA-256 in [notes](TH06NC_DEVNOTES.md#2-product-and-inspected-build) | `th06nc.exe` | experimental: fixed 60 Hz + sprite interpolation, optional sub-tick player movement and sub-stepped projectiles |
 
 The current source fixes TH10's recurring HFR hitches accompanied by a brief
 `0.0fps` reading: its native FPS watchdog mistook rates above 65 FPS for a broken
@@ -115,7 +119,7 @@ what it claimed, see [§17](TH06NC_DEVNOTES.md#17-why-neither-feature-had-ever-r
 32-bit `dinput8.dll` proxy in this x64 game. The generic `install.ps1` workflow below is
 for TH10–13. Bundled `th06c.exe` (Classic) is different and is not supported.
 
-Download/extract `touhou_hfr_v0.4.15-test.zip` and close the game.
+Download/extract `touhou_hfr_v0.4.16-test.zip` and close the game.
 
 For a fresh installation, copy these four files next to the game executable:
 
@@ -236,7 +240,7 @@ For New Classic, also install **64-bit MinGW-w64 GCC/G++** (default
 ```powershell
 .\build64.ps1
 .\test64.ps1 -GameExe 'C:\Program Files (x86)\Steam\steamapps\common\th06nc\th06nc.exe'
-.\package.ps1 -Version '0.4.15-th06nc-prototype' -IncludeExperimental64
+.\package.ps1 -Version '0.4.16-th06nc-prototype' -IncludeExperimental64
 ```
 
 Run `build.ps1` first: `test64.ps1` checks both launcher architectures. The x64 tests

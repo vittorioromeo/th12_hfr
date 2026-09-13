@@ -353,13 +353,14 @@ void draw_timing_section(void) {
                            "runs and anything you intend to submit.");
         ImGui::Spacing();
         ImGui::BeginDisabled(!hfr_ui_get(UI_SUBSTEP_AVAILABLE));
-        toggle("Sub-step bullets (experimental)", UI_SUBSTEP);
+        toggle("Sub-step projectiles (experimental)", UI_SUBSTEP);
         ImGui::EndDisabled();
-        ImGui::TextWrapped("Advances enemy bullets a fraction of a frame at a time instead of a whole frame at once, and "
-                           "runs their culling, grazing and collision at each step. A bullet that would have jumped past "
-                           "you between two 60 Hz frames can now hit you, so this makes the game harder, not just smoother. "
-                           "Bullets are still where the stock game would put them at every 60 Hz boundary. Lasers, enemies, "
-                           "items and scripts are not sub-stepped and still run at 60 Hz.");
+        ImGui::TextWrapped("Advances enemy bullets and lasers a fraction of a frame at a time instead of a whole frame "
+                           "at once, and runs their culling, grazing and collision at each step. A projectile that would "
+                           "have jumped past you between two 60 Hz frames can now hit you, so this makes the game harder, "
+                           "not just smoother. They are still where the stock game would put them at every 60 Hz boundary. "
+                           "Enemies, your own shots and items still run at 60 Hz: their effects are applied once per 60 Hz "
+                           "frame, so sub-stepping them could not change an outcome.");
         ImGui::TextWrapped("This changes when bullets hit, so a replay recorded with it on will not play back faithfully. "
                            "Turn it off before watching a replay, and for score runs.");
         ImGui::Spacing();
