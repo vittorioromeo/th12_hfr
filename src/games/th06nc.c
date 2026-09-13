@@ -1,0 +1,129 @@
+/* New Classic local build fingerprint and verified RVA map; see TH06NC_DEVNOTES.md. */
+#include "../backends/fixed_game.h"
+static const struct FixedSignature th06nc_signatures[] = {
+    {0x2760, 16, {0x48, 0x83, 0xec, 0x28, 0x4c, 0x8b, 0x15, 0x45, 0xc2, 0xa6, 0x00, 0x45, 0x33, 0xdb, 0x66, 0x44}},
+    {0x2a20, 16, {0x48, 0x83, 0xec, 0x28, 0x81, 0xa2, 0xc4, 0x00, 0x00, 0x00, 0x3f, 0xff, 0xff, 0xff, 0x4c, 0x8b}},
+
+    {0x45d82, 5, {0xe8, 0xf9, 0x60, 0xff, 0xff}},
+    {0x45d8b, 12, {0x8b, 0x1d, 0xff, 0x38, 0x4c, 0x00, 0x40, 0x32, 0xf6, 0x41, 0x8b, 0xfd}},
+    {0x45dc6, 5, {0xe8, 0xb5, 0x60, 0xff, 0xff}},
+    {0x45e91, 5, {0xe8, 0xda, 0x60, 0xff, 0xff}},
+    {0x3c45c, 22, {0xff, 0x15, 0x7e, 0x5c, 0xbe, 0x00, 0x48, 0x8b, 0xd0, 0x44, 0x38, 0x3d, 0xb4, 0x5c, 0xbe, 0x00, 0x75, 0x1a, 0x48, 0x89, 0x05, 0xb3}},
+    {0x25a1f1, 5, {0xe8, 0xfa, 0x5d, 0x01, 0x00}},
+    {0x67f0, 16, {0x40, 0x53, 0x48, 0x83, 0xec, 0x30, 0x8b, 0x82, 0xc4, 0x00, 0x00, 0x00, 0x48, 0x8b, 0xda, 0x48}},
+    {0x4dc0, 16, {0x4c, 0x8b, 0xdc, 0x49, 0x89, 0x5b, 0x18, 0x49, 0x89, 0x7b, 0x20, 0x55, 0x49, 0x8d, 0xab, 0x48}},
+    {0x3be80, 16, {0x48, 0x89, 0x5c, 0x24, 0x08, 0x48, 0x89, 0x6c, 0x24, 0x10, 0x48, 0x89, 0x74, 0x24, 0x18, 0x57}},
+    {0x3bf70, 16, {0x48, 0x89, 0x5c, 0x24, 0x08, 0x48, 0x89, 0x6c, 0x24, 0x10, 0x48, 0x89, 0x74, 0x24, 0x18, 0x48}},
+    {0x3c5a1, 16, {0xba, 0x04, 0x00, 0x00, 0x00, 0x65, 0x48, 0x8b, 0x04, 0x25, 0x58, 0x00, 0x00, 0x00, 0x48, 0x8b}},
+    {0x3c71d, 13, {0x48, 0x8b, 0x4c, 0x24, 0x38, 0x48, 0x33, 0xcc, 0xe8, 0xf6, 0x07, 0x28, 0x00}},
+    /* Player movement: mulss xmm6,[rdi+0x7710]; movss [rdi+0x78a0],xmm7; mulss xmm7,[rdi+0x7714].
+       The two multiplies are the per-frame step; the store in between is the facing direction
+       the animation triggers already consumed, and is reproduced unchanged. */
+    {0x69388, 24, {0xf3, 0x0f, 0x59, 0xb7, 0x10, 0x77, 0x00, 0x00, 0xf3, 0x0f, 0x11, 0xbf, 0xa0, 0x78, 0x00, 0x00, 0xf3, 0x0f, 0x59, 0xbf, 0x14, 0x77, 0x00, 0x00}},
+    {0x12be0, 16, {0x48, 0x89, 0x74, 0x24, 0x20, 0x41, 0x56, 0x48, 0x83, 0xec, 0x20, 0x4c, 0x8d, 0x35, 0x7e, 0xf3}},
+    /* Sub-stepped projectiles (section 16). The state switch, the off-screen counter, the
+       per-bullet timer, the laser loop's head and the manager's own frame counter are each
+       relocated behind a gate; the motion is rewritten to scale by the sub-step's length. */
+    {0x10982, 9, {0x0f,0xb7,0x53,0x44,0x8b,0xca,0x41,0x2b,0xcc}},
+    {0x11298, 7, {0x66,0xff,0x83,0x04,0x06,0x00,0x00}},
+    {0x11562, 11, {0x8b,0x43,0x2c,0x89,0x43,0x28,0xff,0xc0,0x89,0x43,0x2c}},
+    {0x3c030, 10, {0x48,0x8b,0x43,0x08,0x48,0x8b,0x4b,0x38,0xff,0xd0}},
+    {0x1161d, 12, {0xf3,0x0f,0x10,0x8b,0x58,0x02,0x00,0x00,0xf3,0x0f,0x58,0x0b}},
+    {0x11714, 7, {0x8b,0x43,0xf8,0x48,0x8d,0x53,0x0c}},
+    {0x11796, 9, {0x41,0x89,0x07,0xff,0xc0,0x41,0x89,0x47,0x04}},
+    {0x1102c, 26, {0xf3,0x0f,0x10,0x53,0x30,0xf3,0x0f,0x58,0x53,0x08,0x48,0x8b,0x83,0x50,0x01,0x00,0x00,0xf3,0x0f,0x11,0x53,0x30,0xf3,0x0f,0x10,0x4b}},
+    /* The item pool's update, called from the projectile manager's prologue (section 22). */
+    {0x108e7, 5, {0xe8,0x94,0x20,0x03,0x00}},
+    {0x42980, 16, {0x48,0x8b,0xc4,0x48,0x89,0x48,0x08,0x55,0x56,0x48,0x81,0xec,0xd8,0x00,0x00,0x00}},
+    {0x11046, 26, {0x0c,0xf3,0x0f,0x58,0x4b,0x34,0xf3,0x0f,0x11,0x4b,0x34,0xf3,0x0f,0x10,0x43,0x10,0xf3,0x0f,0x58,0x43,0x38,0xf3,0x0f,0x11,0x43,0x38}},
+};
+/* Gameplay state that rendering must never advance. VM render caches are excluded. */
+static const struct GuardRange th06nc_guards[] = {
+    {0x3ec2a0, 8, 1, 0},              /* bullet-manager frame counters */
+    {0x3ec2a8, 0x50, 640, 0x620},    /* bullet motion, state, ages; before embedded VMs */
+    {0x506ad0, 12, 1, 0},             /* player position */
+    {0x506bf4, 8, 1, 0},              /* player state timer */
+    {0x4ff7a8, 8, 1, 0},              /* player shot timer */
+    {0xa6ec40, 8, 1, 0},              /* RNG count/state */
+    {0xa6ec60, 8, 1, 0},              /* game input current/previous */
+};
+/* Which draw callback draws what. Each line below was settled from the decompilation and then
+   checked against the per-callback sprite census the log prints while a stage is running (the
+   counts quoted are sprites per two-second window at 144 Hz, so divide by ~288 for per frame).
+   Guessing this is how earlier sections of the notes went wrong, so nothing is listed here that
+   was not read out of the function itself.
+
+     0x78290  priority 5   stage background layers 0 and 1   (~26000: the backdrop's tiles)
+     0x78390  priority 6   stage background layers 2 and 3   (~720)
+     0x6a210  priority 9   the player's 80-entry shot pool at player+0x420, stride 0x170,
+     0x6a430  priority 11  drawn in two passes filtered on the entry's type word (1 then 2)
+                           -- but 0x6a210 goes on, after its loop, to draw the player itself
+                           (VM at player+0x78c8, fed from pl_position) and the focus sprite at
+                           player+0x7898, so the shots are a pool, not a callback
+     0x2b310  priority 12  the 512-entry effect pool, stride 0x198
+     0x11940  priority 14  bullets, lasers AND items -- see th06nc_pools
+     0x38290  priority 10  enemies          0x3cd20  priority 15  the HUD's digits
+     0x6a130  priority 7   the bomb/death screen darkener: a filled rect, no sprites at all
+
+   The bullet and laser callback is deliberately absent: bullets are the thing everything else
+   is being faded for. Nothing here is classified DIM_SPECIAL; New Classic has no extra class
+   of its own that competes with bullets the way TH11's or TH13's do. */
+static const struct DimRule th06nc_dim[] = {
+    {0x78290, DIM_BACKGROUND},
+    {0x78390, DIM_BACKGROUND},
+    {0x2b310, DIM_EFFECTS},
+};
+/* Items are drawn by the bullet callback, so they can only be told apart by address. The pool
+   is 1024 entries of 0x160 at 0xbaf0d8; each entry carries its sprite VM at +0x38, which is
+   why the bullet draw reads 0xbaf1d8 (entry 0's VM position field, 0xbaf110 + 0xc8). */
+static const struct DimPool th06nc_pools[] = {
+    {0xbaf110, 0x160, 1024, DIM_ITEMS},
+    /* The player's shots (and options): 80 entries of 0x170 at player+0x420, VM at +0x08, so
+       the first is 0x4ff3a0 + 0x428. Keyed by address for the opposite reason to the items --
+       not because the callback draws something that must not fade alongside them, but because
+       it draws the player himself once the loop is done. */
+    {0x4ff7c8, 0x170, 80, DIM_PLAYER_SHOTS},
+};
+
+static const struct FixedGame th06nc_game = {
+    .name = "TH06 New Classic (experimental)", .executable = "th06nc.exe",
+    .sha256 = "07850c8c6e469c0e82c13423e6d0d096a88d693455bdacacbb44c0aa3bcce473",
+    .image_size = 0xc6b000,
+    .signatures = th06nc_signatures, .signature_count = sizeof th06nc_signatures / sizeof *th06nc_signatures,
+    .update = 0x3be80, .update_calls = {0x45d82, 0x45dc6}, .draw = 0x3bf70, .draw_call = 0x45e91,
+    .post_update = 0x45d8b, .post_update_resume = 0x45d97, .audio_counter = 0x509690,
+    .wait_site = 0x3c45c, .wait_resume = 0x3c5a1, .frame_epilogue = 0x3c71d, .wait_patch_size = 22,
+    .present_call = 0x25a1f1, .graphics_api = 0x8fe20c, .no_vsync = 0x50a204,
+    .sprite_draw = 0x67f0, .sprite_draw_rotated = 0x4dc0, .sprite_draw_menu = 0x36c0, .vm_start = {0x2760, 0x2a20},
+    .vm_position = 0xc8, .vm_age = 0xb8, .vm_script = 0xf8, .vm_flags = 0xc4,
+    .vm_rotation = 0x9c, .vm_scale = 0xe4, .fps_counter = 0xc2232c,
+    .update_list = 0x4f1440, .draw_list = 0x4f1400,
+    .node_priority = 0x00, .node_callback = 0x08, .node_next = 0x28, .node_argument = 0x38,
+    .player_motion = 0x69388, .player_motion_resume = 0x693a0, .player_motion_size = 24,
+    .player = 0x4ff3a0, .bounds = 0x4ff0e0, .input_poll = 0x12be0, .replay_suspect = 0x4f27b2,
+    .pl_position = 0x7730, .pl_scale = 0x7710, .pl_speed_straight = 0x7860, .pl_speed_diagonal = 0x7868,
+    /* Sub-stepped projectiles. proj_lasers_const is the pi/2 the relocated laser setup
+       reloads; the skip path leaves it alone because it is callee-saved and restored by
+       the epilogue anyway. */
+    .projectile = 0x10870, .projectile_arg = 0x3ec2a0,
+    /* The motion block is 52 bytes; only its first five are replaced by the jump, because
+       a single patch carries at most 32 bytes and nothing branches into the remainder,
+       which is therefore unreachable. Both halves are frozen so it is still verified. */
+    .proj_motion = 0x1102c, .proj_motion_resume = 0x11060, .proj_motion_size = 5,
+    .proj_states = 0x10982, .proj_states_resume = 0x1098b, .proj_states_skip = 0x11021, .proj_states_size = 9,
+    .proj_offscreen = 0x11298, .proj_offscreen_resume = 0x1129f, .proj_offscreen_size = 7,
+    .proj_timer = 0x11562, .proj_timer_resume = 0x1156d, .proj_timer_size = 11,
+    /* Lasers extend from a fixed origin: the head at [rbx] grows by the speed at [rbx+0x258]
+       and the tail follows it, so scaling that one add sub-steps the whole beam and its
+       collision. Its per-laser timer and animation step are gated with everything else. */
+    .proj_laser_growth = 0x1161d, .proj_laser_growth_resume = 0x11629, .proj_laser_growth_size = 12,
+    .proj_laser_timer = 0x11714, .proj_laser_timer_resume = 0x1171b,
+    .proj_laser_timer_skip = 0x1172f, .proj_laser_timer_size = 7,
+    .proj_epoch = 0x11796, .proj_epoch_resume = 0x1179f, .proj_epoch_size = 9,
+    .item_call = 0x108e7, .item_update = 0x42980,
+    .vm_colour = 0xec,
+    .draw_dispatch = 0x3c030, .draw_dispatch_resume = 0x3c03a, .draw_dispatch_size = 10,
+    .dim_rules = th06nc_dim, .dim_rule_count = sizeof th06nc_dim / sizeof *th06nc_dim,
+    .dim_pools = th06nc_pools, .dim_pool_count = sizeof th06nc_pools / sizeof *th06nc_pools,
+    .guards = th06nc_guards, .guard_count = sizeof th06nc_guards / sizeof *th06nc_guards,
+};

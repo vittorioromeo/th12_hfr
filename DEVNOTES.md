@@ -360,7 +360,7 @@ logic rate can be lower than the display rate (a 144 Hz replay played on a 360 H
 
 The effective speed the engine sees is `logical × factor`, where `logical` is the game's own
 notion (1.0, or the ECL slow-motion value) and `factor` is 1.0 for FRAME nodes and `dt` for SUB
-nodes, set by the runner before every callback. The game writes the float at 17 sites, all of the
+nodes, set by the runner before every callback. The game writes the float at 21 sites, all of the
 form `fstp dword [0x4b2ed0]`. They fall into five groups and each group is redirected to a small
 naked trampoline (`fstp [tmp]; pushad; call C-handler; popad; ret`) that updates `logical` and
 rewrites the effective value:

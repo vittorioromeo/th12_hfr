@@ -21,6 +21,8 @@ int         hfr_ui_post_count(void) { return 2; }
 const char* hfr_ui_post_name(int i) { return i == 0 ? "cas" : i == 1 ? "unsharp-mask" : ""; }
 void        hfr_ui_save(void) { printf("  (save called)\n"); }
 void        hfr_ui_status(char* b, int n) { snprintf(b, (size_t)n, "TH12 v1.00b   1280 x 960 window   360 Hz logic / 360 Hz present"); }
+/* every class fadeable, as the x86 runtime reports */
+void        hfr_ui_rate_info(char* b, int n) { snprintf(b, (size_t)n, "presenting 360/s, simulating 60/s"); }
 void        hfr_ui_scale_info(char* b, int n) { snprintf(b, (size_t)n, "640x480 game image at 2x, 0 x 0 of black bars"); }
 int         hfr_ui_menu_key(void) { return VK_F11; }
 void        hfr_menu_requested(void) { hfr_menu_toggle(); }   /* the runtime acts on this per frame */

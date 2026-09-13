@@ -15,6 +15,7 @@ static int g_pending_chain, g_pending_rate, g_pending_window;
 
 int hfr_ui_get(int id) {
     switch (id) {
+    case UI_VIDEO_AVAILABLE:    return 1;
     case UI_SCALING:            return cfg.scaling;
     case UI_FILTER:             return cfg.filter;
     case UI_RESIZABLE:          return cfg.resizable;
@@ -25,6 +26,7 @@ int hfr_ui_get(int id) {
     case UI_MAX_FRAME_LATENCY:  return cfg.max_frame_latency;
     case UI_FPS:                return cfg.fps;
     case UI_SUBSTEP:            return cfg.substep;
+    case UI_DIM_CLASSES:        return (1 << DIM_COUNT) - 1;   /* every class has rules here */
     case UI_SUBTICK_INPUT:      return cfg.subtick_input;
     case UI_ENEMY_INTERP:       return cfg.enemy_interp;
     case UI_DEBUG:              return cfg.debug;
@@ -160,6 +162,7 @@ void hfr_ui_status(char* buf, int len) {
              g_game ? g_game->identity->name : "no game", g_out_w, g_out_h, g_logic_rate, g_refresh);
 }
 /* What the current settings actually produce, which is more use than the settings alone. */
+void hfr_ui_rate_info(char* buf, int len) { snprintf(buf, (size_t)len, "%d ticks/s", g_logic_rate); }
 void hfr_ui_scale_info(char* buf, int len) {
     struct ScaleRect r = scale_rect(g_native_w, g_native_h, g_out_w, g_out_h, cfg.scaling);
     double sx = g_native_w > 0 ? (double)r.w / g_native_w : 0.0;

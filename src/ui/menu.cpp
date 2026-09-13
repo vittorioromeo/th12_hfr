@@ -10,7 +10,7 @@
  */
 #include "ui_api.h"
 #include "../../third_party/imgui/imgui.h"
-#include "../../third_party/imgui/backends/imgui_impl_dx9.h"
+#include "menu_renderer.h"
 #include "../../third_party/imgui/backends/imgui_impl_win32.h"
 #include <cstdio>
 
@@ -58,7 +58,7 @@ void style_for(float height) {
 }
 } // namespace
 
-extern "C" int hfr_menu_init(IDirect3DDevice9* dev, HWND hwnd) {
+extern "C" int hfr_menu_init(void* dev, HWND hwnd) {
     if (g_ready) return 1;
     if (!dev || !hwnd) return 0;
     IMGUI_CHECKVERSION();
@@ -68,7 +68,12 @@ extern "C" int hfr_menu_init(IDirect3DDevice9* dev, HWND hwnd) {
     io.IniFilename = nullptr;                 /* the game's INI is the only settings file */
     io.LogFilename = nullptr;
     io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;   /* the game owns the cursor */
-    if (!ImGui_ImplWin32_Init(hwnd) || !ImGui_ImplDX9_Init(dev)) {
+    if (!ImGui_ImplWin32_Init(hwnd)) {
+        ImGui::DestroyContext(g_ctx); g_ctx = nullptr;
+        return 0;
+    }
+    if (!hfr_menu_renderer_init(dev)) {
+        ImGui_ImplWin32_Shutdown();
         ImGui::DestroyContext(g_ctx); g_ctx = nullptr;
         return 0;
     }
@@ -79,13 +84,13 @@ extern "C" int hfr_menu_init(IDirect3DDevice9* dev, HWND hwnd) {
 }
 extern "C" void hfr_menu_shutdown(void) {
     if (!g_ready) return;
-    ImGui_ImplDX9_Shutdown(); ImGui_ImplWin32_Shutdown();
+    hfr_menu_renderer_shutdown(); ImGui_ImplWin32_Shutdown();
     ImGui::DestroyContext(g_ctx); g_ctx = nullptr;
     g_ready = false; g_objects = false;
 }
 /* Device objects live in the default pool, so they go before a reset and come back after. */
 extern "C" void hfr_menu_invalidate(void) {
-    if (g_ready && g_objects) { ImGui_ImplDX9_InvalidateDeviceObjects(); g_objects = false; }
+    if (g_ready && g_objects) { hfr_menu_renderer_invalidate(); g_objects = false; }
 }
 extern "C" void hfr_menu_toggle(void) {
     if (!g_ready) return;
@@ -151,12 +156,54 @@ void draw_hint(void) {
                      ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoInputs)) {
         int key = hfr_ui_menu_key();
         const char* name = key == VK_F11 ? "F11" : (key == VK_INSERT ? "Insert" : "the menu key");
-        ImGui::TextColored(ImVec4(1, 1, 1, a), "Press %s for scaling and filter settings", name);
+        ImGui::TextColored(ImVec4(1, 1, 1, a), "Press %s for Touhou HFR settings", name);
     }
     ImGui::End();
 }
 
+/* Readability: fade what competes with the bullets. Applied immediately, in-stage only.
+   Separate from the rest of Display because it does not go through the scaler: it changes
+   the colours the game itself draws with, so a backend with no scaler of its own can still
+   have it. The x64 backend is exactly that case. */
+static void draw_dimming_controls(void) {
+    bool dim_ok = hfr_ui_get(UI_DIM_AVAILABLE) != 0;
+    if (!dim_ok) ImGui::TextDisabled("This game's draw order is not described by the patch yet; dimming is inert.");
+    ImGui::BeginDisabled(!dim_ok);
+    const char* special = hfr_ui_dim_special_name();
+    struct { int id; const char* label; const char* tip; } dims[] = {
+        { UI_DIM_BACKGROUND,   "Dim background",   "Fades the stage background towards black so bullets stand out.\n"
+                                                   "Enemies, bullets, items, the player and the interface are untouched." },
+        { UI_DIM_ITEMS,        "Fade items",       "Fades the P, point and other pickups towards transparent so they are\n"
+                                                   "not mistaken for bullets. 100%% hides them entirely." },
+        { UI_DIM_EFFECTS,      "Fade effects",     "Fades the cosmetic effects: explosions, hit sparks, bullet cancels,\n"
+                                                   "particles. Bullets and lasers are never touched." },
+        { UI_DIM_PLAYER_SHOTS, "Fade player shots","Fades your own shots (and options) so the enemy's are what you see." },
+        { UI_DIM_SPECIAL,      special,            "This game's own extra class of thing that competes with bullets." },
+    };
+    /* A game may know how to fade only some of these. Showing a slider that cannot do
+       anything is worse than not showing it, so the ones this game has no rule for are
+       disabled and say so. */
+    int classes = hfr_ui_get(UI_DIM_CLASSES);
+    for (auto& d : dims) {
+        if (!d.label) continue;
+        bool known = (classes & (1 << (d.id - UI_DIM_BACKGROUND))) != 0;
+        int v = hfr_ui_get(d.id);
+        char label[64]; snprintf(label, sizeof label, d.id == UI_DIM_SPECIAL ? "Fade %s" : "%s", d.label);
+        ImGui::BeginDisabled(!known);
+        if (ImGui::SliderInt(label, &v, 0, 100, "%d%%")) hfr_ui_set(d.id, v);
+        ImGui::EndDisabled();
+        help(known ? d.tip : "This game's patch does not know which draws belong to this class yet.");
+    }
+    ImGui::EndDisabled();
+}
+
 void draw_display_section(void) {
+    if (!hfr_ui_get(UI_VIDEO_AVAILABLE)) {
+        ImGui::TextWrapped("Scaling, filters and window controls are not available in this experimental graphics backend yet -- use the game's own display settings for those. Dimming does not go through them and works here:");
+        ImGui::Separator();
+        draw_dimming_controls();
+        return;
+    }
     /* A d3d9 wrapper such as PivotDX9 presents the game itself, so it -- not this patch --
        decides how the image reaches the window. The filters still work, because they run
        before that point, but placing the image inside the window no longer does. Say so and
@@ -270,30 +317,8 @@ void draw_display_section(void) {
              "always shown, whatever is chosen here.");
     }
 
-    /* Readability: fade what competes with the bullets. Applied immediately, in-stage only. */
     ImGui::Separator();
-    bool dim_ok = hfr_ui_get(UI_DIM_AVAILABLE) != 0;
-    if (!dim_ok) ImGui::TextDisabled("This game's draw order is not described by the patch yet; dimming is inert.");
-    ImGui::BeginDisabled(!dim_ok);
-    const char* special = hfr_ui_dim_special_name();
-    struct { int id; const char* label; const char* tip; } dims[] = {
-        { UI_DIM_BACKGROUND,   "Dim background",   "Fades the stage background towards black so bullets stand out.\n"
-                                                   "Enemies, bullets, items, the player and the interface are untouched." },
-        { UI_DIM_ITEMS,        "Fade items",       "Fades the P, point and other pickups towards transparent so they are\n"
-                                                   "not mistaken for bullets. 100%% hides them entirely." },
-        { UI_DIM_EFFECTS,      "Fade effects",     "Fades the cosmetic effects: explosions, hit sparks, bullet cancels,\n"
-                                                   "particles. Bullets and lasers are never touched." },
-        { UI_DIM_PLAYER_SHOTS, "Fade player shots","Fades your own shots (and options) so the enemy's are what you see." },
-        { UI_DIM_SPECIAL,      special,            "This game's own extra class of thing that competes with bullets." },
-    };
-    for (auto& d : dims) {
-        if (!d.label) continue;
-        int v = hfr_ui_get(d.id);
-        char label[64]; snprintf(label, sizeof label, d.id == UI_DIM_SPECIAL ? "Fade %s" : "%s", d.label);
-        if (ImGui::SliderInt(label, &v, 0, 100, "%d%%")) hfr_ui_set(d.id, v);
-        help(d.tip);
-    }
-    ImGui::EndDisabled();
+    draw_dimming_controls();
 }
 
 void draw_timing_section(void) {
@@ -317,10 +342,54 @@ void draw_timing_section(void) {
     for (int i = 0; i < IM_ARRAYSIZE(rates); ++i) if (rates[i] == fps) index = i;
     char current[32];
     if (index < 0) snprintf(current, sizeof current, "%d (from the INI)", fps);
-    if (ImGui::BeginCombo("Tick rate", index < 0 ? current : rate_names[index])) {
+    if (ImGui::BeginCombo(hfr_ui_get(UI_FIXED_LOGIC) ? "Presentation rate" : "Tick rate", index < 0 ? current : rate_names[index])) {
         for (int i = 0; i < IM_ARRAYSIZE(rates); ++i)
             if (ImGui::Selectable(rate_names[i], i == index)) hfr_ui_set(UI_FPS, rates[i]);
         ImGui::EndCombo();
+    }
+    if (hfr_ui_get(UI_FIXED_LOGIC)) {
+        bool subtick = hfr_ui_get(UI_SUBTICK_INPUT) != 0;
+        help("How often a picture is drawn. Enemies, bullets and scripts still run at 60 Hz.");
+        char rates_line[96];
+        hfr_ui_rate_info(rates_line, sizeof rates_line);
+        ImGui::TextUnformatted(rates_line);
+        ImGui::TextWrapped("The game's own fps readout counts presented frames too now, so it should agree "
+                           "with the first number above.");
+        ImGui::Spacing();
+        ImGui::BeginDisabled(!hfr_ui_get(UI_SUBTICK_AVAILABLE));
+        toggle("Sub-tick player movement", UI_SUBTICK_INPUT);
+        ImGui::EndDisabled();
+        ImGui::TextWrapped("Polls your input and moves the player once per drawn frame instead of once per 60 Hz frame, so a "
+                           "direction change takes effect within the frame you make it. Holding one direction still travels "
+                           "exactly the stock distance per 60 Hz frame. Everything else -- collision, shooting, scripts, "
+                           "enemies and bullets -- still runs at 60 Hz, and sprites are predicted forward instead of "
+                           "interpolated back so they line up with where the player really is.");
+        ImGui::TextWrapped("This changes where the player is at each 60 Hz boundary, so a replay recorded with it on will "
+                           "not play back faithfully. Turn it off before watching a replay, and for score "
+                           "runs and anything you intend to submit.");
+        ImGui::Spacing();
+        ImGui::BeginDisabled(!hfr_ui_get(UI_SUBSTEP_AVAILABLE));
+        toggle("Sub-step projectiles (experimental)", UI_SUBSTEP);
+        ImGui::EndDisabled();
+        ImGui::TextWrapped("Advances enemy bullets and lasers a fraction of a frame at a time instead of a whole frame "
+                           "at once, and runs their culling, grazing and collision at each step. A projectile that would "
+                           "have jumped past you between two 60 Hz frames can now hit you, so this makes the game harder, "
+                           "not just smoother. They are still where the stock game would put them at every 60 Hz boundary. "
+                           "Enemies, your own shots and items still run at 60 Hz: their effects are applied once per 60 Hz "
+                           "frame, so sub-stepping them could not change an outcome.");
+        ImGui::TextWrapped("This changes when bullets hit, so a replay recorded with it on will not play back faithfully. "
+                           "Turn it off before watching a replay, and for score runs.");
+        ImGui::Spacing();
+        ImGui::BeginDisabled(subtick);
+        toggle("Interpolate sprite positions", UI_ENEMY_INTERP);
+        ImGui::EndDisabled();
+        ImGui::TextWrapped(subtick
+            ? "Sub-tick movement supplies the smoothing while it is on."
+            : "Smooths sprite position, rotation and scale between native frames, at up to one 60 Hz frame of "
+              "visual delay. This is what makes menus and HUD animations look smooth as well as the game. "
+              "Animation frames, colour fades and 3D backgrounds are not smoothed yet.");
+        ImGui::EndDisabled();
+        return;
     }
     help("How often the game's logic runs. Auto follows the display, which is\n"
          "what you want unless you are comparing against stock 60 Hz.");
@@ -356,6 +425,10 @@ void draw_presentation_section(void) {
     if (ImGui::Checkbox("Vertical sync", &vsync)) hfr_ui_set(UI_VSYNC, vsync);
     help("Rebuilds the presentation chain, which takes effect on the next frame.");
 
+    if (hfr_ui_get(UI_FIXED_LOGIC)) {
+        ImGui::TextWrapped("D3D11 presentation. VSync can cap the actual frame rate at the monitor rate; turn it off to measure the software limiter. The frame queue uses the game's own settings.");
+        return;
+    }
     int latency = hfr_ui_get(UI_MAX_FRAME_LATENCY);
     if (ImGui::SliderInt("Frame queue", &latency, 0, 3, "%d")) hfr_ui_set(UI_MAX_FRAME_LATENCY, latency);
     ImGui::SameLine();
@@ -435,10 +508,23 @@ void draw_window(void) {
 }
 } // namespace
 
-extern "C" void hfr_menu_render(IDirect3DDevice9* dev, int width, int height) {
+/* Draws every section into whatever ImGui frame is current, with no device and no window.
+   The sections live in an anonymous namespace, and they should: this is the only thing that
+   reaches them, and it exists so a headless test can check what a section actually offers
+   rather than only that the menu draws without crashing. `draw_display_section` shipped for
+   several builds returning before the dimming controls whenever the video backend was
+   absent -- which is exactly the case where dimming is the only thing it has left to offer. */
+extern "C" void hfr_menu_draw_sections_for_test(void) {
+    draw_display_section();
+    draw_timing_section();
+    draw_presentation_section();
+    draw_diagnostics_section();
+}
+
+extern "C" void hfr_menu_render(void* dev, int width, int height) {
     if (!g_ready || g_menu_failed || (!g_visible && g_hint_frames <= 0)) return;
     if (!g_objects) {
-        if (!ImGui_ImplDX9_CreateDeviceObjects()) {
+        if (!hfr_menu_renderer_create()) {
             static bool told = false;
             if (!told) { told = true; hfr_ui_report("menu: the overlay's device objects could not be built; it cannot draw"); }
             return;
@@ -452,15 +538,16 @@ extern "C" void hfr_menu_render(IDirect3DDevice9* dev, int width, int height) {
         if (last_height) g_place_next = true;
         last_width = width; last_height = height; style_for((float)height);
     }
-    ImGui_ImplDX9_NewFrame();
+    hfr_menu_renderer_new_frame();
     ImGui_ImplWin32_NewFrame();
     ImGuiIO& io = ImGui::GetIO();
     io.DisplaySize = ImVec2((float)width, (float)height);   /* the swap chain, not the game */
+    io.MouseDrawCursor = g_visible && hfr_ui_get(UI_SOFTWARE_CURSOR);
     ImGui::NewFrame();
     if (g_visible) draw_window();
     else if (g_hint_frames > 0) { draw_hint(); --g_hint_frames; }
     ImGui::EndFrame();
     ImGui::Render();
-    if (!g_menu_failed) ImGui_ImplDX9_RenderDrawData(ImGui::GetDrawData());
+    if (!g_menu_failed) hfr_menu_renderer_draw(ImGui::GetDrawData());
     (void)dev;
 }

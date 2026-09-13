@@ -3,7 +3,6 @@
    compiled separately and the menu can be left out of a build entirely. */
 #pragma once
 #include <windows.h>
-#include <d3d9.h>
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -31,11 +30,19 @@ enum {
     UI_DIM_SPECIAL,          /* ... the game's own extra class (hfr_ui_dim_special_name says which) */
     UI_DIM_PLAYER_SHOTS,     /* ... the player's own shots */
     UI_DIM_AVAILABLE,        /* read-only: this game's draw order is known to the patch */
+    UI_DIM_CLASSES,          /* read-only: bitmask of the DIM_* classes this game can actually fade */
     UI_SHARPEN,              /* index into the post-process registry; -1 for none */
     UI_SHARPEN_STRENGTH,     /* 0..100 percent */
     UI_CURSOR,               /* the mouse pointer in borderless fullscreen: 0 as the game does (hidden), 1 visible, 2 visible while moving */
+    UI_FIXED_LOGIC,           /* read-only: fixed 60 Hz simulation with render interpolation */
+    UI_VIDEO_AVAILABLE,       /* read-only: scaler and window controls have a backend */
+    UI_SOFTWARE_CURSOR,       /* read-only: game hides the OS cursor; draw one in the menu */
+    UI_SUBTICK_AVAILABLE,     /* read-only: this game's player movement site is described */
+    UI_SUBSTEP_AVAILABLE,     /* read-only: this game's projectile update is described */
     UI_SETTING_COUNT
 };
+
+#include "../dim_classes.h"
 
 /* Implemented by the runtime (C). */
 int         hfr_ui_get(int id);
@@ -48,6 +55,10 @@ const char* hfr_ui_post_name(int index);
 void        hfr_ui_save(void);
 void        hfr_ui_status(char* buf, int len);
 void        hfr_ui_scale_info(char* buf, int len);
+/* Measured rates over the last stats window. The game's own on-screen fps readout counts
+   only native ticks, so at a high presentation rate it always says 60; this is what the
+   patch is actually doing. */
+void        hfr_ui_rate_info(char* buf, int len);
 int         hfr_ui_menu_key(void);
 const char* hfr_ui_dim_special_name(void);   /* what UI_DIM_SPECIAL fades in this game; NULL when it has nothing */
 /* Settings that only take effect on the next run, so the menu can say so rather than
@@ -69,18 +80,18 @@ void        hfr_menu_key_down(int down);           /* the menu key's state per t
 /* Implemented by the menu (C++); all are safe to call when the menu failed to start.
    A build without the menu (the test harness) defines HFR_NO_UI and gets local no-ops. */
 #ifndef HFR_NO_UI
-int  hfr_menu_init(IDirect3DDevice9* dev, HWND hwnd);
+int  hfr_menu_init(void* dev, HWND hwnd);
 void hfr_menu_shutdown(void);
 void hfr_menu_invalidate(void);
-void hfr_menu_render(IDirect3DDevice9* dev, int width, int height);
+void hfr_menu_render(void* dev, int width, int height);
 int  hfr_menu_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, LRESULT* result);
 void hfr_menu_toggle(void);
 int  hfr_menu_visible(void);
 #else
-static int  hfr_menu_init(IDirect3DDevice9* dev, HWND hwnd) { (void)dev; (void)hwnd; return 0; }
+static int  hfr_menu_init(void* dev, HWND hwnd) { (void)dev; (void)hwnd; return 0; }
 static void hfr_menu_shutdown(void) {}
 static void hfr_menu_invalidate(void) {}
-static void hfr_menu_render(IDirect3DDevice9* dev, int width, int height) { (void)dev; (void)width; (void)height; }
+static void hfr_menu_render(void* dev, int width, int height) { (void)dev; (void)width; (void)height; }
 static int  hfr_menu_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, LRESULT* result)
             { (void)hwnd; (void)msg; (void)wp; (void)lp; (void)result; return 0; }
 static void hfr_menu_toggle(void) {}

@@ -70,7 +70,7 @@ All addresses are absolute for v1.00a. Fields named as in `GameProfile` (`src/ga
 | ftol | `0x463b2c` |
 | Frame limiter waits (NOPed) | `0x4393b7`, `0x439488` (6 bytes each) |
 
-Identity: magic `t10r`, legacy INI `th10_hfr.ini`, image size `0x9c000`, 80 frozen
+Identity: magic `t10r`, legacy INI `th10_hfr.ini`, image size `0x9c000`, 83 frozen
 signatures (`tools/th10_signatures.json` is the reviewable copy of `src/games/th10_signatures.h`).
 
 ### vpatch conflict sites (`src/games/th10_conflicts.h`)
