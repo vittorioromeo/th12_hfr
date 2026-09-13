@@ -354,7 +354,7 @@ For New Classic, also install **64-bit MinGW-w64 GCC/G++** (default
 
 ```powershell
 .\build64.ps1
-.\test64.ps1 -GameExe 'C:\Program Files (x86)\Steam\steamapps\common\th06nc\th06nc.exe'
+.\test64.ps1 -GameExe 'C:\Program Files (x86)\Steam\steamapps\common\th06nc\'
 .\package.ps1 -Version '0.4.20-th06nc-prototype' -IncludeExperimental64
 ```
 

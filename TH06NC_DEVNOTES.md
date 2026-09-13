@@ -505,7 +505,7 @@ The read-only tool supports both i386 and AMD64 and requires Python, `pefile`, a
 From the repository root:
 
 ```powershell
-$ncExe = 'C:\Program Files (x86)\Steam\steamapps\common\th06nc\th06nc.exe'
+$ncExe = 'C:\Program Files (x86)\Steam\steamapps\common\th06nc\'
 python tools/porting/inspect_pe.py $ncExe info --imports
 python tools/porting/inspect_pe.py $ncExe strings 'DxLib|fps|D3D11CreateDevice|replay'
 python tools/porting/inspect_pe.py $ncExe xrefs rva:0x30c9e8 rva:0x3c330
@@ -744,7 +744,7 @@ well after the fix.
 ```powershell
 .\build.ps1       # common launcher and existing x86 games
 .\build64.ps1     # x64 DLL/helper, separate build/obj64 directory
-.\test64.ps1 -GameExe 'C:\Program Files (x86)\Steam\steamapps\common\th06nc\th06nc.exe'
+.\test64.ps1 -GameExe 'C:\Program Files (x86)\Steam\steamapps\common\th06nc\'
 .\package.ps1 -Version '0.4.12-th06nc-prototype' -IncludeExperimental64
 ```
 
