@@ -30,7 +30,7 @@ add four files to the game's folder and remove it by deleting them again.
 | Touhou 11 — Subterranean Animism | v1.00a | `th11.exe`, `th11e.exe` | supported |
 | Touhou 12 — Undefined Fantastic Object | v1.00b | `th12.exe`, `th12e.exe` | supported |
 | Touhou 13 — Ten Desires | v1.00c | `th13.exe`, `th13e.exe` | supported |
-| Touhou Koumakyou: New Classic | see [notes](TH06NC_DEVNOTES.md#2-product-and-inspected-build) | `th06nc.exe` | **experimental**, smaller feature set — [details](#new-classic-is-experimental-and-different). The Steam build is supported and [installs differently](#new-classic) |
+| Touhou Koumakyou: New Classic | see [notes](TH06NC_DEVNOTES.md#2-product-and-inspected-build) | `th06nc.exe` | **experimental**, smaller feature set — [details](#new-classic-is-experimental-and-different) |
 
 Japanese and English executables are both supported. Other versions, other games, and the
 `th06c.exe` (Classic) executable bundled with New Classic are not: the patch verifies the
@@ -85,30 +85,9 @@ touhou_hfr64.dll
 touhou_hfr.ini
 ```
 
-Then start the game however you normally do, **including from Steam**. The game loads
+Then start the game from Steam however you normally do. The game loads
 `dxgi.dll` itself, so the patch installs on any launch, exactly as `dinput8.dll` does for
 TH10–13. **Do not put the 32-bit `dinput8.dll` in this game**; it cannot load.
-
-`touhou_hfr64.exe` and `touhou_hfr.exe` are also in the archive. You do not need them for a
-normal install — they are a launcher that starts the game itself and injects, which is useful
-for troubleshooting. **On the Steam build the launcher cannot work**:
-the first thing `th06nc.exe` does is ask Steam whether it was launched by Steam, and if it was
-not it exits so Steam can start it again — which throws the injection away and is where
-Steam's *"An error occurred while launching this game: Game configuration unavailable"* comes
-from. That is the game's own behaviour, not the patch's; you get the same thing double-clicking
-`th06nc.exe`. Use `dxgi.dll` and let Steam launch the game.
-
-If you would rather have the launcher in the loop on Steam anyway — it installs the patch
-before the game executes a single instruction, rather than when Direct3D starts — set the
-game's **Launch Options** in Steam to:
-
-```
-"C:\Program Files (x86)\Steam\steamapps\common\th06nc\touhou_hfr64.exe" %command%
-```
-
-Steam then starts the launcher, the launcher starts the game, and because Steam launched the
-process tree the game no longer tries to relaunch itself. The launcher waits for the game to
-close so playtime and the overlay behave.
 
 One conflict to know about: ReShade also installs as `dxgi.dll`. Only one of them can have
 that name in the folder.
