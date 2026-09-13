@@ -5,6 +5,10 @@ and taking the patch to four games — are in [DEVNOTES_RUNTIME.md](DEVNOTES_RUN
 per-game records are [TH10_DEVNOTES.md](TH10_DEVNOTES.md), [TH11_DEVNOTES.md](TH11_DEVNOTES.md),
 [DEVNOTES.md](DEVNOTES.md) (TH12) and [TH13_DEVNOTES.md](TH13_DEVNOTES.md).
 
+Research into **Touhou Koumakyou: New Classic** is recorded in
+[TH06NC_DEVNOTES.md](TH06NC_DEVNOTES.md). It is not supported yet: its x64/DxLib/D3D11
+engine needs new backends, beyond a TH10–13 address profile.
+
 High refresh rate gameplay and presentation for Touhou. One DLL detects the game
 and selects its adapter; the scheduler, input, replay and Direct3D code are shared.
 
