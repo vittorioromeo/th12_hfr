@@ -38,6 +38,7 @@ static float* player_factor; static unsigned char* player_ran;
    projectiles are being updated at all -- paused, between stages and in menus they are
    not, and the pass must not move anything. */
 static unsigned char* proj_minor; static float* proj_dt; static unsigned char* proj_ran;
+static double measured_present, measured_update;   /* last stats window, for the menu */
 static struct SubtickPlayer proj_slice; static uint64_t proj_passes;
 static struct SubtickPlayer subtick_player;
 static uint64_t subtick_moves, subtick_polls; static double subtick_poll_max;
@@ -83,8 +84,7 @@ static void set_rate(void) {
    during replay playback the input word comes from the file rather than the device, and a
    failed draw guard already means the frame structure is not understood. */
 static int subtick_active(void) {
-    return subtick && rate > 60 && player_factor && !guard_failed &&
-           !*(const unsigned char*)(base + game->replay_playing);
+    return subtick && rate > 60 && player_factor && !guard_failed;
 }
 /* One slice of the current frame's player motion, using input polled at this instant. */
 static void subtick_move(double tau) {
@@ -115,8 +115,7 @@ static void subtick_move(double tau) {
    between stages and in menus the manager's frame counter does not advance, and nothing
    should be moved. */
 static int substep_active(void) {
-    return substep && rate > 60 && proj_dt && proj_minor && !guard_failed &&
-           !*(const unsigned char*)(base + game->replay_playing);
+    return substep && rate > 60 && proj_dt && proj_minor && !guard_failed;
 }
 /* One slice of the current frame's projectile motion. The slices of a frame sum to exactly
    one frame, and the native pass contributes none of it, so at every native tick the
@@ -248,9 +247,21 @@ static int wait_frame(void) {
     if (!last) {last=t;ft=frames;ut=ticks;st=samples;bt=blends;pt=subtick_polls;qt=proj_passes;}
     if (t-last>=frequency*2) {
         double seconds=(t-last)/frequency;
+        measured_present=(frames-ft)/seconds; measured_update=(ticks-ut)/seconds;
         LOG("stats seconds=%.3f presents=%.2f updates=%.2f frames=%llu ticks=%llu samples=%llu blends=%llu guard=%s api=%d",seconds,
             (frames-ft)/seconds,(ticks-ut)/seconds,(unsigned long long)frames,(unsigned long long)ticks,
             (unsigned long long)(samples-st),(unsigned long long)(blends-bt),guard_failed?"FAILED":"ok",*(int*)(base+game->graphics_api));
+        /* A feature that is switched on but did nothing all window is a bug, not a mode.
+           Say which term is holding it back, and print the byte section 14 believed was the
+           replay flag so a run can finally say what it really does. */
+        if ((subtick && subtick_polls==pt) || (substep && proj_passes==qt))
+            LOG("idle: subtick=%d(+%llu polls, armed=%d) substep=%d(+%llu passes, armed=%d) "
+                "rate=%d guard=%d player_ran=%d proj_ran=%d suspect[%x]=%u",
+                subtick,(unsigned long long)(subtick_polls-pt),subtick_player.armed,
+                substep,(unsigned long long)(proj_passes-qt),proj_slice.armed,
+                rate,guard_failed,player_ran?*player_ran:-1,proj_ran?*proj_ran:-1,
+                (unsigned)game->replay_suspect,
+                game->replay_suspect?*(const unsigned char*)(base+game->replay_suspect):0);
         if (proj_passes) LOG("substep %s: %llu projectile passes (%.2f/s, %.2f per frame)",
             substep_active()?"on":"standing by",(unsigned long long)proj_passes,
             (proj_passes-qt)/seconds,(double)(proj_passes-qt)/(double)(ticks-ut?ticks-ut:1));

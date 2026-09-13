@@ -52,6 +52,10 @@ const char* hfr_ui_post_name(int index);
 void        hfr_ui_save(void);
 void        hfr_ui_status(char* buf, int len);
 void        hfr_ui_scale_info(char* buf, int len);
+/* Measured rates over the last stats window. The game's own on-screen fps readout counts
+   only native ticks, so at a high presentation rate it always says 60; this is what the
+   patch is actually doing. */
+void        hfr_ui_rate_info(char* buf, int len);
 int         hfr_ui_menu_key(void);
 const char* hfr_ui_dim_special_name(void);   /* what UI_DIM_SPECIAL fades in this game; NULL when it has nothing */
 /* Settings that only take effect on the next run, so the menu can say so rather than

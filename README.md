@@ -25,7 +25,7 @@ and selects its adapter; TH10–13 share their scheduler, input, replay and Dire
 The same launcher dispatches New Classic to its separate x64 runtime. Menu contents,
 menu-key handling, patch transactions and the x64 executable registry are shared.
 
-**Current build: v0.4.14-test.** Supported executable layouts:
+**Current build: v0.4.15-test.** Supported executable layouts:
 
 | Game | Version | Executables | State |
 | --- | --- | --- | --- |
@@ -109,12 +109,13 @@ For **New Classic**, build both architectures (below), then copy `touhou_hfr.exe
 `touhou_hfr64.exe`, `touhou_hfr64.dll` and `touhou_hfr.ini` beside `th06nc.exe` in the
 `th06nc` subfolder. Start `touhou_hfr.exe`. Use F11 → Timing to select the presentation
 rate, toggle interpolation, or enable sub-tick player movement and sub-stepped bullets
-(both off by default; they make recorded replays diverge, and disable themselves while a
-replay plays back). Use the game's own display settings. Do not install the
+(both off by default; they make recorded replays diverge, and should be turned off before
+watching a replay — the flag that used to disable them automatically turned out not to mean
+what it claimed, see [§17](TH06NC_DEVNOTES.md#17-why-neither-feature-had-ever-run-and-what-the-fps-readout-counts-2026-09-13)). Use the game's own display settings. Do not install the
 32-bit `dinput8.dll` proxy in this x64 game. The generic `install.ps1` workflow below is
 for TH10–13. Bundled `th06c.exe` (Classic) is different and is not supported.
 
-Download/extract `touhou_hfr_v0.4.14-test.zip` and close the game.
+Download/extract `touhou_hfr_v0.4.15-test.zip` and close the game.
 
 For a fresh installation, copy these four files next to the game executable:
 
@@ -235,7 +236,7 @@ For New Classic, also install **64-bit MinGW-w64 GCC/G++** (default
 ```powershell
 .\build64.ps1
 .\test64.ps1 -GameExe 'C:\Program Files (x86)\Steam\steamapps\common\th06nc\th06nc.exe'
-.\package.ps1 -Version '0.4.14-th06nc-prototype' -IncludeExperimental64
+.\package.ps1 -Version '0.4.15-th06nc-prototype' -IncludeExperimental64
 ```
 
 Run `build.ps1` first: `test64.ps1` checks both launcher architectures. The x64 tests

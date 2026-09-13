@@ -334,6 +334,12 @@ void draw_timing_section(void) {
     if (hfr_ui_get(UI_FIXED_LOGIC)) {
         bool subtick = hfr_ui_get(UI_SUBTICK_INPUT) != 0;
         help("How often a picture is drawn. Enemies, bullets and scripts still run at 60 Hz.");
+        char rates_line[96];
+        hfr_ui_rate_info(rates_line, sizeof rates_line);
+        ImGui::TextUnformatted(rates_line);
+        ImGui::TextWrapped("The game's own fps readout counts simulation frames, so it stays at 60 however "
+                           "fast the picture is drawn. The line above is what the patch is measuring.");
+        ImGui::Spacing();
         ImGui::BeginDisabled(!hfr_ui_get(UI_SUBTICK_AVAILABLE));
         toggle("Sub-tick player movement", UI_SUBTICK_INPUT);
         ImGui::EndDisabled();
@@ -343,8 +349,8 @@ void draw_timing_section(void) {
                            "enemies and bullets -- still runs at 60 Hz, and sprites are predicted forward instead of "
                            "interpolated back so they line up with where the player really is.");
         ImGui::TextWrapped("This changes where the player is at each 60 Hz boundary, so a replay recorded with it on will "
-                           "not play back faithfully. It switches itself off during replay playback. Turn it off for score "
-                           "runs and for anything you intend to submit.");
+                           "not play back faithfully. Turn it off before watching a replay, and for score "
+                           "runs and anything you intend to submit.");
         ImGui::Spacing();
         ImGui::BeginDisabled(!hfr_ui_get(UI_SUBSTEP_AVAILABLE));
         toggle("Sub-step bullets (experimental)", UI_SUBSTEP);
@@ -355,7 +361,7 @@ void draw_timing_section(void) {
                            "Bullets are still where the stock game would put them at every 60 Hz boundary. Lasers, enemies, "
                            "items and scripts are not sub-stepped and still run at 60 Hz.");
         ImGui::TextWrapped("This changes when bullets hit, so a replay recorded with it on will not play back faithfully. "
-                           "It switches itself off during replay playback. Turn it off for score runs.");
+                           "Turn it off before watching a replay, and for score runs.");
         ImGui::Spacing();
         ImGui::BeginDisabled(subtick);
         toggle("Interpolate sprite positions", UI_ENEMY_INTERP);

@@ -22,7 +22,11 @@ struct FixedGame {
        scaled; everything the sub-step pass needs to reproduce that step lives here. */
     uint32_t player_motion, player_motion_resume;
     unsigned player_motion_size;
-    uint32_t player, bounds, input_poll, replay_playing;
+    uint32_t player, bounds, input_poll;
+    /* Recorded in section 14 as "non-zero while a replay drives the input word". That came
+       from three leaf functions nothing in the binary calls, so it is not trustworthy and
+       no longer gates anything (section 17); it is logged so a run can identify it. */
+    uint32_t replay_suspect;
     unsigned pl_position, pl_scale, pl_speed_straight, pl_speed_diagonal;
     /* Sub-stepped projectiles. One callback updates bullets and lasers; on a sub-step pass
        it is called directly with `projectile_arg` and only its motion, culling and collision

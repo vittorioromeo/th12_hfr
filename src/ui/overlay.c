@@ -161,6 +161,7 @@ void hfr_ui_status(char* buf, int len) {
              g_game ? g_game->identity->name : "no game", g_out_w, g_out_h, g_logic_rate, g_refresh);
 }
 /* What the current settings actually produce, which is more use than the settings alone. */
+void hfr_ui_rate_info(char* buf, int len) { snprintf(buf, (size_t)len, "%d ticks/s", g_logic_rate); }
 void hfr_ui_scale_info(char* buf, int len) {
     struct ScaleRect r = scale_rect(g_native_w, g_native_h, g_out_w, g_out_h, cfg.scaling);
     double sx = g_native_w > 0 ? (double)r.w / g_native_w : 0.0;

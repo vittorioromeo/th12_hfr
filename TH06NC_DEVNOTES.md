@@ -1147,3 +1147,75 @@ right speed overall (a wrong factor would show as everything flying at six times
 crawling), graze counts matching a stock run roughly, animations not running fast, lasers
 behaving normally, and dying to things that used to miss -- that last one is the feature
 working, not a bug.
+
+## 17. Why neither feature had ever run, and what the fps readout counts (2026-09-13)
+
+The owner asked whether the in-game fps counter still reading 60 with sub-stepping on was
+normal. It is. Checking why turned up something that was not: **sub-tick movement and
+sub-stepped bullets had never executed once**, in any build, on any run.
+
+### The fps readout
+
+The counter lives in the frame function at `0x3c5ec`, immediately after `wait_resume`
+(`0x3c5a1`):
+
+```text
+0x3c5f3  mov ecx,[0xc2232c] ; inc ecx ; store     -- the frame count
+0x3c604  rdx = now - [0xc29648]                   -- elapsed since the last recompute
+0x3c60b  cmp rdx, 0x7a120 ; jl ...                -- only recompute every 500000 units
+0x3c660  call sprintf with "%.02lffps" (0x30c9e8)
+```
+
+The patch's wait relay jumps to `wait_resume` on a native tick and to `frame_epilogue`
+(`0x3c71d`) on a presentation-only one, so that increment is reached exactly 60 times a
+second by construction. The game's readout is therefore a simulation-rate readout and will
+say 60 at every presentation rate, whatever the sub-step settings do. Nothing is wrong with
+it, and nothing should try to "fix" it: it is the one number on screen that tells you the
+60 Hz logic is still keeping time. F11 → Timing now prints the measured presentation and
+simulation rates next to it, and says as much.
+
+### The bug the log gave away
+
+The stats block only prints its sub-tick and sub-step lines when those counters are
+non-zero. Across 42 stats windows, ~40 seconds of play with `subtick=1, substep=1` and
+`guard=ok`, presenting at 360 and 480 -- neither line ever appeared. Both features were
+inert, and had been since they were written.
+
+Every term of the two activation tests is provable from the log except one. The rate was
+360; the guard was ok; the relay pointers are non-null whenever the patch installed at all,
+and it had. That leaves `!*(base + replay_playing)`, the byte at `0x4f27b2` recorded in
+section 14 as "non-zero while a replay is driving the input word".
+
+That identification was wrong, and the way it was wrong is worth keeping. It came from four
+apparent readers found by `inspect_pe.py xrefs`, three of which are at `0x6b970`, `0x6b9f0`
+and `0x6ba40` and do look exactly like replay input handling -- one appends an entry when
+the input word changes, one walks a table by frame number and writes the input global.
+**Nothing in the binary reaches any of them.** No call, no jump, no `lea`, no 8-byte
+pointer, and no 4-byte image-relative entry of the kind a switch table would hold. They are
+dead code, most likely carried over from the original game and never called. `xrefs`
+decodes executable sections linearly, so it reports references from code that can never
+run, and reading three plausible functions in a row is convincing enough that nobody
+questions the fourth.
+
+The one live reader is the fps display above, where a non-zero value adds an offset to a
+drawing position. So `0x4f27b2` is something to do with the on-screen readout, not replays,
+and whatever sets it -- no writer is visible to an address scan either, which by section
+16's lesson means it is written through a register -- was set during ordinary play.
+
+Both gates now test only what is verified: the setting, the rate, the relay pointers and
+the draw guard. The byte is kept in the profile as `replay_suspect` and printed by a new
+diagnostic line, which fires whenever a feature is switched on but did nothing for a whole
+stats window and names every term's live value. A feature that is enabled and idle is a
+bug, and the log should say so rather than staying silent.
+
+### What this costs, and what it asks for next
+
+Replay playback is no longer guarded, because the flag that was guarding it never meant
+what it claimed. Watching a replay with either feature on will now drive the player from
+the device as well as from the file, which looks wrong; it cannot damage the replay, since
+playback does not write, and both features remain off by default. **Finding the real
+playback flag is the first task of the next session** -- and this time it wants a live
+check, not an address scan: the scan is what produced both this error and section 16's.
+
+The lesson for the whole project: a reference found by linear decoding is a candidate, not
+a fact. Before a byte is allowed to gate anything, something reachable has to read it.

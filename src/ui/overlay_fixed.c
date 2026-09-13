@@ -40,6 +40,10 @@ void hfr_ui_save(void) {
 void hfr_ui_status(char* out,int n) {
     snprintf(out,n,"%s | %d FPS target | 60 Hz gameplay%s",game->name,rate,guard_failed?" | DRAW GUARD FAILED":"");
 }
+void hfr_ui_rate_info(char* out,int n) {
+    if (measured_present<=0) {snprintf(out,n,"measuring...");return;}
+    snprintf(out,n,"presenting %.0f/s, simulating %.0f/s",measured_present,measured_update);
+}
 void hfr_ui_scale_info(char* out,int n) {snprintf(out,n,"D3D11 | native game scaling | %s",subtick_active()?"sub-tick player movement":"position interpolation");}
 int hfr_ui_menu_key(void) {return menu_key_code;}
 int hfr_ui_simulation_locked(void) {return 0;} /* Presentation never reconfigures native simulation. */
