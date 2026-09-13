@@ -922,3 +922,122 @@ things to check are that the player still stops at the playfield edges, that foc
 diagonal speeds feel stock, that holding a direction for a second covers the same distance
 as with the setting off, that pause/unpause/death/bombs do not displace the player, and
 that a replay recorded with the setting *off* still plays back byte-for-byte.
+
+## 15. Toward high-rate simulation: anatomy and schedule (2026-09-13)
+
+Section 14 took the player to the display rate and said the same approach would not extend
+to bullets. That is still true of *that* approach, but it was an argument about one design,
+not about the engine. This section is the map for the design that can work, the scheduler
+it needs, and an honest account of what is and is not yet established.
+
+### The shape of the job
+
+TH10-13 run the whole update list N times per displayed frame and keep the 60 Hz behaviour
+by two mechanisms: continuous quantities are multiplied by the sub-step's duration, and
+discrete blocks are skipped on ticks that are not frame boundaries. New Classic needs the
+same two mechanisms. What it lacks is the single game-speed float the later engines hang
+the first one off -- confirmed again here: the `xmm15` that multiplies so much of the
+projectile update is loaded once at `0x108f8` from `.rdata` `0x30cd58`, and it is the
+constant `0.5`, not a speed. So every motion site needs its own factor and every discrete
+block its own gate, exactly as TH10 needed (`DEVNOTES_RUNTIME.md` §7).
+
+### The dispatch hook, which makes this per-system instead of all-or-nothing
+
+The update runner `0x3be80` is small and regular. Its per-node body is:
+
+```text
+0x3beb0  mov rax,[rbx+8]        ; the node's callback
+0x3beb4  mov rcx,[rbx+0x38]     ; its argument
+0x3beb8  call rax
+0x3beba  cmp eax,2              ; 2 repeats, 0 removes, 3/4/5 end the walk
+```
+
+Ten bytes from `0x3beb0` to `0x3beba`, straight-line, with the node in `rbx`. Relocating
+them gives a per-callback dispatch gate: on a tick that is not a frame boundary, run only
+the callbacks that have been converted to sub-step, and report `1` (continue) for the rest.
+Systems can then be converted one at a time instead of the engine having to be correct all
+at once. This is the single most useful structural finding in this section.
+
+Two cautions for whoever wires it. The runner's exit path clears `0xc21970` and calls
+`0x76a30`, which drains a queued sound list; running the runner N times a frame runs that
+N times. And `0x3beb8` is `call rax` -- two bytes -- so the patch has to take the whole
+ten-byte range and reproduce the two loads, not just the call.
+
+### The projectile callback, `0x10870`
+
+One callback (`0x10870`, priority 11, argument `0x3ec2a0`) updates bullets and lasers.
+`.pdata` splits it into fragments -- `0x10893`, `0x11610`, `0x117b1` are all entries for
+what is one function -- so do not trust an entry there as a function start.
+
+Its ordinary per-bullet path is, in order:
+
+| RVA | What happens |
+| --- | --- |
+| `0x10940`-`0x11021` | the state machine: writes angle `+0x40`, speed `+0x24`, velocity `+0x08/0c/10`, flags `+0x14`, counter `+0x1c`, state `+0x44`. Converges on exactly two points, `0x11021` and `0x1102c` |
+| `0x1102c`-`0x1105f` | **the motion**: `pos += vel` on all three axes, no time factor. 52 bytes |
+| `0x11060`-`0x110b8` | the off-screen cull, against half-extents from the bullet's own descriptor |
+| `0x1113b` | `call 0x6a8c0` -- a pure AABB-vs-16-boxes test on `player+0x7754`; on overlap the bullet goes to state 5 and spawns a cancel effect. No side effects of its own |
+| `0x1115a`-`0x111df` | **graze**: circle test against player position `0x506ad0/4` with radius `bullet*0.5 + 20.0 + 0x506aec`, then the counters at `0x4ff0cc` (capped 99999) and `0x4ff0d0` (capped 999999) |
+| `0x11562` | the timer: `[+0x28] = t; [+0x2c] = t+1` |
+
+**Graze is once per bullet.** `+0x618` is set at `0x11277`/`0x112d2` and tested at
+`0x110ba` before the graze test runs. Repeating the callback within a frame therefore
+cannot inflate graze, which removes the hazard that looked worst from the outside.
+
+**A coarse gate does not work, and it is worth saying why.** The state machine has a single
+entry and converges on two points, which invites "on a minor tick, jump from the entry to
+`0x11021`". It does not survive contact: the later code reads `xmm6`, `xmm7` and `xmm8` --
+the bullet's radius and position -- which the skipped region establishes. Gating has to be
+per-site, with the register effects of each skipped block accounted for.
+
+### Where the player actually dies, and an open question
+
+All writes of the dying state `0x506c38 = 2` go through one function, `0x6aba0`, which is
+called from exactly one site, `0x11883`, inside this same callback. `0x6aba0` rotates the
+player's position into the projectile's frame (`sin`/`cos` at `0x2be07d`/`0x2be071`) and
+tests the player's radius `0x506aec` against a rotated box: it is the **laser** test.
+
+That leaves an open question this session did not settle: the death test for ordinary
+bullets was not found. The player's hitbox radius `0x506aec` has only two readers -- the
+graze test and this laser test -- so ordinary bullets must reach the player through some
+other comparison. Until that is found, nobody should claim to know what sub-stepping does
+to bullet collision. Finding it is the first task of the next session, and the most likely
+places are the box list at `player+0x7754` (16 entries of `{w,h,cx,cy}`, filled
+dynamically, no static writer) and the part of the callback between `0x11610` and
+`0x117b1` that this session did not read.
+
+### The schedule (`src/backends/substep.h`), which is done and tested
+
+The sub-step schedule is the piece that could be finished and verified now, because it is
+pure arithmetic with no game state in it.
+
+The x86 runtime's schedule lets a tick straddle a frame boundary: the engine's float timers
+accumulate the step and cross the integer frame count somewhere inside a tick, and "major"
+just means the first tick that started in a new frame. That is wrong here. This runtime
+decides itself when the 60 Hz logic runs, so a straddling step would apply part of the next
+frame's motion before that frame's logic had run. The test caught this on the first run --
+the steps between two boundary ticks summed to 1.25 frames at 144 Hz, not 1.
+
+So the partition is exact instead. One Bresenham deals the second's R ticks out to its 60
+frames; a second deals each frame's 256 units (1/256 of a frame, so every step and every
+partial sum is exact in float32) out to that frame's ticks, ceiling-first so the last tick
+lands exactly on the boundary. At 144 Hz frames get 2 or 3 ticks; at 60 every frame gets
+one tick of exactly one frame, which makes the whole mechanism inert there.
+
+`test64.sh` checks, at 60/120/144/165/240/360/480/1000: exactly 60 boundary ticks and
+exactly R ticks per second, every step a whole number of 1/256 frames, every frame's steps
+summing to exactly 1.0, phase strictly increasing within a frame and 0 on a boundary, and
+no drift over a whole second.
+
+### What is not done
+
+No new code patch was added for any of this. The dispatch gate is designed and its hook
+point verified, but it is not emitted, because an eighth patch that no system yet uses is
+risk without benefit. Nothing in the shipped runtime behaves differently from section 14.
+
+The order of work from here: find the ordinary-bullet death test; emit the dispatch gate;
+convert the projectile callback site by site (motion at `0x1102c` scaled, then each discrete
+block gated, with the register effects of each accounted for); then the enemy, item and
+effect callbacks. Each conversion needs its own frozen signatures and its own Unicorn test,
+and none of it should be enabled by default until a native-versus-patched comparison over
+the same replay shows the same outcomes.

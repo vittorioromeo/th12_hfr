@@ -113,6 +113,49 @@ static void test_subtick(void) {
     assert(subtick_clamp(5,10,100)==10);assert(subtick_clamp(200,10,100)==110);assert(subtick_clamp(50,10,100)==50);
     puts("PASS: sub-tick slices sum to one frame, stand aside when unarmed or stalled, direction and clamp");
 }
+/* The sub-step schedule: exactly 60 frames per second of ticks, every step dyadic, and
+   the steps of each frame summing to exactly one frame with no tick straddling a boundary. */
+static void test_substep(void) {
+    const int rates[]={60,120,144,165,240,360,480,1000};
+    for (unsigned r=0;r<sizeof rates/sizeof *rates;++r) {
+        struct Substep s; substep_reset(&s);
+        unsigned majors=0,ticks=0; double total=0,in_frame=0; int first=1;
+        double last_phase=-1;
+        for (int i=0;i<rates[r];++i) {
+            struct SubstepTick t=substep_advance(&s,rates[r]);
+            assert(t.phase>=0 && t.phase<1);
+            assert(t.dt>0 && t.dt<=1.0f);
+            /* dyadic: a whole number of 1/256 frames, so exact in float32 */
+            assert((double)t.dt*256.0==(double)(long)((double)t.dt*256.0));
+            if (t.major) {
+                ++majors;
+                if (!first) assert(in_frame==1.0);   /* the frame just ended exactly */
+                first=0; in_frame=0; assert(t.phase==0);
+            } else {
+                assert(t.phase>last_phase);          /* phase advances inside a frame */
+            }
+            last_phase=t.phase; in_frame+=t.dt; total+=t.dt; ++ticks;
+        }
+        assert(in_frame==1.0);         /* the last frame of the second closed too */
+        assert(majors==60);            /* 60 frames of logic per second, at every rate */
+        assert(ticks==(unsigned)rates[r]);
+        assert(total==60.0);           /* and no drift over the whole second */
+    }
+    /* At 60 the feature is inert: every tick is a boundary and carries a whole frame. */
+    struct Substep s; substep_reset(&s);
+    for (int i=0;i<10;++i) {
+        struct SubstepTick t=substep_advance(&s,60);
+        assert(t.major && t.dt==1.0f && t.phase==0);
+    }
+    /* A rate that is not a multiple of 60 deals uneven tick counts but exact frames. */
+    struct Substep u; substep_reset(&u); unsigned seen[4]={0};
+    for (int i=0;i<144;++i) {
+        struct SubstepTick t=substep_advance(&u,144);
+        if (t.major) { unsigned k=u.ticks_left+1; assert(k==2||k==3); seen[k]++; }
+    }
+    assert(seen[2] && seen[3]);
+    puts("PASS: sub-step schedule, 60 frames/s at every rate, dyadic steps, exact frame sums");
+}
 int main(int argc,char** argv) {
-    assert(argc==2);game=fixed_games[0];test_clock();test_history();test_subtick();test_patches(argv[1]);return 0;
+    assert(argc==2);game=fixed_games[0];test_clock();test_history();test_subtick();test_substep();test_patches(argv[1]);return 0;
 }

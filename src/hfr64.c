@@ -12,6 +12,7 @@
 #include "backends/fixed_history.h"
 #include "backends/fixed_clock.h"
 #include "backends/subtick.h"
+#include "backends/substep.h"
 #include "fixed_identity.h"
 #include "ui/ui_api.h"
 void hfr_d3d11_overlay(void* swap);
