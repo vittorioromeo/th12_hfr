@@ -45,7 +45,7 @@ static int dim_percent[DIM_COUNT];
 static uint64_t dim_faded;
 static double measured_present, measured_update;   /* last stats window, for the menu */
 static uint64_t sprite_calls, sprite_skipped_off, sprite_skipped_stack;
-static int listed_nodes; static char listed_signature[512];
+static int listed_nodes, listed_full; static char listed_signature[512];
 /* Which draw callback drew how many sprites, over a stats window. This is what identifies a
    dimming class: the profile's rule table is keyed by callback, and guessing which callback
    is which is how earlier sections of the notes went wrong. */
@@ -226,10 +226,15 @@ static void log_lists(const char* when) {
                for every screen it passed through, instead of only the first few seconds. */
             size_t at=strlen(listed_signature);
             if (!strstr(listed_signature,line)) {
-                LOG("%s (%u nodes)",line,count);
+                /* Only log a list we can also remember. Logging one we cannot record would
+                   repeat it every window for the rest of the session. */
                 if (at+strlen(line)+2<sizeof listed_signature) {
+                    LOG("%s (%u nodes)",line,count);
                     memcpy(listed_signature+at,line,strlen(line)+1);
                     listed_signature[at+strlen(line)]='\n'; listed_signature[at+strlen(line)+1]=0;
+                } else if (!listed_full) {
+                    listed_full=1;
+                    LOG("node lists: no room to remember more; not logging further changes");
                 }
             }
         }
