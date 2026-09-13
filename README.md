@@ -222,8 +222,7 @@ release instructions are in [TH12_README.md](TH12_README.md) and
 
 ## Credits, tools and resources
 
-The mod was written by Vittorio Romeo together with AI models, with every address, hook and
-finding validated against the executables in a Wine rig and in play. The record of who found
+The mod was developed by Vittorio Romeo with AI assistance. The record of what model found
 what is in the git history and the per-game devnotes.
 
 **AI models.** The original TH12 patch (v0.10-v0.11), the restructuring into a shared
