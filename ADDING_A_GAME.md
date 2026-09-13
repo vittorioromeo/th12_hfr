@@ -5,7 +5,11 @@ lives in `src/games/`; nothing in `src/core/`, `src/backends/` or `src/ui/` name
 hardcodes one of its addresses, and that is worth keeping true — it is what makes the video,
 menu and filter work apply to a new game for free.
 
-A game is three files and three lines.
+A game in the existing x86/D3D9 engine family is three files and three lines.
+Check architecture, rendering API, callback semantics and timer representation first.
+For an engine outside that family, shared algorithms can still be reused, but a profile
+does not replace the required platform and engine backends. See
+[the New Classic investigation](TH06NC_DEVNOTES.md) for a concrete x64/D3D11 example.
 
 ## The three files
 

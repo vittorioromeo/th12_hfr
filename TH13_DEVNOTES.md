@@ -224,6 +224,15 @@ int = ftol(float)`. Grep for that shape to find every per-object timer.
 - **Line laser graze** `0x431a01`: once per frame on the graze timer `+0x28/+0x2c`. The curve
   laser computes the same `% 3` test and then does nothing with it; the beam has no graze
   branch; neither is hooked.
+- **Player shot behaviours** `0x446cb0` (homing), `0x447590` (`speed += 1` per call), `0x447510`
+  (`speed *= 0.8` per call), from the shot-type table `0x4bb4d8` and called with EDX = the shot
+  by the per-shot update `0x4464d0` (the shot array is 256 × `0x9c` at player `+0x6a0`:
+  timer `+0x18/+0x1c/+0x20` with speed pointer `+0x24`, `MotionState` `+0x2c`, state `+0x70`,
+  shot-type data `+0x94`, link to the hit entry `+0x98`; the `+0xaa5c` array described above
+  is the hit-test side of the same shots): once per frame on the shot's timer, as TH11/TH12.
+  `0x446f20` anchors an option's laser every tick and stays unguarded (DEVNOTES §5.5). The
+  curved laser needs nothing here: its nodes are computed from a float timer (`+0x44`) through
+  the laser's motion segments (`0x4362f0`), not integrated per call as TH12's are.
 - **Stage distortion** `0x4067e4` (14 bytes) and its frame counter `0x406d6f` (11 bytes): the
   effect consumes RNG every frame; run on frame ticks only.
 - **Constant `Timer::add` sites** `0x44647c` (player shot cycle `-14`) and `0x4629ef` (the ANM

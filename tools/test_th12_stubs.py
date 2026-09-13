@@ -59,3 +59,29 @@ reset();obj=u.reg_read(UC_X86_REG_ESI);wi(obj+4,17);wf(obj+8,17.25);wf(STACK,-14
 run(0x439ac2,0x439ac7)
 assert rf(obj+8)==3.25 and ri(obj+4)==3 and ri(obj)==17 and u.reg_read(UC_X86_REG_ESP)==STACK+4
 print('PASS: TH12 residuals on both axes, native SSE/x87 truncation and constant Timer::add')
+
+# LaserCurve (ESI = laser): the node ring shifts only when the laser's timer +0x28/+0x2c
+# changed, and the head node moves by velocity * factor (factor is 0.25 in the fixture).
+for changed in (0,1):
+    reset();obj=u.reg_read(UC_X86_REG_ESI);ring=ARENA+0x9000
+    wi(obj+0xf9c,ring);wi(obj+0x470,3);wi(obj+0x28,5);wi(obj+0x2c,5+changed)
+    for i in range(3):
+        for j in range(5):wf(ring+i*20+j*4,float(i*10+j))
+    assert run(0x42c925,0x42c965)==0x42c965
+    assert u.reg_read(UC_X86_REG_EDX)==ring and u.reg_read(UC_X86_REG_ESP)==STACK
+    # node 2 takes node 1's values only when a whole frame passed; node 0 never shifts
+    assert rf(ring+40)==(10.0 if changed else 20.0) and rf(ring+20)==(0.0 if changed else 10.0) and rf(ring)==0.0
+    wf(obj+0x5c,8);wf(obj+0x60,-4);wf(obj+0x64,16);wf(ring,100);wf(ring+4,200);wf(ring+8,300)
+    run(0x42c965,0x42c97e)
+    assert [rf(ring+i*4) for i in range(3)]==[102,199,304] and u.reg_read(UC_X86_REG_FPTAG)==0xffff
+# Player shot behaviours (EDX = shot): skipped, returning 0, unless the shot's timer +0/+4 changed.
+for start,n in ((0x43a480,6),(0x43a810,8),(0x43aa50,9),(0x43ab60,6)):
+    for changed in (0,1):
+        reset();obj=u.reg_read(UC_X86_REG_EDX);wi(obj,7);wi(obj+4,7+changed);wi(STACK,BOOT+128)
+        u.reg_write(UC_X86_REG_EAX,0x1234)
+        assert run(start,start+n,BOOT+128)==(start+n if changed else BOOT+128)
+        if not changed:assert u.reg_read(UC_X86_REG_EAX)==0 and u.reg_read(UC_X86_REG_ESP)==STACK+4
+# The option laser grows by 28 * factor per call.
+reset();obj=u.reg_read(UC_X86_REG_ESI);wf(obj+0x6c,100);fpush(100)
+run(0x43a750,0x43a759);assert rf(obj+0x6c)==107 and u.reg_read(UC_X86_REG_FPTAG)==0xffff
+print('PASS: TH12 curved laser ring/head, shot behaviour gates and option laser growth')

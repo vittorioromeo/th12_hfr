@@ -72,6 +72,14 @@
     "bytes": "8b 86 4c 04 00 00"
   },
   {
+    "address": "0x42c925",
+    "bytes": "8b 8e 70 04 00 00"
+  },
+  {
+    "address": "0x42c965",
+    "bytes": "d9 02 d8 46 5c d9 1a d9 46 60 d8 42 04 d9 5a 04 d9 46 64 d8 42 08 d9 5a 08"
+  },
+  {
     "address": "0x42cbf7",
     "bytes": "8b 46 2c 99 b9 03 00 00 00"
   },
@@ -162,6 +170,26 @@
   {
     "address": "0x439ef2",
     "bytes": "3b 86 30 0a 00 00"
+  },
+  {
+    "address": "0x43a480",
+    "bytes": "55 8b ec 83 e4 f8"
+  },
+  {
+    "address": "0x43a750",
+    "bytes": "dc 05 40 41 4a 00"
+  },
+  {
+    "address": "0x43a810",
+    "bytes": "51 56 8b f2 83 7e 48 02"
+  },
+  {
+    "address": "0x43aa50",
+    "bytes": "53 56 8b f2 bb 02 00 00 00"
+  },
+  {
+    "address": "0x43ab60",
+    "bytes": "55 8b ec 83 e4 f8"
   },
   {
     "address": "0x43adbd",

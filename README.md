@@ -5,10 +5,14 @@ and taking the patch to four games — are in [DEVNOTES_RUNTIME.md](DEVNOTES_RUN
 per-game records are [TH10_DEVNOTES.md](TH10_DEVNOTES.md), [TH11_DEVNOTES.md](TH11_DEVNOTES.md),
 [DEVNOTES.md](DEVNOTES.md) (TH12) and [TH13_DEVNOTES.md](TH13_DEVNOTES.md).
 
+Research into **Touhou Koumakyou: New Classic** is recorded in
+[TH06NC_DEVNOTES.md](TH06NC_DEVNOTES.md). It is not supported yet: its x64/DxLib/D3D11
+engine needs new backends, beyond a TH10–13 address profile.
+
 High refresh rate gameplay and presentation for Touhou. One DLL detects the game
 and selects its adapter; the scheduler, input, replay and Direct3D code are shared.
 
-**Current build: v0.4.11-test.** Supported executable layouts:
+**Current build: v0.4.12-test.** Supported executable layouts:
 
 | Game | Version | Executables | State |
 | --- | --- | --- | --- |
@@ -84,7 +88,7 @@ every supported title; it still needs full-run replay testing before a stable re
 
 ## Install
 
-Download/extract `touhou_hfr_v0.4.11-test.zip` and close the game.
+Download/extract `touhou_hfr_v0.4.12-test.zip` and close the game.
 
 For a fresh installation, copy these four files next to the game executable:
 

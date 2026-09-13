@@ -241,6 +241,58 @@ static void th12_install_sites(void) {
       ECOPY(0x45dcd0, 9);                                 /* run: original prologue */
       EJMP(0x45dcd9);
       hook_site(0x45dcd0, 9, ex); }
+
+    /* --- LaserCurve (update 0x42c770, ESI = laser): the trail is a ring of nodes (5 floats
+           each at [esi+0xf9c], count [esi+0x470]) that the update shifts by one node per
+           call, and the head node then gets a whole frame's velocity ([esi+0x5c..0x64]) added
+           with no speed multiply -- the one motion in the game that ignores the speed float,
+           so under sub-stepping a curved laser ran N times too fast and its trail streamed
+           out N times as long. Shift the ring only on the tick where the laser's own timer
+           (+0x28/+0x2c, ticked at the end of the same update) crossed a whole frame, and move
+           the head by velocity * factor every tick. Between shifts the head glides from the
+           last node towards the next frame's position, which is exactly what the nodes are:
+           the head's position at each whole frame. TH13 computes its curve lasers from a
+           float timer instead and needs nothing; TH10 and TH11 have no curved lasers. --- */
+    { static const uint8_t ex[] = { 0x8B, 0x8E, 0x70, 0x04, 0x00, 0x00 };   /* mov ecx,[esi+0x470] */
+      STUB_BEGIN();
+      E(0x8B, 0x96, 0x9C, 0x0F, 0x00, 0x00);          /* mov edx,[esi+0xf9c]: the node ring, read inside the skipped block */
+      E_timer_unchanged(R_ESI, 0x28, 0x2c);
+      EJCC(0x84, 0x42c965);                            /* no whole frame passed: no shift */
+      E(0x8B, 0x8E, 0x70, 0x04, 0x00, 0x00);
+      EJMP(0x42c92b);
+      hook_site(0x42c925, 6, ex); }
+    { static const uint8_t ex[] = { 0xD9, 0x02, 0xD8, 0x46, 0x5C, 0xD9, 0x1A,
+                                    0xD9, 0x46, 0x60, 0xD8, 0x42, 0x04, 0xD9, 0x5A, 0x04,
+                                    0xD9, 0x46, 0x64, 0xD8, 0x42, 0x08, 0xD9, 0x5A, 0x08 };
+      STUB_BEGIN();
+      E(0xD9, 0x46, 0x5C); E(FMUL_SPEED[0], FMUL_SPEED[1], FMUL_SPEED[2], FMUL_SPEED[3], FMUL_SPEED[4], FMUL_SPEED[5]); E(0xD8, 0x02, 0xD9, 0x1A);
+      E(0xD9, 0x46, 0x60); E(FMUL_SPEED[0], FMUL_SPEED[1], FMUL_SPEED[2], FMUL_SPEED[3], FMUL_SPEED[4], FMUL_SPEED[5]); E(0xD8, 0x42, 0x04, 0xD9, 0x5A, 0x04);
+      E(0xD9, 0x46, 0x64); E(FMUL_SPEED[0], FMUL_SPEED[1], FMUL_SPEED[2], FMUL_SPEED[3], FMUL_SPEED[4], FMUL_SPEED[5]); E(0xD8, 0x42, 0x08, 0xD9, 0x5A, 0x08);
+      EJMP(0x42c97e);
+      hook_site(0x42c965, 25, ex); }
+
+    /* --- Player shot behaviours (table 0x4aebd8, called with EDX = shot from the shot update):
+           homing 0x43a480 (turn towards the target, speed +-0.2 per call), 0x43a810 (stop at the
+           enemy's height, timer-state checks), gravity 0x43aa50 (speed -0.1 per call) and
+           0x43ab60 (speed -0.38/-0.6 and angle += angular velocity per call) advance per call.
+           Run each only on the tick where the shot's integer timer (+0/+4) changed, as TH11
+           does for its two; the shot's position still integrates every sub-tick. The fifth,
+           0x43a6b0, anchors an option's laser to the option every tick and stays unguarded,
+           except that its laser growth (+28 per call towards 448) is scaled by the factor. --- */
+    { struct { uintptr_t addr; size_t n; } S[] = { { 0x43a480, 6 }, { 0x43a810, 8 }, { 0x43aa50, 9 }, { 0x43ab60, 6 } };
+      for (size_t i = 0; i < sizeof S / sizeof *S; ++i) {
+          STUB_BEGIN(); E(0x9c); E_timer_unchanged(R_EDX, 0, 4);
+          E(0x75, 0x04, 0x9d, 0x31, 0xc0, 0xc3);       /* unchanged: restore flags, return 0 */
+          E(0x9d); ECOPY(S[i].addr, S[i].n); EJMP(S[i].addr + S[i].n);
+          hook_site(S[i].addr, S[i].n, site_expected(S[i].addr, S[i].n));
+      } }
+    { static const uint8_t ex[] = { 0xDC, 0x05, 0x40, 0x41, 0x4A, 0x00 };   /* fadd qword [0x4a4140] (28.0) */
+      STUB_BEGIN();
+      E(0xDD, 0x05, 0x40, 0x41, 0x4A, 0x00);            /* fld qword [0x4a4140] */
+      E(FMUL_SPEED[0], FMUL_SPEED[1], FMUL_SPEED[2], FMUL_SPEED[3], FMUL_SPEED[4], FMUL_SPEED[5]);
+      E(0xDE, 0xC1);                                    /* faddp st(1),st */
+      EJMP(0x43a756);
+      hook_site(0x43a750, 6, ex); }
     stub_end();
     LOG("site patches installed (%u bytes of stubs)", (unsigned)g_stub_used);
 }

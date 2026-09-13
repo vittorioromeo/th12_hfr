@@ -411,6 +411,37 @@ version that multiplies by `logical` instead of the effective speed, i.e. stock 
 Every stub is installed only if the bytes at the site match the expected original; a mismatch is
 logged and skipped, which is also how th12e.exe was confirmed to be byte-identical at all sites.
 
+**The curved laser, found by a player (v0.4.12).** `LaserCurve::update` (`0x42c770`, ESI = the
+laser) keeps its trail as a ring of nodes (five floats each — x, y, z, angle, width — at
+`+0xf9c`, count at `+0x470`) and, every call, shifts the ring by one node (`0x42c925`) and then
+adds a whole frame's velocity (`+0x5c..+0x64`, recomputed by the "ex" behaviours from angle
+and speed) to the head node with no speed multiply (`0x42c965`). It is the one motion in the
+game that ignores the speed float — the line and beam lasers, the bullets and the items all
+multiply — so under sub-stepping a curved laser advanced N times per frame and its trail
+streamed out N times as long: Nazrin's and Shou's lasers visibly sped up with the tick rate.
+The 2010 first pass read the laser classes' timers and missed the integration because the
+head's `+=` is written against the node array, not the object. Fix: shift the ring only on
+the tick where the laser's own graze timer (`+0x28/+0x2c`, ticked at the end of the same
+update) crossed a whole frame, and add `velocity × factor` every tick. The nodes are the
+head's position at each whole frame, so between shifts the head glides from the last node
+towards the next frame's position, which is what the trail geometry already assumed. TH13
+computes each node from a float timer through the laser's motion segments and needed nothing;
+TH10 and TH11 have no curved laser class (`LaserCurveInf` appears in the TH12 and TH13
+binaries only).
+
+**Player shot behaviours (v0.4.12).** The shot-type table at `0x4aebd8` holds five per-shot
+callbacks called with EDX = the shot: homing `0x43a480` (turn towards the target, speed
+±0.2 per call), `0x43a810` (stop at the enemy's height, timer-state checks), gravity
+`0x43aa50` (speed −0.1 per call), `0x43ab60` (speed −0.38/−0.6 and angle += angular velocity
+per call) and the option laser `0x43a6b0`. TH11 gated its two of these on the shot's integer
+timer (`+0/+4`) from the start; TH12 had not, so ReimuA's homing and the other behaviours
+turned and accelerated per sub-tick. The four are now gated the same way, and the option
+laser's growth (`+28` per call towards 448, `0x43a750`) is scaled by the factor. TH13's table
+(`0x4bb4d8`: homing `0x446cb0`, `speed += 1` `0x447590`, `speed *= 0.8` `0x447510`) gets the
+same gate on its shot timer `+0x18/+0x1c` (TH13_DEVNOTES). What is still per call in both:
+the option laser's angle smoothing (`angle += (target − angle) × 0.1`), which turns N times
+faster — small, and left for now.
+
 ### 5.6 The player's fixed-point movement
 
 The player integrates movement as `pos += ftol(vel * speed)` in 16.16 fixed point (0x4367ca,
