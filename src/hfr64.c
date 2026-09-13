@@ -39,6 +39,8 @@ static float* player_factor; static unsigned char* player_ran;
    not, and the pass must not move anything. */
 static unsigned char* proj_minor; static float* proj_dt; static unsigned char* proj_ran;
 static double measured_present, measured_update;   /* last stats window, for the menu */
+static uint64_t sprite_calls, sprite_skipped_off, sprite_skipped_stack;
+static int listed_nodes;
 static struct SubtickPlayer proj_slice; static uint64_t proj_passes;
 static struct SubtickPlayer subtick_player;
 static uint64_t subtick_moves, subtick_polls; static double subtick_poll_max;
@@ -171,6 +173,35 @@ static uint64_t guard_hash(void) {
     }
     return h;
 }
+/* Read-only walk of the game's own update and draw lists, exactly as its runners walk them.
+   Nothing is patched or called; this only says which systems are registered right now, which
+   is what identifies whatever draws a screen the sprite hook never sees. */
+static int readable(const void* p,size_t n) {
+    MEMORY_BASIC_INFORMATION info;
+    if (!p || VirtualQuery(p,&info,sizeof info)!=sizeof info) return 0;
+    if (info.State!=MEM_COMMIT || (info.Protect&(PAGE_NOACCESS|PAGE_GUARD))) return 0;
+    return (uintptr_t)p+n <= (uintptr_t)info.BaseAddress+info.RegionSize;
+}
+static void log_lists(const char* when) {
+    if (!game->draw_list || !game->update_list) return;
+    const struct {const char* name;uint32_t sentinel;} lists[2]={
+        {"update",game->update_list},{"draw",game->draw_list}};
+    for (int l=0;l<2;++l) {
+        char line[512]; int n=0; unsigned count=0;
+        n+=snprintf(line+n,sizeof line-n,"%s %s list:",when,lists[l].name);
+        const unsigned char* node=(const unsigned char*)(base+lists[l].sentinel);
+        for (unsigned i=0;i<64 && readable(node,0x40);++i) {
+            uintptr_t fn=*(const uintptr_t*)(node+game->node_callback);
+            if (fn>base && fn<base+game->image_size && n<(int)sizeof line-32) {
+                short prio=*(const short*)(node+game->node_priority);
+                n+=snprintf(line+n,sizeof line-n," %d@%x",prio,(unsigned)(fn-base));
+                ++count;
+            }
+            node=*(const unsigned char* const*)(node+game->node_next);
+        }
+        if (count) LOG("%s (%u nodes)",line,count);
+    }
+}
 static void draw_frame(void) {
     uint64_t before=guard_hash();
     ((DrawFn)(base+game->draw))();
@@ -198,12 +229,17 @@ static void reset_vm(void* vm) {
 static uintptr_t vm_start_0(void* m,void* v,uintptr_t script) {reset_vm(v);return vm_start_original[0](m,v,script);}
 static uintptr_t vm_start_1(void* m,void* v,uintptr_t script) {reset_vm(v);return vm_start_original[1](m,v,script);}
 static uintptr_t sprite(SpriteFn original,void* manager,void* vm,uintptr_t flags) {
-    if (depth || !vm || !interpolate || guard_failed || rate==60)
+    ++sprite_calls;
+    if (depth || !vm || !interpolate || guard_failed || rate==60) {
+        ++sprite_skipped_off;
         return original(manager,vm,flags);
+    }
     /* Stack VMs are temporary text/layout scratch objects, not persistent sprites. */
     NT_TIB* tib=(NT_TIB*)NtCurrentTeb();
-    if ((uintptr_t)vm>=(uintptr_t)tib->StackLimit && (uintptr_t)vm<(uintptr_t)tib->StackBase)
+    if ((uintptr_t)vm>=(uintptr_t)tib->StackLimit && (uintptr_t)vm<(uintptr_t)tib->StackBase) {
+        ++sprite_skipped_stack;
         return original(manager,vm,flags);
+    }
     unsigned char* p=vm;
     uintptr_t script; int age;
     float saved[3], out[3], turn[3], turn_out[3], size[2], size_out[2];
@@ -269,6 +305,11 @@ static int wait_frame(void) {
         /* A feature that is switched on but did nothing all window is a bug, not a mode.
            Say which term is holding it back, and print the byte section 14 believed was the
            replay flag so a run can finally say what it really does. */
+        LOG("sprites: %llu calls, %llu off, %llu stack, %llu sampled, %llu blended",
+            (unsigned long long)sprite_calls,(unsigned long long)sprite_skipped_off,
+            (unsigned long long)sprite_skipped_stack,(unsigned long long)samples,
+            (unsigned long long)blends);
+        if (listed_nodes<6) {listed_nodes++;log_lists("registered");}
         if ((subtick && subtick_polls==pt) || (substep && proj_passes==qt))
             LOG("idle: subtick=%d(+%llu polls, armed=%d) substep=%d(+%llu passes, armed=%d) "
                 "rate=%d guard=%d player_ran=%d proj_ran=%d suspect[%x]=%u",

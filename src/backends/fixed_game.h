@@ -20,6 +20,8 @@ struct FixedGame {
     unsigned vm_position, vm_age, vm_script, vm_flags;
     unsigned vm_rotation, vm_scale;   /* radians x/y/z, and the x/y size multipliers */
     uint32_t fps_counter;             /* the game's own presented-frame count for its readout */
+    uint32_t update_list, draw_list;  /* the two list sentinels, for the node diagnostic */
+    unsigned node_priority, node_callback, node_next, node_argument;
     /* Sub-tick player movement. The motion site is relocated so its per-frame step can be
        scaled; everything the sub-step pass needs to reproduce that step lives here. */
     uint32_t player_motion, player_motion_resume;
