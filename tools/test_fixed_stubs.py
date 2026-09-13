@@ -22,6 +22,8 @@ def machine():
                 pages.add(page)
         uc.mem_write(address, data)
     put(relay, bytes.fromhex(plan["relay_hex"]))
+    put(plan["factor"], bytes(8))       # the writable data page, separate from the code page
+    put(plan["ran"], bytes(8))
     for p in plan["patches"]:
         put(base + p["rva"], bytes.fromhex(p["hex"]))
     for rva in (0x45e91, 0x45d97, 0x3c5a1, 0x3c71d):
@@ -75,8 +77,10 @@ for factor, expect_flag in ((1.0, 1), (0.0, 1)):
     put(player, bytes(0x8000))
     uc.mem_write(player + SCALE_X, struct.pack("<f", 3.0))
     uc.mem_write(player + SCALE_Y, struct.pack("<f", 5.0))
-    # The factor and the "site ran" byte live in the first 16 bytes of the relay page.
-    uc.mem_write(relay + 16 * 5 + 32, struct.pack("<fI", factor, 0))
+    # The factor and the "site ran" byte live on the separate writable data page, whose
+    # addresses the runtime reports; machine() maps that page because it follows the relay.
+    uc.mem_write(plan["factor"], struct.pack("<f", factor))
+    uc.mem_write(plan["ran"], b"\x00")
     uc.reg_write(UC_X86_REG_RDI, player)
     uc.reg_write(UC_X86_REG_RBX, 0xbeef)
     uc.reg_write(UC_X86_REG_RSI, 0xcafe)
@@ -90,7 +94,7 @@ for factor, expect_flag in ((1.0, 1), (0.0, 1)):
     assert y == 7.0 * 5.0 * factor, (y, factor)
     # The facing value the animation triggers consume is stored before either multiply.
     assert struct.unpack("<f", uc.mem_read(player + FACING_Y, 4))[0] == 7.0
-    assert uc.mem_read(relay + 16 * 5 + 36, 1)[0] == expect_flag
+    assert uc.mem_read(plan["ran"], 1)[0] == expect_flag
     assert uc.reg_read(UC_X86_REG_RDI) == player
     assert uc.reg_read(UC_X86_REG_RBX) == 0xbeef and uc.reg_read(UC_X86_REG_RSI) == 0xcafe
     assert uc.reg_read(UC_X86_REG_RSP) == 0x100800

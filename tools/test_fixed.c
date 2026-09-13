@@ -64,8 +64,24 @@ static void test_patches(const char* output) {
     for (size_t i=0;i<g_patch_count;++i) assert(!memcmp((void*)g_patches[i].addr,g_patches[i].before,g_patches[i].size));
     assert(patch_commit());
     for (size_t i=0;i<g_patch_count;++i) assert(!memcmp((void*)g_patches[i].addr,g_patches[i].after,g_patches[i].size));
+    /* The emitted code must end up read-only and executable, but the two words the runtime
+       and the relocated site write every frame must stay writable. Getting this wrong
+       faults on the first native tick, so check the protections that were actually applied. */
+    MEMORY_BASIC_INFORMATION code={0},data={0};
+    assert(VirtualQuery(relay_page,&code,sizeof code)==sizeof code);
+    assert(code.Protect==PAGE_EXECUTE_READ);
+    assert(player_factor && player_ran);
+    assert(VirtualQuery((void*)player_factor,&data,sizeof data)==sizeof data);
+    assert(data.Protect==PAGE_READWRITE);
+    assert((unsigned char*)player_ran>=(unsigned char*)data.BaseAddress &&
+           (unsigned char*)player_ran<(unsigned char*)data.BaseAddress+data.RegionSize);
+    *player_factor=0.0f;*player_ran=1;      /* what update_first and the relay do */
+    assert(*player_factor==0.0f && *player_ran==1);
+    *player_factor=1.0f;*player_ran=0;
     FILE* f=fopen(output,"w");assert(f);
-    fprintf(f,"{\"base\":%llu,\"relay\":%llu,\"relay_hex\":\"",(unsigned long long)base,(unsigned long long)(uintptr_t)relay_page);
+    fprintf(f,"{\"base\":%llu,\"relay\":%llu,\"factor\":%llu,\"ran\":%llu,\"relay_hex\":\"",
+        (unsigned long long)base,(unsigned long long)(uintptr_t)relay_page,
+        (unsigned long long)(uintptr_t)player_factor,(unsigned long long)(uintptr_t)player_ran);
     hex(f,relay_page,relay_used);fprintf(f,"\",\"patches\":[");
     for(size_t i=0;i<g_patch_count;++i) {
         fprintf(f,"%s{\"rva\":%llu,\"hex\":\"",i?",":"",(unsigned long long)(g_patches[i].addr-base));

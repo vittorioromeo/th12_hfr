@@ -221,7 +221,10 @@ static int wait_frame(void) {
 }
 /* All generated relays are leaf tail jumps (no stack changes or calls). Native
    call sites provide shadow space and unwind metadata for our compiled callbacks. */
-static unsigned char* relay_page; static size_t relay_used;
+/* One 64 KiB-granular reservation near the image: the first page holds emitted code and
+   ends up read-only, the second holds the words the runtime and the relocated player
+   site write every frame and stays writable. Both are within rel32 of the image. */
+static unsigned char* relay_page; static size_t relay_used; static unsigned char* data_page;
 static int rel32(unsigned char* field,uintptr_t end,uintptr_t target) {
     int64_t d=(int64_t)target-(int64_t)end;
     if (d<INT32_MIN || d>INT32_MAX) return 0;
@@ -240,12 +243,13 @@ static int prepare_patches(void) {
     SYSTEM_INFO si;GetSystemInfo(&si);
     uintptr_t start=base&~((uintptr_t)si.dwAllocationGranularity-1);
     for (uintptr_t delta=si.dwAllocationGranularity;delta<0x70000000;delta+=si.dwAllocationGranularity) {
-        relay_page=VirtualAlloc((void*)(start+delta),4096,MEM_RESERVE|MEM_COMMIT,PAGE_READWRITE);
+        relay_page=VirtualAlloc((void*)(start+delta),8192,MEM_RESERVE|MEM_COMMIT,PAGE_READWRITE);
         if (relay_page) break;
-        if (start>delta) relay_page=VirtualAlloc((void*)(start-delta),4096,MEM_RESERVE|MEM_COMMIT,PAGE_READWRITE);
+        if (start>delta) relay_page=VirtualAlloc((void*)(start-delta),8192,MEM_RESERVE|MEM_COMMIT,PAGE_READWRITE);
         if (relay_page) break;
     }
     if (!relay_page) return 0;
+    data_page=relay_page+4096;player_factor=NULL;player_ran=NULL;
     patch_begin();
     if (!queue_call(game->update_calls[0],update_first) || !queue_call(game->update_calls[1],update_extra) ||
         !queue_call(game->draw_call,draw_frame) || !queue_call(game->present_call,present)) return 0;
@@ -275,10 +279,10 @@ static int prepare_patches(void) {
        them -- the facing direction the animation triggers already consumed -- keeps its place.
        A byte store records that the site ran, which is how the pass knows the player is in a
        state that moves at all: paused, dying and between stages it simply never executes. */
-    if (game->player_motion && relay_used+80<=4096) {
-        unsigned char* data=relay_page+relay_used;relay_used+=16;
-        player_factor=(float*)data;*player_factor=1.0f;
-        player_ran=data+4;*player_ran=0;
+    if (game->player_motion && relay_used+64<=4096) {
+        /* These two are written every frame, so they belong on the page that stays writable. */
+        player_factor=(float*)data_page;*player_factor=1.0f;
+        player_ran=data_page+4;*player_ran=0;
         const unsigned char* site=(const unsigned char*)(base+game->player_motion);
         unsigned char* q=relay_page+relay_used;relay_used+=64;size_t k=0;
         memcpy(q+k,site,8);k+=8;                                        /* mulss xmm6,[rdi+scale.x] */
@@ -300,6 +304,7 @@ static int prepare_patches(void) {
             !patch_bytes(base+game->player_motion,b,game->player_motion_size,NULL)) return 0;
     }
     DWORD old;
+    /* Only the code page changes protection; data_page stays PAGE_READWRITE. */
     if (!VirtualProtect(relay_page,4096,PAGE_EXECUTE_READ,&old)) return 0;
     FlushInstructionCache(GetCurrentProcess(),relay_page,4096);return 1;
 }

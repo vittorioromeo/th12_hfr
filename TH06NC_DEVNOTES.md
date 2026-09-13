@@ -818,8 +818,17 @@ Input bits confirmed at the movement switch: `0x04` focus, `0x10` up, `0x20` dow
 switch orders them; focus and diagonal select one of the four speeds above.
 
 The relocated site gains `mulss xmm<n>,[rip+factor]` after each of the two multiplies, plus
-a `mov byte [rip+ran],1`. Both operands live in the relay page, which is allocated within
-rel32 reach of the image, because the DLL's own globals may be further away than that. The
+a `mov byte [rip+ran],1`. Both operands live within rel32 reach of the image, because the
+DLL's own globals may be further away than that. The reservation near the image is therefore
+two pages, not one: the first holds emitted code and is dropped to `PAGE_EXECUTE_READ` once
+installation finishes, the second holds these two words and stays `PAGE_READWRITE`. Putting
+them on the code page instead is what crashed the first build of this feature — the factor is
+written on every native tick and the ran byte by the relay itself, so the first tick after
+install faulted, with the log ending right after the D3D11 menu came up. Neither the Unicorn
+test nor the transaction test caught it: Unicorn maps everything writable and has no notion of
+page protection, and the transaction test checked the emitted bytes without ever writing
+through the pointers or executing the relay. The transaction test now reads back the
+protections `VirtualProtect` actually applied and writes through both pointers. The
 relay is a leaf: it stores, it never touches RSP or a nonvolatile register, and it jumps
 back to `0x693a0`. **With the feature off the factor is `1.0f`, so the relocated site is
 arithmetically identical to the original instruction stream and the game is bit-identical
