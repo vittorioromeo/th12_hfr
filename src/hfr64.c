@@ -22,7 +22,7 @@ static uintptr_t base;
 static HMODULE module;
 static FILE* logfile;
 static char ini[MAX_PATH];
-static int fps=0, rate=60, interpolate=1, vsync=0, debug=0, subtick=0, substep=0;
+static int fps=0, rate=60, interpolate=1, vsync=0, debug=0, subtick=0, substep=0, diag_seconds=0;
 static int major=1, guard_failed=0, depth=0;
 static uint64_t ticks, frames, samples, blends;
 static double phase, frequency, deadline;
@@ -49,7 +49,7 @@ typedef uint32_t (*PollFn)(uintptr_t);
 typedef uintptr_t (*ProjFn)(uintptr_t);
 typedef void (*DrawFn)(void);
 typedef uintptr_t (*SpriteFn)(void*,void*,uintptr_t);
-static SpriteFn sprite_original, rotated_original;
+static SpriteFn sprite_original, rotated_original, menu_sprite_original;
 static SpriteFn vm_start_original[2];
 static void set_rate(void);
 static int subtick_active(void);
@@ -269,6 +269,7 @@ static uintptr_t sprite(SpriteFn original,void* manager,void* vm,uintptr_t flags
 }
 static uintptr_t sprite_draw(void* m,void* v,uintptr_t f) {return sprite(sprite_original,m,v,f);}
 static uintptr_t rotated_draw(void* m,void* v,uintptr_t f) {return sprite(rotated_original,m,v,f);}
+static uintptr_t menu_draw(void* m,void* v,uintptr_t f) {return sprite(menu_sprite_original,m,v,f);}
 static HRESULT present(IDXGISwapChain* swap,UINT sync,UINT flags) {
     (void)sync;
     if (!(flags & DXGI_PRESENT_TEST) && menu_key_code) hfr_d3d11_overlay(swap);
@@ -295,6 +296,16 @@ static int wait_frame(void) {
     if (!major && game->fps_counter) ++*(unsigned*)(base+game->fps_counter);
     static double last; static uint64_t ft,ut,st,bt,pt,qt;
     t=now();
+    if (diag_seconds>0) {
+        static double began;
+        if (!began) began=t;
+        if ((t-began)/frequency >= diag_seconds) {
+            log_lists("final");
+            LOG("diag_seconds=%d elapsed; quitting",diag_seconds);
+            if (logfile) fflush(logfile);
+            ExitProcess(0);
+        }
+    }
     if (!last) {last=t;ft=frames;ut=ticks;st=samples;bt=blends;pt=subtick_polls;qt=proj_passes;}
     if (t-last>=frequency*2) {
         double seconds=(t-last)/frequency;
@@ -532,6 +543,9 @@ __declspec(dllexport) DWORD WINAPI hfr_start(void* unused) {
     interpolate=GetPrivateProfileIntA("fixed60","interpolate",1,ini)!=0;
     subtick=GetPrivateProfileIntA("fixed60","subtick",0,ini)!=0;
     substep=GetPrivateProfileIntA("fixed60","substep",0,ini)!=0;
+    /* Unattended diagnostics: run for this many seconds, then log and quit. 0 disables
+       it, which is the default and what any normal install has. */
+    diag_seconds=GetPrivateProfileIntA("fixed60","diag_seconds",0,ini);
     debug=GetPrivateProfileIntA("hfr","debug",0,ini)!=0;
     menu_key_code=GetPrivateProfileIntA("video","menu_key",VK_F11,ini);
     if (menu_key_code<0 || menu_key_code>255) menu_key_code=VK_F11;
@@ -543,6 +557,8 @@ __declspec(dllexport) DWORD WINAPI hfr_start(void* unused) {
     if (MH_Initialize()!=MH_OK ||
         MH_CreateHook((void*)(base+game->sprite_draw),sprite_draw,(void**)&sprite_original)!=MH_OK ||
         MH_CreateHook((void*)(base+game->sprite_draw_rotated),rotated_draw,(void**)&rotated_original)!=MH_OK ||
+        (game->sprite_draw_menu &&
+         MH_CreateHook((void*)(base+game->sprite_draw_menu),menu_draw,(void**)&menu_sprite_original)!=MH_OK) ||
         MH_CreateHook((void*)(base+game->vm_start[0]),vm_start_0,(void**)&vm_start_original[0])!=MH_OK ||
         MH_CreateHook((void*)(base+game->vm_start[1]),vm_start_1,(void**)&vm_start_original[1])!=MH_OK ||
         MH_QueueEnableHook(MH_ALL_HOOKS)!=MH_OK || MH_ApplyQueued()!=MH_OK) {

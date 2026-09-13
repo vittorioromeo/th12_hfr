@@ -1341,3 +1341,58 @@ multiply the quad by `+0xe4`/`+0xe8`.
 
 Still not smoothed: animation frames, colour fades and 3D backgrounds. Colour is the next one
 worth doing — menu fades are the remaining visibly stepped thing.
+
+## 20. The third sprite entry point, and why menus were never smoothed (2026-09-13)
+
+Section 19 added rotation and scale to the pose history and it made no difference to the
+menus. The reason was not the fields. **The menus never reached the sprite hook at all.**
+
+The owner's log said so plainly -- `samples=0` across three windows at the title screen --
+and that should have been checked before section 19 shipped rather than after.
+
+### What the game actually registers on the title screen
+
+Read from the game's own lists while it was running (a read-only walk of the two sentinels,
+each node validated with `VirtualQuery` before being dereferenced):
+
+```text
+update list: 0@79c70  1@90d0   2@47940  3@75af0
+draw   list: 0@54870  13@92a0  18@7a330 19@9260  20@76280
+```
+
+`0x47940` (a thunk into `0x479e0`) and `0x54870` are the update and draw of the **screen
+manager**, both switching on a screen state at `object+0x168b0`. `0x79c70` is the input
+update -- the only caller of the device poll at `0x12be0`. `0x90d0`/`0x92a0`/`0x9260` are the
+ASCII/text system.
+
+### The find
+
+`0x54870` calls `0x36c0` more than anything else, and `0x36c0` opens by reading `[rdx+0xa4]`
+and `[rdx+0xc4]` -- the VM's Z rotation and its flags. **It is a third VM draw entry point**,
+taking the same `(manager, vm, flags)` in `rcx`/`rdx`/`r8` as the two the profile already
+knew about, and it was never hooked. Section 13 recorded that "generic sprite draw entry
+points include `0x67f0` and `0x4dc0`" -- "include" was doing a lot of work in that sentence,
+and nobody went back to check whether the list was complete.
+
+Hooking it is a one-line change, because everything else was already right: the pose history
+keys on the VM address, and menu VMs are ordinary heap objects. With `sprite_draw_menu`
+added, the same title screen goes from **0 sprite calls to about 112 per frame**, and blends
+appear exactly where something is animating.
+
+The `depth` guard already handles the nesting: `0x36c0` dispatches into the lower-level
+draws, so a sprite can pass through two hooked functions, and the inner one steps aside.
+
+### The lesson, again
+
+This is the third time in this file that a confident-looking record turned out to be a
+partial one: dead code read as live (§17), a register-relative access invisible to an address
+scan (§16, §18), and now an entry-point list that was never complete. The common thread is
+that each was believed because it was written down, not because it had been checked against
+the running game.
+
+The two diagnostics added here are the cheap general answer: a per-window sprite accounting
+line (calls, skipped, sampled, blended) that makes "this code never runs" impossible to miss,
+and the node-list walk that says what the game is actually running right now. Both are
+read-only. There is also a `[fixed60] diag_seconds=N` key that runs the game for N seconds
+and quits, which is what let this be diagnosed and fixed without the owner at the machine.
+It defaults to 0 and should stay there.

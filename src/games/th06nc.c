@@ -52,7 +52,7 @@ static const struct FixedGame th06nc_game = {
     .post_update = 0x45d8b, .post_update_resume = 0x45d97, .audio_counter = 0x509690,
     .wait_site = 0x3c45c, .wait_resume = 0x3c5a1, .frame_epilogue = 0x3c71d, .wait_patch_size = 22,
     .present_call = 0x25a1f1, .graphics_api = 0x8fe20c, .no_vsync = 0x50a204,
-    .sprite_draw = 0x67f0, .sprite_draw_rotated = 0x4dc0, .vm_start = {0x2760, 0x2a20},
+    .sprite_draw = 0x67f0, .sprite_draw_rotated = 0x4dc0, .sprite_draw_menu = 0x36c0, .vm_start = {0x2760, 0x2a20},
     .vm_position = 0xc8, .vm_age = 0xb8, .vm_script = 0xf8, .vm_flags = 0xc4,
     .vm_rotation = 0x9c, .vm_scale = 0xe4, .fps_counter = 0xc2232c,
     .update_list = 0x4f1440, .draw_list = 0x4f1400,

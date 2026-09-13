@@ -15,7 +15,9 @@ struct FixedGame {
     uint32_t wait_site, wait_resume, frame_epilogue;
     unsigned wait_patch_size;
     uint32_t present_call, graphics_api, no_vsync;
-    uint32_t sprite_draw, sprite_draw_rotated;
+    /* Every entry point that draws a VM. Menus and the title screen go through a third
+       one the patch missed for a long time, which is why nothing there was ever smoothed. */
+    uint32_t sprite_draw, sprite_draw_rotated, sprite_draw_menu;
     uint32_t vm_start[2];
     unsigned vm_position, vm_age, vm_script, vm_flags;
     unsigned vm_rotation, vm_scale;   /* radians x/y/z, and the x/y size multipliers */

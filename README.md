@@ -30,7 +30,7 @@ and selects its adapter; TH10–13 share their scheduler, input, replay and Dire
 The same launcher dispatches New Classic to its separate x64 runtime. Menu contents,
 menu-key handling, patch transactions and the x64 executable registry are shared.
 
-**Current build: v0.4.17-test.** Supported executable layouts:
+**Current build: v0.4.18-test.** Supported executable layouts:
 
 | Game | Version | Executables | State |
 | --- | --- | --- | --- |
@@ -120,7 +120,7 @@ what it claimed, see [§17](TH06NC_DEVNOTES.md#17-why-neither-feature-had-ever-r
 32-bit `dinput8.dll` proxy in this x64 game. The generic `install.ps1` workflow below is
 for TH10–13. Bundled `th06c.exe` (Classic) is different and is not supported.
 
-Download/extract `touhou_hfr_v0.4.17-test.zip` and close the game.
+Download/extract `touhou_hfr_v0.4.18-test.zip` and close the game.
 
 For a fresh installation, copy these four files next to the game executable:
 
@@ -241,7 +241,7 @@ For New Classic, also install **64-bit MinGW-w64 GCC/G++** (default
 ```powershell
 .\build64.ps1
 .\test64.ps1 -GameExe 'C:\Program Files (x86)\Steam\steamapps\common\th06nc\th06nc.exe'
-.\package.ps1 -Version '0.4.17-th06nc-prototype' -IncludeExperimental64
+.\package.ps1 -Version '0.4.18-th06nc-prototype' -IncludeExperimental64
 ```
 
 Run `build.ps1` first: `test64.ps1` checks both launcher architectures. The x64 tests
