@@ -1198,9 +1198,17 @@ run, and reading three plausible functions in a row is convincing enough that no
 questions the fourth.
 
 The one live reader is the fps display above, where a non-zero value adds an offset to a
-drawing position. So `0x4f27b2` is something to do with the on-screen readout, not replays,
-and whatever sets it -- no writer is visible to an address scan either, which by section
-16's lesson means it is written through a register -- was set during ordinary play.
+drawing position. No writer is visible to an address scan either, which by section 16's
+lesson means it is written through a register.
+
+**The A/B settled the rest.** Removing that one term was the only functional change between
+the two builds, and it took both features from never running to running at exactly 6.00
+sub-steps per frame at 360 Hz. So the byte is non-zero while a stage is running. The
+diagnostic then caught it at zero five times -- every one of those from a menu or the title
+screen, where `player_ran` and `proj_ran` are also zero because nothing is moving, which is
+the features correctly standing aside rather than a fault. Zero in menus, non-zero in a
+stage: `0x4f27b2` marks gameplay being in progress, which is also why the fps readout shifts
+its drawing position when it is set. It never had anything to do with replays.
 
 Both gates now test only what is verified: the setting, the rate, the relay pointers and
 the draw guard. The byte is kept in the profile as `replay_suspect` and printed by a new
