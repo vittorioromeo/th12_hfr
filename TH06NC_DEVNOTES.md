@@ -10,7 +10,7 @@ installation and remaining work.
 **This document is a running record, so its sections are dated and earlier ones are not
 corrected in place** — where a later section overturns an earlier one it says so, and the
 earlier one carries a banner pointing forward. Read it back to front if you want the current
-state. As of v0.5.1-test that state is: **27 frozen signatures, 16 patch sites, 7 guard
+state. As of v0.5.2-test that state is: **27 frozen signatures, 16 patch sites, 7 guard
 ranges, 3 dimming rules and 2 dimming pools** (`src/games/th06nc.c`); sub-tick player
 movement, sub-stepped bullets and sub-stepped lasers, each off by default; items and enemies
 deliberately at 60 Hz; and nothing that disables any of it during replay playback. Counts

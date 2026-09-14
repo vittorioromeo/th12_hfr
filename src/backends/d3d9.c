@@ -61,7 +61,6 @@ static HRESULT __stdcall hook_D3DXCreateTextureFromFileInMemoryEx(IDirect3DDevic
     if (g_using_ex) unmanage(&pool, &usage);
     return orig_D3DXCreateTextureFromFileInMemoryEx(dev, src, srcsize, w, h, mip, usage, fmt, pool, filter, mipfilter, key, info, pal, out);
 }
-static int hook_iat(const char* dll, const char* func, void* hook, void** orig);
 
 static void apply_pp(D3DPRESENT_PARAMETERS* pp) {
     pp->PresentationInterval = cfg.vsync ? D3DPRESENT_INTERVAL_ONE : D3DPRESENT_INTERVAL_IMMEDIATE;
@@ -429,30 +428,22 @@ static IDirect3D9* __stdcall hook_Direct3DCreate9(UINT sdk) {
         } else LOG("Direct3DCreate9Ex not available, using Direct3DCreate9");
     }
     if (!d3d) d3d = orig_Direct3DCreate9(sdk);
+    /* Direct3D 9Ex creates the object here rather than passing the call on, so anyone else in
+       this chain never runs. Their code patches and file substitutions are unaffected -- those
+       are not Direct3D -- but whatever they wanted to do with the device does not happen, and
+       that is worth saying rather than leaving someone to wonder why half a patch works. */
+    if (g_using_ex) {
+        HMODULE d = GetModuleHandleA("d3d9.dll");
+        void* real = d ? (void*)GetProcAddress(d, "Direct3DCreate9") : NULL;
+        if (real && (void*)orig_Direct3DCreate9 != real)
+            LOG("another patch is in the Direct3DCreate9 chain and Direct3D 9Ex steps over it: "
+                "its own Direct3D features (thcrap's translation notes and device-lost handling) "
+                "will not install. Set d3d9ex=0 to hand it the device instead.");
+    }
     if (d3d) {
         void** vt = *(void***)d3d;
         patch_vtable(vt, 16, (void*)hook_CreateDevice, (void**)&orig_CreateDevice);
         LOG("Direct3DCreate9 hooked (9Ex=%d)", g_using_ex);
     }
     return d3d;
-}
-static int hook_iat(const char* dll, const char* func, void* hook, void** orig) {
-    uint8_t* base = (uint8_t*)0x400000; /* required by the selected executable profile */
-    IMAGE_DOS_HEADER* dos = (IMAGE_DOS_HEADER*)base; IMAGE_NT_HEADERS* nt = (IMAGE_NT_HEADERS*)(base + dos->e_lfanew);
-    IMAGE_DATA_DIRECTORY dir = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
-    IMAGE_IMPORT_DESCRIPTOR* imp = (IMAGE_IMPORT_DESCRIPTOR*)(base + dir.VirtualAddress);
-    for (; imp->Name; imp++) {
-        if (_stricmp((char*)(base + imp->Name), dll) != 0) continue;
-        if (!imp->OriginalFirstThunk) return 0;
-        IMAGE_THUNK_DATA* thunk = (IMAGE_THUNK_DATA*)(base + imp->FirstThunk);
-        IMAGE_THUNK_DATA* oth = (IMAGE_THUNK_DATA*)(base + imp->OriginalFirstThunk);
-        for (; oth->u1.AddressOfData; thunk++, oth++) {
-            if (oth->u1.Ordinal & IMAGE_ORDINAL_FLAG) continue;
-            IMAGE_IMPORT_BY_NAME* ibn = (IMAGE_IMPORT_BY_NAME*)(base + oth->u1.AddressOfData);
-            if (strcmp((char*)ibn->Name, func) != 0) continue;
-            *orig=(void*)thunk->u1.Function;
-            return patch_memory((uintptr_t)&thunk->u1.Function,&hook,4,NULL);
-        }
-    }
-    return 0;
 }

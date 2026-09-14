@@ -3,6 +3,7 @@
 #include "game_profile.h"
 #include "ui/ui_api.h"
 #include "core/patch.c"
+#include "core/imports.c"
 #include "core/symbols.h"
 #include "core/timing.c"
 #include "core/nodes.c"

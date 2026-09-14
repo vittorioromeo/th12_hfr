@@ -73,88 +73,74 @@ __declspec(dllexport) HRESULT WINAPI DirectInput8Create(HINSTANCE hinst, DWORD v
     return real_DirectInput8Create(hinst, ver, riid, out, outer);
 }
 
-/* ---------------------------------------------------------------- deferred installation
-   A Steam release of these games is the same executable inside a DRM wrapper: the game's
-   .text is encrypted and a stub in an appended section decrypts it, in memory, when the
-   process starts. The loader runs this DLL's DllMain *before* the executable's entry point,
-   so at the moment the patch normally identifies the game there is nothing to identify --
-   every frozen signature still reads as ciphertext, and the patch correctly concludes it does
-   not know this executable.
+/* ------------------------------------------------------------------ the late entry point
+   Two things have to happen after this DLL's DllMain but before the game asks for Direct3D,
+   and one function covers both.
 
-   The answer is to look again later, from something only the game itself calls. The import
-   table is not encrypted (the loader has to read it to start the process at all), so the
-   entry for d3d9.dll!Direct3DCreate9 can be redirected here while the stub is still the only
-   thing that has run. By the time the game asks for Direct3D the code is plain, and that call
-   still comes before the device, the window and the frame loop, so nothing the patch installs
-   arrives late.
+   The first is a Steam release. That is the same executable inside a DRM wrapper: the game's
+   .text is encrypted, and a stub in an appended section decrypts it, in memory, when the
+   process starts. The loader runs DllMain *before* the executable's entry point, so at the
+   moment the patch normally identifies the game there is nothing to identify -- every frozen
+   signature still reads as ciphertext -- and it correctly concludes it does not know this
+   executable. It has to look again once the game itself is running.
 
-   Unwrapped installations never reach any of this: they identify in DllMain as they always
-   have, and this is armed only when identification failed on an image that looks wrapped. */
-static void** iat_slot(const char* dll, const char* func) {
-    uint8_t* base=(uint8_t*)0x400000;
-    const IMAGE_DOS_HEADER* dos=(const void*)base;
-    const IMAGE_NT_HEADERS32* nt=(const void*)(base+dos->e_lfanew);
-    IMAGE_DATA_DIRECTORY dir=nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
-    if (!dir.VirtualAddress) return NULL;
-    IMAGE_IMPORT_DESCRIPTOR* imp=(void*)(base+dir.VirtualAddress);
-    for (;imp->Name;imp++) {
-        if (_stricmp((const char*)(base+imp->Name),dll)) continue;
-        if (!imp->OriginalFirstThunk) return NULL;
-        IMAGE_THUNK_DATA* thunk=(void*)(base+imp->FirstThunk);
-        IMAGE_THUNK_DATA* oth=(void*)(base+imp->OriginalFirstThunk);
-        for (;oth->u1.AddressOfData;thunk++,oth++) {
-            if (oth->u1.Ordinal & IMAGE_ORDINAL_FLAG) continue;
-            const IMAGE_IMPORT_BY_NAME* ibn=(const void*)(base+oth->u1.AddressOfData);
-            if (!strcmp((const char*)ibn->Name,func)) return (void**)&thunk->u1.Function;
-        }
-    }
-    return NULL;
-}
-static int iat_write(void** slot, void* value) {
-    DWORD old;
-    if (!VirtualProtect(slot,sizeof *slot,PAGE_READWRITE,&old)) return 0;
-    *slot=value;
-    VirtualProtect(slot,sizeof *slot,old,&old);
-    return 1;
-}
-static Direct3DCreate9Fn g_deferred_original;
-static IDirect3D9* __stdcall deferred_install(UINT sdk) {
-    void** slot=iat_slot("d3d9.dll","Direct3DCreate9");
-    /* Put the real function back before installing, so the patch's own hook on this same
-       slot records that and not this function -- which would otherwise call itself. */
-    if (slot) iat_write(slot,(void*)g_deferred_original);
-    uint8_t* base=(uint8_t*)GetModuleHandleA(NULL);
-    MEMORY_BASIC_INFORMATION mbi;
-    const IMAGE_NT_HEADERS32* nt=NULL;
-    if ((uintptr_t)base==0x400000 && VirtualQuery(base,&mbi,sizeof mbi)) nt=image_header(base,mbi.RegionSize);
-    if (nt && select_game(base,nt->OptionalHeader.SizeOfImage) && install())
+   The second is another patch. thcrap takes this patch's imports at the entry point and does
+   not chain to what it replaced (imports.c), so they have to be taken back afterwards.
+
+   Both want the same thing: something the game calls early, that no other patch redirects.
+   kernel32.dll!QueryPerformanceCounter is that. These games call it before they ask for
+   Direct3D -- verified, and it is why this is not hung on the Direct3D import itself, which
+   is exactly the one thcrap takes -- it is cheap, and nothing translates or rewrites it,
+   because unlike almost everything else patches detour it has no ANSI and Unicode pair and
+   says nothing to the player. The import table is never encrypted, since the loader has to
+   read it to start the process at all, so this can be armed while the wrapper's stub is
+   still the only thing that has run.
+
+   Callers before the game are expected -- the C runtime and the wrapper both use this clock
+   -- so a call that finds the code still unreadable simply passes through and tries again.
+   The stub stands down once the game is drawing, since nothing new redirects an import after
+   that, or after a few thousand fruitless calls on an executable that is never going to
+   identify. */
+static struct ImportRedirect g_late_redirect;
+static BOOL (WINAPI *g_late_original)(LARGE_INTEGER*);
+
+/* Returns non-zero once there is nothing left for the late entry point to do. */
+static int late_entry_work(void) {
+    if (!g_game) {
+        uint8_t* base=(uint8_t*)GetModuleHandleA(NULL);
+        MEMORY_BASIC_INFORMATION mbi;
+        const IMAGE_NT_HEADERS32* nt=NULL;
+        if ((uintptr_t)base==0x400000 && VirtualQuery(base,&mbi,sizeof mbi)) nt=image_header(base,mbi.RegionSize);
+        if (!nt || !select_game(base,nt->OptionalHeader.SizeOfImage)) return 0;   /* still ciphertext */
+        if (!install()) { LOG("Identified after start-up but installation failed; HFR inactive"); return 1; }
         LOG("Identified once the executable had started: %s", g_game->identity->name);
-    else
-        LOG("Still not a supported executable after start-up; HFR inactive (proxy forwarding available)");
-    /* Whatever owns the slot now is what the game meant to call: the patch's hook if it
-       installed one, the real function if it did not. */
-    Direct3DCreate9Fn go=slot?(Direct3DCreate9Fn)*slot:NULL;
-    if (!go || go==deferred_install) go=g_deferred_original;
-    return go?go(sdk):NULL;
+        return 0;                       /* stay armed: imports can still be taken from here */
+    }
+    reassert_imports();
+    return g_frame_seen;                /* the game is drawing; nothing new will detour now */
 }
-/* 1 armed, 0 this is simply not an executable we know, -1 wrapped but there is no import to
-   arm from. The last is worth telling apart: it is the one way a wrapper could defeat this,
-   and a log line naming it is the difference between diagnosing that in a minute and guessing.
-   Every supported game imports d3d9.dll!Direct3DCreate9, and the Steam wrapper leaves the
-   import table alone, so -1 has never been observed. */
-static int arm_deferred_install(void) {
-    uint8_t* base=(uint8_t*)GetModuleHandleA(NULL);
-    MEMORY_BASIC_INFORMATION mbi;
-    if ((uintptr_t)base!=0x400000 || !VirtualQuery(base,&mbi,sizeof mbi)) return 0;
-    const IMAGE_NT_HEADERS32* nt=image_header(base,mbi.RegionSize);
-    if (!nt || !wrapped_executable(base,nt->OptionalHeader.SizeOfImage)) return 0;
-    void** slot=iat_slot("d3d9.dll","Direct3DCreate9");
-    if (!slot) return -1;
-    g_deferred_original=(Direct3DCreate9Fn)*slot;
-    if (!g_deferred_original || !iat_write(slot,(void*)deferred_install)) return -1;
+static BOOL WINAPI late_entry(LARGE_INTEGER* count) {
+    static LONG busy;
+    static int done, calls;
+    /* This clock is read from more than one thread. The work is not re-entrant -- it can
+       install the whole patch -- so one caller does it and the rest read the time. */
+    if (!done && InterlockedCompareExchange(&busy,1,0)==0) {
+        if (late_entry_work() || ++calls>20000) {
+            done=1;
+            unredirect_import(&g_late_redirect,(void*)late_entry);
+        }
+        InterlockedExchange(&busy,0);
+    }
+    return g_late_original(count);
+}
+/* 1 armed, 0 there is no such import to arm from -- which would leave a wrapped executable
+   unpatchable and an unwrapped one merely unable to take its imports back, so it is worth a
+   log line either way. Every supported game imports this. */
+static int arm_late_entry(void) {
+    if (!redirect_import(&g_late_redirect,"kernel32.dll","QueryPerformanceCounter",(void*)late_entry)) return 0;
+    g_late_original=(BOOL (WINAPI *)(LARGE_INTEGER*))g_late_redirect.real;
     return 1;
 }
-
 BOOL WINAPI DllMain(HINSTANCE h, DWORD reason, LPVOID res) {
     if (reason == DLL_PROCESS_ATTACH) {
         DisableThreadLibraryCalls(h);
@@ -171,21 +157,32 @@ BOOL WINAPI DllMain(HINSTANCE h, DWORD reason, LPVOID res) {
         if (nt) select_game(base,nt->OptionalHeader.SizeOfImage);
         read_config();
         if (cfg.log) { char path[MAX_PATH]; GetModuleFileNameA(NULL, path, MAX_PATH); char* p = strrchr(path, '\\'); if (p) strcpy(p + 1, "touhou_hfr.log"); g_log = fopen(path, "w"); }
-        LOG("Touhou HFR v0.5.1-test loading; fps=%d vsync=%d substep=%d subtick_input=%d d3d9ex=%d max_frame_latency=%d flipex=%d enemy_interp=%d",
+        LOG("Touhou HFR v0.5.2-test loading; fps=%d vsync=%d substep=%d subtick_input=%d d3d9ex=%d max_frame_latency=%d flipex=%d enemy_interp=%d",
             cfg.fps, cfg.vsync, cfg.substep, cfg.subtick_input, cfg.d3d9ex, cfg.max_frame_latency, cfg.flipex, cfg.enemy_interp);
         LOG("video: scaling=%d filter=%s resizable=%d window_scale=%d snap_aspect=%d fullscreen_mode=%d internal_scale=%d texture_scale=%d (%s) dim=%d/%d/%d/%d/%d sharpen=%s/%d cursor=%d",
             cfg.scaling, cfg.filter_name, cfg.resizable, cfg.window_scale, cfg.snap_aspect, cfg.fullscreen_mode, cfg.internal_scale, cfg.texture_scale, cfg.texture_filter_name, cfg.dim[0], cfg.dim[1], cfg.dim[2], cfg.dim[3], cfg.dim[4], cfg.sharpen_name, cfg.sharpen_strength, cfg.cursor);
-        if (!g_game || !install()) {
-            int deferred = g_game ? 0 : arm_deferred_install();
-            if (deferred>0)
+        int installed = g_game && install();
+        /* Armed whether or not that worked: it is how a wrapped executable is identified at
+           all, and how the imports are taken back from a patch that arrives later. */
+        int armed = arm_late_entry();
+        if (!installed) {
+            uint8_t* img=(uint8_t*)GetModuleHandleA(NULL);
+            MEMORY_BASIC_INFORMATION m;
+            const IMAGE_NT_HEADERS32* h=NULL;
+            if ((uintptr_t)img==0x400000 && VirtualQuery(img,&m,sizeof m)) h=image_header(img,m.RegionSize);
+            int wrapped = !g_game && h && wrapped_executable(img,h->OptionalHeader.SizeOfImage);
+            if (wrapped && armed)
                 LOG("This executable's code is not readable yet, which is what a Steam release "
-                    "looks like before its own start-up code has run. Trying again when the game asks for Direct3D.");
-            else if (deferred<0)
+                    "looks like before its own start-up code has run. Trying again once the game is running.");
+            else if (wrapped)
                 LOG("This executable is wrapped and its code is not readable yet, but it does not import "
-                    "d3d9.dll!Direct3DCreate9, so there is nothing to try again from; HFR inactive. Please report this.");
+                    "kernel32.dll!QueryPerformanceCounter, so there is nothing to try again from; "
+                    "HFR inactive. Please report this.");
             else
                 LOG("Unsupported/modified executable or installation failure; HFR inactive (proxy forwarding available)");
-        }
+        } else if (!armed)
+            LOG("kernel32.dll!QueryPerformanceCounter is not imported; if another patch takes this "
+                "one's imports later there will be no chance to take them back");
     }
     return TRUE;
 }

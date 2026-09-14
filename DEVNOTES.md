@@ -537,6 +537,52 @@ fullscreen the requested refresh rate is written into the present parameters.
 
 ## 6. Bugs met on the way, and what they taught
 
+*Invisible to the user, invisible to us: thcrap silently un-hooked the whole patch.* A report
+of "nothing happens with the English patch installed" turned out to be an import-table race
+that no log line and no test could have shown, because nothing failed. thcrap injects by
+letting the loader finish and stopping the game's thread at the executable's entry point, so
+this DLL's `DllMain` — and therefore its whole install — has already run by the time thcrap's
+code starts. thcrap then walks the game's import table, matches by *name*, overwrites whatever
+it finds, and chains to `GetProcAddress(dll, func)` rather than to the pointer it replaced
+(`iat_detour_func` in `thcrap/src/mempatch.cpp`; the comment there says the point is to
+"override any existing patches"). Every import this patch hooks that thcrap also detours was
+therefore dropped, `d3d9.dll!Direct3DCreate9` among them — which is how this patch obtains the
+device, so it did nothing at all while reporting a successful install.
+
+The first fix was wrong, and the way it was wrong is the more useful half of the story. It
+redirected the export table entry of the module each hooked function comes from, so that
+anyone chaining through `GetProcAddress` landed back here without this patch having to do
+anything. It worked, and it crashed Steam copies of TH10 on the first frame — access violation
+inside `ntdll`, nothing in our own log, because an import slot belongs to the game but an
+export table belongs to the whole process. Handing a foreign address to every module that
+resolves `d3d9.dll!Direct3DCreate9` includes handing it to Steam's overlay, which has every
+right to expect an address inside `d3d9.dll` and to detour it. The non-Steam copy, with no
+overlay in the process, was fine throughout — which is exactly the shape of evidence that says
+"you changed something global".
+
+What replaced it is smaller. Hooking an import records what the slot held and calls *that*,
+whoever put it there, so a patch arriving later is nested inside rather than discarded — which
+is all thcrap had to do and did not. Then the imports are taken back once, from
+`kernel32.dll!QueryPerformanceCounter`: these games call it before they ask for Direct3D
+(measured, and the reason it is not hung on the Direct3D import — that is the one thcrap
+takes), no translation patch has any reason to touch it because it has no ANSI/Unicode pair
+and says nothing to the player, and the import table is never encrypted, so it can be armed
+while a DRM wrapper's stub is still the only thing that has run. That one trigger now does
+both jobs: it is also how a Steam release gets identified at all, replacing the old
+Direct3D-import trigger, which thcrap would have taken away.
+
+Lessons. Two patches in one process is not "who wins", it is "who is still in the chain", and
+a hook that can be replaced by name is not a hook, it is a request. Prefer the intervention
+with the smallest blast radius that does the job: the game's own import table is ours to
+rearrange, a system library's export table is not, and "it works on my machine" hid that for
+exactly one build. A failure that produces no error is the expensive kind: the only reason any
+of this was diagnosable is that thcrap's source could be read and the user could read a
+faulting module out of the Windows event log, so the log now lists every module in the process
+that did not come from Windows itself, and says when an import has been taken back. And "do
+our patches collide?" is a question with a mechanical answer — `tools/check_patch_overlap.py`
+compares thcrap's own game definitions against every byte this patch writes and every byte it
+verifies; for TH10–13 the two are disjoint, which is *why* coexistence is possible at all.
+
 *Startup crash (first build).* The `UpdateFunc` layout was guessed with the list node as a pointer
 instead of embedded, putting `arg` at +0x18 rather than +0x20. Lesson: put a `_Static_assert` on
 every struct offset that the game code implies, and cross-check with the registration function's

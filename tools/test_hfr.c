@@ -60,6 +60,85 @@ static void dump(const char* prefix,const char* suffix,const void* data,size_t n
     char name[MAX_PATH];snprintf(name,sizeof name,"%s%s",prefix,suffix);
     FILE*f=fopen(name,"wb");assert(f);assert(fwrite(data,1,n,f)==n);fclose(f);
 }
+
+/* The loader's import resolution, for the fixture. Libraries that are not present are left
+   alone: the runtime already copes with an import it cannot reach. */
+static void resolve_fixture_imports(uint8_t* base) {
+    IMAGE_NT_HEADERS* nt=(void*)(base+((IMAGE_DOS_HEADER*)base)->e_lfanew);
+    IMAGE_DATA_DIRECTORY dir=nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
+    if (!dir.VirtualAddress) return;
+    for (IMAGE_IMPORT_DESCRIPTOR* imp=(void*)(base+dir.VirtualAddress); imp->Name; ++imp) {
+        const char* dll=(const char*)(base+imp->Name);
+        HMODULE mod=LoadLibraryA(dll);
+        if (!mod || !imp->OriginalFirstThunk) continue;
+        IMAGE_THUNK_DATA* t=(void*)(base+imp->FirstThunk);
+        IMAGE_THUNK_DATA* o=(void*)(base+imp->OriginalFirstThunk);
+        for (; o->u1.AddressOfData; ++t,++o) {
+            FARPROC p = (o->u1.Ordinal & IMAGE_ORDINAL_FLAG)
+                ? GetProcAddress(mod,(LPCSTR)(o->u1.Ordinal & 0xffff))
+                : GetProcAddress(mod,(const char*)((IMAGE_IMPORT_BY_NAME*)(base+o->u1.AddressOfData))->Name);
+            if (p) t->u1.Function=(uintptr_t)p;
+        }
+    }
+}
+
+/* ------------------------------------------------- surviving another patch's import detour
+ * A translation patch that injects after this one -- thcrap stops the game's thread at the
+ * executable's entry point, which is after the loader has run this DLL's DllMain -- rewrites
+ * the same import table, matching by name and chaining to GetProcAddress rather than to the
+ * pointer it replaced. This patch is then not called again, silently.
+ *
+ * What has to hold is that taking the import back afterwards puts the other patch *inside*
+ * this one rather than throwing it away, so both still run; and that this patch never does to
+ * anyone else what was done to it. Both are checked here against thcrap's actual algorithm,
+ * reproduced on the fixture's own import table. */
+static IDirect3D9* __stdcall other_patch_d3d9(UINT sdk) { (void)sdk; return NULL; }
+static void* thcrap_style_detour(const char* dll, const char* func, void* theirs) {
+    /* Their chain pointer, the way thcrap builds it: the library's own export, never the
+       pointer they are replacing. */
+    void* chain=(void*)GetProcAddress(GetModuleHandleA(dll),func);
+    void** slot=iat_slot(dll,func);
+    assert(slot);
+    assert(iat_write(slot,theirs));   /* overwritten unconditionally, matched by name */
+    return chain;
+}
+static void test_import_redirection(void) {
+    void** slot=iat_slot("d3d9.dll","Direct3DCreate9");
+    assert(slot && *slot==(void*)hook_Direct3DCreate9);          /* the import was taken */
+    assert(orig_Direct3DCreate9 && orig_Direct3DCreate9!=(Direct3DCreate9Fn)hook_Direct3DCreate9);
+
+    /* They take it, and this patch is out of the call path entirely. */
+    void* theirs_chain=thcrap_style_detour("d3d9.dll","Direct3DCreate9",(void*)other_patch_d3d9);
+    assert(*slot==(void*)other_patch_d3d9);
+    assert(theirs_chain!=(void*)hook_Direct3DCreate9);
+
+    /* Taking it back must not repeat their mistake: they have to end up as what this patch
+       calls, not as something discarded. */
+    assert(reassert_imports()>=1);
+    assert(*slot==(void*)hook_Direct3DCreate9);                  /* ours again */
+    assert(orig_Direct3DCreate9==(Direct3DCreate9Fn)other_patch_d3d9);   /* and they are next */
+
+    /* Idempotent: nothing to take back when nothing has changed hands. */
+    assert(reassert_imports()==0);
+    assert(orig_Direct3DCreate9==(Direct3DCreate9Fn)other_patch_d3d9);
+
+    /* Nothing outside the game's own import table is touched. The process's view of these
+       libraries -- which is what every other module in it resolves, overlays included -- has
+       to be exactly what it was; redirecting an export instead was tried, and it crashed the
+       game under the Steam overlay. */
+    struct { const char* dll; const char* func; void* hook; } exports[] = {
+        {"d3d9.dll","Direct3DCreate9",(void*)hook_Direct3DCreate9},
+        {"winmm.dll","joyGetPosEx",(void*)hook_joyGetPosEx},
+        {"user32.dll","ShowCursor",(void*)hook_ShowCursor},
+    };
+    for (size_t i=0;i<sizeof exports/sizeof *exports;++i) {
+        HMODULE m=GetModuleHandleA(exports[i].dll);
+        if (m) assert((void*)GetProcAddress(m,exports[i].func)!=exports[i].hook);
+    }
+    puts("PASS: an import taken by another patch is taken back with that patch chained to,\n"
+         "      and no library's exports are altered for the rest of the process");
+}
+
 int main(int argc,char**argv) {
     /* Unbuffered, so that a run which hangs still shows how far it got. Under Wine stdout is
        block-buffered into a pipe and a hang otherwise prints nothing at all. */
@@ -76,6 +155,11 @@ int main(int argc,char**argv) {
     IMAGE_SECTION_HEADER*s=IMAGE_FIRST_SECTION(nt);
     for(int i=0;i<nt->FileHeader.NumberOfSections;++i)
         if(s[i].SizeOfRawData)memcpy(base+s[i].VirtualAddress,file+s[i].PointerToRawData,s[i].SizeOfRawData);
+    /* Resolve the fixture's imports the way the loader does before any DLL sees the process.
+       Without this the import slots hold the raw file's unresolved thunks, and every check
+       about who owns an import -- which is the whole question when another patch is present
+       -- would be answered against values no running game ever has. */
+    resolve_fixture_imports(base);
     assert(select_game(base,nt->OptionalHeader.SizeOfImage));
     const struct GameIdentity* id=g_game->identity;
     for(size_t i=0;i<id->signature_count;++i) {
@@ -188,6 +272,10 @@ int main(int argc,char**argv) {
        "INTERNAL ERROR: missing signature" line it prints is that refusal working. */
     assert(!patch_bytes(addr+1,changed,5,NULL));
     assert(!patch_commit());assert(!memcmp((void*)addr,id->signatures[0].bytes,5));
+    /* The harness links these but never calls into them, so nothing has pulled them in. The
+       game always has them loaded by the time the patch installs; load them here so that the
+       import redirection runs against the real modules and can be checked afterwards. */
+    LoadLibraryA("d3d9.dll");LoadLibraryA("winmm.dll");
     cfg.subtick_input=1;cfg.d3d9ex=1;
     if (g_game->provisional && !getenv("HFR_VALIDATE_PROVISIONAL")) {
         assert(!install());          /* a provisional game must be left completely alone */
@@ -203,6 +291,22 @@ int main(int argc,char**argv) {
     puts("PASS: complete patch plan has frozen signatures, no overlaps; failed transaction leaves code intact");
     dump(argv[2],".game",base,nt->OptionalHeader.SizeOfImage);
     dump(argv[2],".stubs",g_stub_mem,g_stub_used);
+    /* Every byte this patch writes into the game, so a tool can check it against another
+       patch's own list of addresses (tools/check_patch_overlap.py). */
+    {
+        char* w=malloc(128+(g_patch_count+id->signature_count+id->conflict_count)*32);size_t n=0;
+        n+=sprintf(w+n,"{\"game\":\"%s\",\"patches\":[",id->name);
+        for (size_t i=0;i<g_patch_count;++i)
+            n+=sprintf(w+n,"%s[%u,%u]",i?",":"",(unsigned)g_patches[i].addr,(unsigned)g_patches[i].size);
+        n+=sprintf(w+n,"],\"signatures\":[");
+        for (size_t i=0;i<id->signature_count;++i)
+            n+=sprintf(w+n,"%s[%u,%u]",i?",":"",(unsigned)id->signatures[i].addr,(unsigned)id->signatures[i].size);
+        n+=sprintf(w+n,"],\"conflicts\":[");
+        for (size_t i=0;i<id->conflict_count;++i)
+            n+=sprintf(w+n,"%s[%u,%u]",i?",":"",(unsigned)id->conflicts[i].addr,(unsigned)id->conflicts[i].size);
+        n+=sprintf(w+n,"]}");
+        dump(argv[2],".patches.json",w,n);free(w);
+    }
     char info[1024];snprintf(info,sizeof info,
         "{\"stub_base\":%u,\"major\":%u,\"factor\":%u,\"logical\":%u,\"residual\":%u,\"ptf_prev\":%u,\"ptf_cur\":%u}",
         (unsigned)g_stub_mem,(unsigned)&g_major,(unsigned)&g_factor,(unsigned)&g_logical,
@@ -210,5 +314,6 @@ int main(int argc,char**argv) {
     dump(argv[2],".json",info,strlen(info));
     printf("PASS: %u executable signatures; emitted %u bytes of real hook stubs\n",
         (unsigned)id->signature_count,(unsigned)g_stub_used);
+    test_import_redirection();
     free(file);return 0;
 }

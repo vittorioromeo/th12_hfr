@@ -104,10 +104,39 @@ static int conflict_found(int installed) {
     return 1;
 }
 
+/* Everything loaded into this process that did not come out of the system directory: the
+   game's own libraries and anything another patch injected. Not a conflict -- most of what
+   turns up here is harmless, and translation patches such as thcrap share the executable
+   with this one quite happily -- but "what else is in there" is the first question every
+   report raises, and the log is the only thing anyone can send. One line, once. */
+static void log_modules(void) {
+    char sysdir[MAX_PATH];
+    UINT n = GetSystemDirectoryA(sysdir, sizeof sysdir);
+    if (!n || n >= sizeof sysdir) return;
+    HANDLE snap = INVALID_HANDLE_VALUE;
+    /* Documented to fail with ERROR_BAD_LENGTH while modules are still loading; retry. */
+    for (int try_ = 0; try_ < 8 && snap == INVALID_HANDLE_VALUE; ++try_)
+        snap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, GetCurrentProcessId());
+    if (snap == INVALID_HANDLE_VALUE) { LOG("modules: no snapshot available (%lu)", GetLastError()); return; }
+    MODULEENTRY32 me; me.dwSize = sizeof me;
+    char line[900]; size_t used = 0; int count = 0;
+    line[0] = 0;
+    if (Module32First(snap, &me)) do {
+        if (!_strnicmp(me.szExePath, sysdir, n)) continue;      /* Windows' own */
+        int w = snprintf(line + used, sizeof line - used, "%s%s", count ? ", " : "", me.szModule);
+        if (w < 0 || (size_t)w >= sizeof line - used) break;
+        used += (size_t)w; ++count;
+    } while (Module32Next(snap, &me));
+    CloseHandle(snap);
+    LOG("modules from outside the system directory: %s", count ? line : "(none)");
+}
+
 /* Called from the frame hook. Everything that is going to load has loaded by now. */
 static void conflict_check_late(void) {
     static int done;
     if (done) return;
     done = 1;
+    g_frame_seen = 1;
+    log_modules();
     conflict_found(1);
 }

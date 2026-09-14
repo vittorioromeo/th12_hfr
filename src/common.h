@@ -15,6 +15,7 @@
 /* ------------------------------------------------------------------ logging */
 static FILE* g_log;
 static int g_log_lazy;   /* debug>=3: flushed once per frame instead of per line (the per-frame draw traces are big) */
+static int g_frame_seen; /* the game has drawn at least one frame: everything that loads has loaded */
 static void logf_(const char* fmt, ...) {
     if (!g_log) return;
     /* Direct3D 9 leaves the game's thread in 24-bit x87 precision (see DEVNOTES_RUNTIME §3b,

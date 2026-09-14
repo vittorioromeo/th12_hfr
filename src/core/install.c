@@ -128,27 +128,27 @@ static int install(void) {
         for (int i=0;i<3;++i) if (g_game->addr.frame_calls[i]) site_call(g_game->addr.frame_calls[i],hfr_frame);
         g_frame_hook_installed = 1;
     }
-    if (!hook_iat("d3d9.dll","Direct3DCreate9",hook_Direct3DCreate9,(void**)&orig_Direct3DCreate9)) {
+    if (!hook_import("d3d9.dll","Direct3DCreate9",hook_Direct3DCreate9,(void**)&orig_Direct3DCreate9)) {
         LOG("Required Direct3D import is unavailable; no hooks applied");return 0;
     }
     if (cfg.d3d9ex) {
-        int a=hook_iat(g_game->d3dx,"D3DXCreateTexture",hook_D3DXCreateTexture,(void**)&orig_D3DXCreateTexture);
-        int b=hook_iat(g_game->d3dx,"D3DXCreateTextureFromFileInMemoryEx",hook_D3DXCreateTextureFromFileInMemoryEx,(void**)&orig_D3DXCreateTextureFromFileInMemoryEx);
+        int a=hook_import(g_game->d3dx,"D3DXCreateTexture",hook_D3DXCreateTexture,(void**)&orig_D3DXCreateTexture);
+        int b=hook_import(g_game->d3dx,"D3DXCreateTextureFromFileInMemoryEx",hook_D3DXCreateTextureFromFileInMemoryEx,(void**)&orig_D3DXCreateTextureFromFileInMemoryEx);
         if (!a || !b) {cfg.d3d9ex=0;LOG("D3DX hooks unavailable (%d,%d): using D3D9",a,b);}
     }
     if (cfg.internal_scale > 1 &&
-        !hook_iat(g_game->d3dx,"D3DXLoadSurfaceFromSurface",hook_D3DXLoadSurfaceFromSurface,(void**)&orig_D3DXLoadSurfaceFromSurface))
+        !hook_import(g_game->d3dx,"D3DXLoadSurfaceFromSurface",hook_D3DXLoadSurfaceFromSurface,(void**)&orig_D3DXLoadSurfaceFromSurface))
         LOG("internal resolution: D3DXLoadSurfaceFromSurface not imported; screen captures will show the top-left quarter");
     if (cfg.texture_scale > 1) {
-        hook_iat(g_game->d3dx,"D3DXLoadSurfaceFromMemory",hook_D3DXLoadSurfaceFromMemory,(void**)&orig_D3DXLoadSurfaceFromMemory);
-        hook_iat(g_game->d3dx,"D3DXLoadSurfaceFromFileInMemory",hook_D3DXLoadSurfaceFromFileInMemory,(void**)&orig_D3DXLoadSurfaceFromFileInMemory);
+        hook_import(g_game->d3dx,"D3DXLoadSurfaceFromMemory",hook_D3DXLoadSurfaceFromMemory,(void**)&orig_D3DXLoadSurfaceFromMemory);
+        hook_import(g_game->d3dx,"D3DXLoadSurfaceFromFileInMemory",hook_D3DXLoadSurfaceFromFileInMemory,(void**)&orig_D3DXLoadSurfaceFromFileInMemory);
         if (!orig_D3DXLoadSurfaceFromSurface)
-            hook_iat(g_game->d3dx,"D3DXLoadSurfaceFromSurface",hook_D3DXLoadSurfaceFromSurface,(void**)&orig_D3DXLoadSurfaceFromSurface);
+            hook_import(g_game->d3dx,"D3DXLoadSurfaceFromSurface",hook_D3DXLoadSurfaceFromSurface,(void**)&orig_D3DXLoadSurfaceFromSurface);
     }
     /* Sub-tick input feeds the simulation, so it belongs with the rest of it. */
-    hook_iat("winmm.dll","joyGetPosEx",hook_joyGetPosEx,(void**)&orig_joyGetPosEx);   /* always: the real call stalls the game thread (input.c) */
+    hook_import("winmm.dll","joyGetPosEx",hook_joyGetPosEx,(void**)&orig_joyGetPosEx);   /* always: the real call stalls the game thread (input.c) */
     /* The pointer in borderless fullscreen (window.c): both calls or neither, since one without the other leaves it half hidden. */
-    if (hook_iat("user32.dll","ShowCursor",hook_ShowCursor,(void**)&orig_ShowCursor) && hook_iat("user32.dll","SetCursor",hook_SetCursor,(void**)&orig_SetCursor)) g_cursor_hooked = 1;
+    if (hook_import("user32.dll","ShowCursor",hook_ShowCursor,(void**)&orig_ShowCursor) && hook_import("user32.dll","SetCursor",hook_SetCursor,(void**)&orig_SetCursor)) g_cursor_hooked = 1;
     else LOG("window: the game's cursor calls are not in its import table; the pointer stays as the game leaves it");
     FlushInstructionCache(GetCurrentProcess(),g_stub_mem,g_stub_used);
     if (!patch_commit()) { LOG("Patch transaction failed; no code/import hooks applied");return 0; }

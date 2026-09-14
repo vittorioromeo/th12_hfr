@@ -22,7 +22,7 @@ add four files to the game's folder and remove it by deleting them again.
 
 ## Supported games
 
-**Current build: v0.5.1-test.**
+**Current build: v0.5.2-test.**
 
 | Game | Version | Executables | State |
 | --- | --- | --- | --- |
@@ -175,6 +175,9 @@ The patch writes `touhou_hfr.log` next to the game, and it is verbose on purpose
 which game it recognised, every setting it read, what it patched, and the measured rates once a
 second. If you report a problem, that file is what to send.
 
+The log's first frame also lists every module in the process that did not come from Windows
+itself, so a report says what else was loaded alongside it without anyone having to ask.
+
 Two things it will tell you on screen. If another patch has taken over the game's frame loop you
 get a conflict message — Touhou HFR replaces what vpatch did for these games, so you should not
 need both. If a Direct3D 9 wrapper is presenting the game you get a warning that scaling and
@@ -227,9 +230,44 @@ compared the results frame by frame. Until that exists, treat "the simulation is
 - `dim_special` only does something in TH13 (divine spirits); TH10–TH12 have no fifth class.
 - TH10 has no native window-size dialog beyond 640x480, so use `window_scale` or F10 there.
 
-**Other patches.** vpatch, thcrap and Direct3D 9 wrappers all want the same parts of the game.
+**Other patches.** vpatch and Direct3D 9 wrappers want the same parts of the game as this one.
 The patch detects the ones it knows and tells you; it cannot detect everything. If something
-looks wrong, try the game with only this patch installed.
+looks wrong, try the game with only this patch installed. Translation patches are a separate
+case — see below.
+
+### Translation patches (thcrap)
+
+**thcrap works alongside this patch**, on Steam and standalone copies of TH10–13 alike. The two
+change different things: thcrap replaces text, fonts and images, this patch replaces the frame
+loop and the renderer, and they do not write over each other anywhere. Install both and start
+the game through thcrap's shortcut as usual; `dinput8.dll` loads this patch on that launch like
+any other.
+
+That is checked rather than assumed: `tools/check_patch_overlap.py` compares thcrap's own game
+definitions against every byte this patch writes and every byte it verifies, and for TH10, TH11,
+TH12 and TH13 the two sets are disjoint.
+
+Two things to know:
+
+- **Install order does not matter, but both must be set up against the same executable.** thcrap
+  identifies the game by the hash of the `.exe`; this patch never modifies the file on disk, so
+  thcrap sees exactly what it expects either way.
+- **thcrap's own Direct3D features do not engage while `d3d9ex=1`** (the default). This patch
+  creates the Direct3D object through 9Ex, which steps over whoever else is in that chain, so
+  thcrap's translation notes and its device-lost handling are skipped. Everything thcrap does to
+  text, fonts, images and files is unaffected — that is where the translation actually lives. If
+  you want those extras, set `d3d9ex=0`, at the cost of `max_frame_latency`. The log says when
+  this applies.
+- **This needs v0.5.2-test or newer.** Earlier builds were silently switched off by thcrap: it
+  redirects the same imports, matching by name and overwriting whatever it finds, which removed
+  this patch's Direct3D hook and left the game running with no sign that anything was missing.
+  This build takes those imports back once the game is running, with thcrap left in the call
+  path rather than discarded, and says so in the log when it happens.
+
+The one combination that does not work is an **executable that has already been translated** —
+the old pre-thcrap English patches that ship a modified `th10e.exe` and friends. Those rewrite
+the game's code, so this patch no longer recognises it and declines. thcrap is the supported way
+to play in English; it translates at run time and leaves the executable alone.
 
 ### New Classic is experimental, and different
 
@@ -365,7 +403,7 @@ For New Classic, also install **64-bit MinGW-w64 GCC/G++** (default
 ```powershell
 .\build64.ps1
 .\test64.ps1 -GameExe 'C:\Program Files (x86)\Steam\steamapps\common\th06nc\'
-.\package.ps1 -Version '0.5.1-test' -IncludeExperimental64
+.\package.ps1 -Version '0.5.2-test' -IncludeExperimental64
 ```
 
 Run `build.ps1` before `test64.ps1`, which checks both launcher architectures. `build64.ps1`
