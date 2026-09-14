@@ -137,6 +137,11 @@ static IDirect3D9* __stdcall deferred_install(UINT sdk) {
     if (!go || go==deferred_install) go=g_deferred_original;
     return go?go(sdk):NULL;
 }
+/* 1 armed, 0 this is simply not an executable we know, -1 wrapped but there is no import to
+   arm from. The last is worth telling apart: it is the one way a wrapper could defeat this,
+   and a log line naming it is the difference between diagnosing that in a minute and guessing.
+   Every supported game imports d3d9.dll!Direct3DCreate9, and the Steam wrapper leaves the
+   import table alone, so -1 has never been observed. */
 static int arm_deferred_install(void) {
     uint8_t* base=(uint8_t*)GetModuleHandleA(NULL);
     MEMORY_BASIC_INFORMATION mbi;
@@ -144,9 +149,10 @@ static int arm_deferred_install(void) {
     const IMAGE_NT_HEADERS32* nt=image_header(base,mbi.RegionSize);
     if (!nt || !wrapped_executable(base,nt->OptionalHeader.SizeOfImage)) return 0;
     void** slot=iat_slot("d3d9.dll","Direct3DCreate9");
-    if (!slot) return 0;
+    if (!slot) return -1;
     g_deferred_original=(Direct3DCreate9Fn)*slot;
-    return g_deferred_original && iat_write(slot,(void*)deferred_install);
+    if (!g_deferred_original || !iat_write(slot,(void*)deferred_install)) return -1;
+    return 1;
 }
 
 BOOL WINAPI DllMain(HINSTANCE h, DWORD reason, LPVOID res) {
@@ -170,9 +176,13 @@ BOOL WINAPI DllMain(HINSTANCE h, DWORD reason, LPVOID res) {
         LOG("video: scaling=%d filter=%s resizable=%d window_scale=%d snap_aspect=%d fullscreen_mode=%d internal_scale=%d texture_scale=%d (%s) dim=%d/%d/%d/%d/%d sharpen=%s/%d cursor=%d",
             cfg.scaling, cfg.filter_name, cfg.resizable, cfg.window_scale, cfg.snap_aspect, cfg.fullscreen_mode, cfg.internal_scale, cfg.texture_scale, cfg.texture_filter_name, cfg.dim[0], cfg.dim[1], cfg.dim[2], cfg.dim[3], cfg.dim[4], cfg.sharpen_name, cfg.sharpen_strength, cfg.cursor);
         if (!g_game || !install()) {
-            if (!g_game && arm_deferred_install())
+            int deferred = g_game ? 0 : arm_deferred_install();
+            if (deferred>0)
                 LOG("This executable's code is not readable yet, which is what a Steam release "
                     "looks like before its own start-up code has run. Trying again when the game asks for Direct3D.");
+            else if (deferred<0)
+                LOG("This executable is wrapped and its code is not readable yet, but it does not import "
+                    "d3d9.dll!Direct3DCreate9, so there is nothing to try again from; HFR inactive. Please report this.");
             else
                 LOG("Unsupported/modified executable or installation failure; HFR inactive (proxy forwarding available)");
         }
