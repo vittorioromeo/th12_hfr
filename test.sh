@@ -10,6 +10,11 @@ $CC -std=gnu11 -O2 -Wall -Wextra -Wno-unused-function -Wno-unused-parameter -sta
     tools/test_hfr.c -o build/tests/test_hfr.exe -ld3d9 -lwinmm -lgdi32 -ldwmapi -lpsapi \
     -Wl,--image-base,0x300000,--disable-dynamicbase,--section-start,.fixture=0x400000
 python3 tools/fill_pe_gaps.py build/tests/test_hfr.exe
+if [ "$#" -eq 0 ]; then
+    echo "--- no game executables given; the native harness is the bulk of this suite" >&2
+    echo "    usage: ./test.sh <game.exe> [more.exe ...]" >&2
+    exit 2
+fi
 for f in "$@"; do
     echo "--- $f"
     $RUN ./build/tests/test_hfr.exe "$f" "build/tests/$(basename "$f")"

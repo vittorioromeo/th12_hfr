@@ -21,9 +21,7 @@ struct ConflictSite { uintptr_t addr; size_t size; uint8_t bytes[8]; const char*
 #include "games/th12_conflicts.h"
 #include "games/th13_conflicts.h"
 struct GameIdentity {
-    unsigned id, image_size;
-    unsigned image_size_alt;    /* a second accepted SizeOfImage, or 0: the English TH13 build is the same
-                                   code with an appended section that loads its translation DLL */
+    unsigned id, image_size;    /* the smallest accepted SizeOfImage; see identify_image */
     const char *name, *legacy_ini, *replay_magic;
     const char* executables[2]; /* English first, then Japanese. */
     const struct GameSignature* signatures;
@@ -40,10 +38,10 @@ static const struct GameIdentity game_identities[] = {
        th10e.exe the English one (an earlier note here claimed a th10j.exe; that was a local
        rename, not a convention). The replay magic is unused while the simulation is
        undescribed, so it is left at the obvious guess rather than asserted. */
-    [GI_TH10] = {10,0x9c000,0,"TH10 v1.00a","th10_hfr.ini","t10r",{"th10e.exe","th10.exe"},th10_signatures,sizeof th10_signatures/sizeof *th10_signatures,th10_conflicts,sizeof th10_conflicts/sizeof *th10_conflicts},
-    [GI_TH11] = {11,0xcd000,0,"TH11 v1.00a","th11_hfr.ini","t11r",{"th11e.exe","th11.exe"},th11_signatures,sizeof th11_signatures/sizeof *th11_signatures,th11_conflicts,sizeof th11_conflicts/sizeof *th11_conflicts},
-    [GI_TH12] = {12,0xd9000,0,"TH12 v1.00b","th12_hfr.ini","t12r",{"th12e.exe","th12.exe"},th12_signatures,sizeof th12_signatures/sizeof *th12_signatures,th12_conflicts,sizeof th12_conflicts/sizeof *th12_conflicts},
-    [GI_TH13] = {13,0xe9000,0xea000,"TH13 v1.00c",NULL,"t13r",{"th13e.exe","th13.exe"},th13_signatures,sizeof th13_signatures/sizeof *th13_signatures,th13_conflicts,sizeof th13_conflicts/sizeof *th13_conflicts},
+    [GI_TH10] = {10,0x9c000,"TH10 v1.00a","th10_hfr.ini","t10r",{"th10e.exe","th10.exe"},th10_signatures,sizeof th10_signatures/sizeof *th10_signatures,th10_conflicts,sizeof th10_conflicts/sizeof *th10_conflicts},
+    [GI_TH11] = {11,0xcd000,"TH11 v1.00a","th11_hfr.ini","t11r",{"th11e.exe","th11.exe"},th11_signatures,sizeof th11_signatures/sizeof *th11_signatures,th11_conflicts,sizeof th11_conflicts/sizeof *th11_conflicts},
+    [GI_TH12] = {12,0xd9000,"TH12 v1.00b","th12_hfr.ini","t12r",{"th12e.exe","th12.exe"},th12_signatures,sizeof th12_signatures/sizeof *th12_signatures,th12_conflicts,sizeof th12_conflicts/sizeof *th12_conflicts},
+    [GI_TH13] = {13,0xe9000,"TH13 v1.00c",NULL,"t13r",{"th13e.exe","th13.exe"},th13_signatures,sizeof th13_signatures/sizeof *th13_signatures,th13_conflicts,sizeof th13_conflicts/sizeof *th13_conflicts},
 };
 #define GAME_COUNT (sizeof game_identities / sizeof *game_identities)
 static const IMAGE_NT_HEADERS32* image_header(const uint8_t* image, size_t size) {
@@ -63,8 +61,12 @@ static const struct GameIdentity* identify_image(const uint8_t* image, size_t si
     if (!nt || nt->OptionalHeader.SizeOfImage>size) return NULL;
     for (size_t g=0;g<GAME_COUNT;++g) {
         const struct GameIdentity* game=&game_identities[g];
-        if (nt->OptionalHeader.SizeOfImage!=game->image_size &&
-            !(game->image_size_alt && nt->OptionalHeader.SizeOfImage==game->image_size_alt)) continue;
+        /* Larger than the build these signatures were taken from is still that build. Both
+           the English TH13 and every Steam release append a section of their own -- a
+           translation loader, a DRM stub -- which grows SizeOfImage without moving or
+           altering one byte of the game's code. Smaller is never right; larger is settled by
+           the signatures below, which is where identification actually rests. */
+        if (nt->OptionalHeader.SizeOfImage<game->image_size) continue;
         size_t i=0;
         for (;i<game->signature_count;++i) {
             const struct GameSignature* s=&game->signatures[i];
@@ -74,6 +76,31 @@ static const struct GameIdentity* identify_image(const uint8_t* image, size_t si
         if (i==game->signature_count) return game;
     }
     return NULL;
+}
+/* Whether this image is a game inside a DRM wrapper. A Steam release of these games is the
+   same executable with an extra section holding a stub, the entry point moved into it, and
+   the game's own .text encrypted: the stub checks ownership at start-up and decrypts the code
+   in memory before jumping to where the entry point used to be. Nothing on disk can identify
+   such a file -- every frozen signature reads as ciphertext -- and nothing should pretend to;
+   what this answers is the different question of whether that is *why* identification failed,
+   so the launcher can say so and the runtime can arrange to look again later.
+
+   Steam names its section `.bind`. A stub under some other name is still caught, because the
+   entry point of a wrapped image is by construction outside the game's own code section. */
+static int wrapped_executable(const uint8_t* image, size_t size) {
+    const IMAGE_NT_HEADERS32* nt=image_header(image,size);
+    if (!nt) return 0;
+    size_t headers=(size_t)((const uint8_t*)IMAGE_FIRST_SECTION(nt)-image);
+    unsigned count=nt->FileHeader.NumberOfSections;
+    if (count>96 || headers>size || (size-headers)/sizeof(IMAGE_SECTION_HEADER)<count) return 0;
+    const IMAGE_SECTION_HEADER* s=IMAGE_FIRST_SECTION(nt);
+    uint32_t entry=nt->OptionalHeader.AddressOfEntryPoint;
+    for (unsigned i=0;i<count;++i) {
+        if (!memcmp(s[i].Name,".bind",6)) return 1;
+        if (entry>=s[i].VirtualAddress && entry-s[i].VirtualAddress<s[i].Misc.VirtualSize &&
+            memcmp(s[i].Name,".text",6)) return 1;
+    }
+    return 0;
 }
 /* Which of the game's frame-loop sites no longer holds its stock bytes, or -1 if all do.
    Call only on an image that has already been identified. */

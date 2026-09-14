@@ -73,6 +73,82 @@ __declspec(dllexport) HRESULT WINAPI DirectInput8Create(HINSTANCE hinst, DWORD v
     return real_DirectInput8Create(hinst, ver, riid, out, outer);
 }
 
+/* ---------------------------------------------------------------- deferred installation
+   A Steam release of these games is the same executable inside a DRM wrapper: the game's
+   .text is encrypted and a stub in an appended section decrypts it, in memory, when the
+   process starts. The loader runs this DLL's DllMain *before* the executable's entry point,
+   so at the moment the patch normally identifies the game there is nothing to identify --
+   every frozen signature still reads as ciphertext, and the patch correctly concludes it does
+   not know this executable.
+
+   The answer is to look again later, from something only the game itself calls. The import
+   table is not encrypted (the loader has to read it to start the process at all), so the
+   entry for d3d9.dll!Direct3DCreate9 can be redirected here while the stub is still the only
+   thing that has run. By the time the game asks for Direct3D the code is plain, and that call
+   still comes before the device, the window and the frame loop, so nothing the patch installs
+   arrives late.
+
+   Unwrapped installations never reach any of this: they identify in DllMain as they always
+   have, and this is armed only when identification failed on an image that looks wrapped. */
+static void** iat_slot(const char* dll, const char* func) {
+    uint8_t* base=(uint8_t*)0x400000;
+    const IMAGE_DOS_HEADER* dos=(const void*)base;
+    const IMAGE_NT_HEADERS32* nt=(const void*)(base+dos->e_lfanew);
+    IMAGE_DATA_DIRECTORY dir=nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
+    if (!dir.VirtualAddress) return NULL;
+    IMAGE_IMPORT_DESCRIPTOR* imp=(void*)(base+dir.VirtualAddress);
+    for (;imp->Name;imp++) {
+        if (_stricmp((const char*)(base+imp->Name),dll)) continue;
+        if (!imp->OriginalFirstThunk) return NULL;
+        IMAGE_THUNK_DATA* thunk=(void*)(base+imp->FirstThunk);
+        IMAGE_THUNK_DATA* oth=(void*)(base+imp->OriginalFirstThunk);
+        for (;oth->u1.AddressOfData;thunk++,oth++) {
+            if (oth->u1.Ordinal & IMAGE_ORDINAL_FLAG) continue;
+            const IMAGE_IMPORT_BY_NAME* ibn=(const void*)(base+oth->u1.AddressOfData);
+            if (!strcmp((const char*)ibn->Name,func)) return (void**)&thunk->u1.Function;
+        }
+    }
+    return NULL;
+}
+static int iat_write(void** slot, void* value) {
+    DWORD old;
+    if (!VirtualProtect(slot,sizeof *slot,PAGE_READWRITE,&old)) return 0;
+    *slot=value;
+    VirtualProtect(slot,sizeof *slot,old,&old);
+    return 1;
+}
+static Direct3DCreate9Fn g_deferred_original;
+static IDirect3D9* __stdcall deferred_install(UINT sdk) {
+    void** slot=iat_slot("d3d9.dll","Direct3DCreate9");
+    /* Put the real function back before installing, so the patch's own hook on this same
+       slot records that and not this function -- which would otherwise call itself. */
+    if (slot) iat_write(slot,(void*)g_deferred_original);
+    uint8_t* base=(uint8_t*)GetModuleHandleA(NULL);
+    MEMORY_BASIC_INFORMATION mbi;
+    const IMAGE_NT_HEADERS32* nt=NULL;
+    if ((uintptr_t)base==0x400000 && VirtualQuery(base,&mbi,sizeof mbi)) nt=image_header(base,mbi.RegionSize);
+    if (nt && select_game(base,nt->OptionalHeader.SizeOfImage) && install())
+        LOG("Identified once the executable had started: %s", g_game->identity->name);
+    else
+        LOG("Still not a supported executable after start-up; HFR inactive (proxy forwarding available)");
+    /* Whatever owns the slot now is what the game meant to call: the patch's hook if it
+       installed one, the real function if it did not. */
+    Direct3DCreate9Fn go=slot?(Direct3DCreate9Fn)*slot:NULL;
+    if (!go || go==deferred_install) go=g_deferred_original;
+    return go?go(sdk):NULL;
+}
+static int arm_deferred_install(void) {
+    uint8_t* base=(uint8_t*)GetModuleHandleA(NULL);
+    MEMORY_BASIC_INFORMATION mbi;
+    if ((uintptr_t)base!=0x400000 || !VirtualQuery(base,&mbi,sizeof mbi)) return 0;
+    const IMAGE_NT_HEADERS32* nt=image_header(base,mbi.RegionSize);
+    if (!nt || !wrapped_executable(base,nt->OptionalHeader.SizeOfImage)) return 0;
+    void** slot=iat_slot("d3d9.dll","Direct3DCreate9");
+    if (!slot) return 0;
+    g_deferred_original=(Direct3DCreate9Fn)*slot;
+    return g_deferred_original && iat_write(slot,(void*)deferred_install);
+}
+
 BOOL WINAPI DllMain(HINSTANCE h, DWORD reason, LPVOID res) {
     if (reason == DLL_PROCESS_ATTACH) {
         DisableThreadLibraryCalls(h);
@@ -93,7 +169,13 @@ BOOL WINAPI DllMain(HINSTANCE h, DWORD reason, LPVOID res) {
             cfg.fps, cfg.vsync, cfg.substep, cfg.subtick_input, cfg.d3d9ex, cfg.max_frame_latency, cfg.flipex, cfg.enemy_interp);
         LOG("video: scaling=%d filter=%s resizable=%d window_scale=%d snap_aspect=%d fullscreen_mode=%d internal_scale=%d texture_scale=%d (%s) dim=%d/%d/%d/%d/%d sharpen=%s/%d cursor=%d",
             cfg.scaling, cfg.filter_name, cfg.resizable, cfg.window_scale, cfg.snap_aspect, cfg.fullscreen_mode, cfg.internal_scale, cfg.texture_scale, cfg.texture_filter_name, cfg.dim[0], cfg.dim[1], cfg.dim[2], cfg.dim[3], cfg.dim[4], cfg.sharpen_name, cfg.sharpen_strength, cfg.cursor);
-        if (!g_game || !install()) LOG("Unsupported/modified executable or installation failure; HFR inactive (proxy forwarding available)");
+        if (!g_game || !install()) {
+            if (!g_game && arm_deferred_install())
+                LOG("This executable's code is not readable yet, which is what a Steam release "
+                    "looks like before its own start-up code has run. Trying again when the game asks for Direct3D.");
+            else
+                LOG("Unsupported/modified executable or installation failure; HFR inactive (proxy forwarding available)");
+        }
     }
     return TRUE;
 }

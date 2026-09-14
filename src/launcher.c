@@ -18,6 +18,21 @@ static const struct GameIdentity* identify_file(const char* path) {
     }
     free(data);fclose(f);return id;
 }
+/* Whether the file is a game the patch knows, hidden inside a DRM wrapper. Nothing on disk
+   can confirm which game it is -- the code is encrypted until the wrapper's stub runs -- so
+   this only answers whether that is why identification failed, which is the difference
+   between a useful message and "no supported executable found". */
+static int wrapped_file(const char* path) {
+    FILE* f=fopen(path,"rb");if(!f)return 0;
+    fseek(f,0,SEEK_END);long n=ftell(f);rewind(f);
+    if(n<=0 || n>16*1024*1024){fclose(f);return 0;}
+    uint8_t* data=malloc(n);int wrapped=0;
+    if(data && fread(data,1,n,f)==(size_t)n) {
+        size_t size=0;uint8_t* image=map_game_file(data,n,&size);
+        if(image){wrapped=wrapped_executable(image,size);free(image);}
+    }
+    free(data);fclose(f);return wrapped;
+}
 static int local_path(char* out,size_t cap,const char* dir,const char* name) {
     /* exe names are relative to the launcher, including optional subfolders. */
     int n=snprintf(out,cap,"%s\\%s",dir,name);return n>=0 && (size_t)n<cap;
@@ -65,8 +80,23 @@ int main(int argc,char** argv) {
         }
     }
     if (target[0] && local_path(exe,sizeof exe,dir,target) && fixed_identify_file(exe)) return run_x64(dir,exe);
-    if(!target[0] || !local_path(exe,sizeof exe,dir,target) || !identify_file(exe))
+    if(!target[0] || !local_path(exe,sizeof exe,dir,target) || !identify_file(exe)) {
+        /* A wrapped executable is not a failure to support the game -- it is a build this
+           launcher cannot verify or start, because its code is encrypted until its own
+           start-up code has run and because starting it outside Steam is Steam's business,
+           not ours. The patch installs itself perfectly well there through dinput8.dll. */
+        char candidate[MAX_PATH];int wrapped=target[0] && local_path(candidate,sizeof candidate,dir,target) && wrapped_file(candidate);
+        for(size_t g=0;!wrapped && g<GAME_COUNT;++g)for(int e=0;!wrapped && e<2;++e)
+            if(local_path(candidate,sizeof candidate,dir,game_identities[g].executables[e]))
+                wrapped=wrapped_file(candidate);
+        if(wrapped)
+            die("This looks like a Steam copy of the game. Its code is encrypted until the game "
+                "itself starts, so this launcher cannot check it or start it.\n\n"
+                "Start the game from Steam instead. With dinput8.dll, touhou_hfr.dll and "
+                "touhou_hfr.ini in the game's folder, the patch installs itself on any launch -- "
+                "the launcher is not needed.");
         die("No supported executable found. Supported: TH10 v1.00a, TH11 v1.00a, TH12 v1.00b and TH13 v1.00c (Japanese or English executables). Code modified by another patch is not accepted.");
+    }
     if(GetFileAttributesA(dll)==INVALID_FILE_ATTRIBUTES)die("touhou_hfr.dll is missing next to the launcher.");
     STARTUPINFOA si={0};si.cb=sizeof si;PROCESS_INFORMATION pi;
     char cmd[MAX_PATH+4];snprintf(cmd,sizeof cmd,"\"%s\"",exe);

@@ -32,9 +32,15 @@ add four files to the game's folder and remove it by deleting them again.
 | Touhou 13 — Ten Desires | v1.00c | `th13.exe`, `th13e.exe` | supported |
 | Touhou Koumakyou: New Classic | see [notes](TH06NC_DEVNOTES.md#2-product-and-inspected-build) | `th06nc.exe` | **experimental**, smaller feature set — [details](#new-classic-is-experimental-and-different) |
 
-Japanese and English executables are both supported. Other versions, other games, and the
-`th06c.exe` (Classic) executable bundled with New Classic are not: the patch verifies the
-executable's code before touching anything and declines to install if it does not recognise it.
+Japanese and English executables are both supported, and so are the Steam releases. Other
+versions, other games, and the `th06c.exe` (Classic) executable bundled with New Classic are
+not: the patch verifies the executable's code before touching anything and declines to install
+if it does not recognise it.
+
+**On Steam, start the game from Steam.** A Steam copy of TH10–13 is the same game inside a DRM
+wrapper that keeps its code encrypted until the game itself starts, so `touhou_hfr.exe` cannot
+check it or launch it and will tell you so. `dinput8.dll` does not care: put the four files in
+the folder, press Play, and the patch installs itself once the game is running.
 
 ## Install
 

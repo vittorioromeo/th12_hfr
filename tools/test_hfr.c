@@ -85,6 +85,63 @@ int main(int argc,char**argv) {
     assert(!identify_image(base,64));
     puts("PASS: executable detection rejects every individually modified signature and truncated headers");
 
+    /* A Steam release is this same executable wrapped: an extra section holds a stub, the
+       entry point moves into it, and .text is encrypted until the stub runs. Identification
+       must survive the parts that are not the code -- the bigger image, the extra section --
+       and must still refuse while the code is unreadable, because at that moment it really
+       cannot tell which game this is. Getting the first of those wrong is what made every
+       Steam copy of these games unpatchable. */
+    {
+        /* The headers that matter are the ones in the mapped fixture, not in the file buffer:
+           that is what both the runtime and this test read. */
+        IMAGE_NT_HEADERS* bnt=(void*)(base+((IMAGE_DOS_HEADER*)base)->e_lfanew);
+        IMAGE_SECTION_HEADER* sec=IMAGE_FIRST_SECTION(bnt);
+        unsigned count=bnt->FileHeader.NumberOfSections;
+        uint32_t plain_size=bnt->OptionalHeader.SizeOfImage, plain_entry=bnt->OptionalHeader.AddressOfEntryPoint;
+        IMAGE_SECTION_HEADER stub=sec[count-1];
+        memcpy(stub.Name,".bind\0\0",8);
+        stub.VirtualAddress=plain_size; stub.Misc.VirtualSize=0x2000;
+        assert(!wrapped_executable(base,plain_size));
+        assert(identify_image(base,plain_size)==id);
+
+        sec[count]=stub; bnt->FileHeader.NumberOfSections=count+1;
+        bnt->OptionalHeader.SizeOfImage=plain_size+0x2000;
+        bnt->OptionalHeader.AddressOfEntryPoint=stub.VirtualAddress+0x10;
+        assert(bnt->OptionalHeader.SizeOfImage<=sizeof test_fixture);
+
+        /* Wrapped, but the code is in the clear: this is the state the runtime reaches after
+           the stub has decrypted, and it must identify exactly as the unwrapped build does. */
+        assert(wrapped_executable(base,bnt->OptionalHeader.SizeOfImage));
+        assert(identify_image(base,bnt->OptionalHeader.SizeOfImage)==id);
+
+        /* Wrapped with the code still encrypted: refuse, and say it is the wrapper. The
+           whole code section goes, as the real wrapper encrypts it -- scrambling only the
+           start would leave games whose first signature sits further in still identifying. */
+        uint8_t* code=base+sec[0].VirtualAddress;
+        uint32_t code_size=sec[0].Misc.VirtualSize;
+        for (uint32_t i=0;i<code_size;++i) code[i]^=0xa5;
+        assert(!identify_image(base,bnt->OptionalHeader.SizeOfImage));
+        assert(wrapped_executable(base,bnt->OptionalHeader.SizeOfImage));
+        for (uint32_t i=0;i<code_size;++i) code[i]^=0xa5;
+
+        /* A stub section under a name nobody has seen before is still a stub, because the
+           entry point of a wrapped image is outside the game's own code section. */
+        memcpy(sec[count].Name,".zzz\0\0\0",8);
+        assert(wrapped_executable(base,bnt->OptionalHeader.SizeOfImage));
+
+        /* An image smaller than the build we know is never that build. */
+        bnt->OptionalHeader.SizeOfImage=plain_size-0x1000;
+        assert(!identify_image(base,plain_size));
+
+        bnt->FileHeader.NumberOfSections=count;
+        bnt->OptionalHeader.SizeOfImage=plain_size;
+        bnt->OptionalHeader.AddressOfEntryPoint=plain_entry;
+        memset(&sec[count],0,sizeof sec[count]);
+        assert(!wrapped_executable(base,plain_size));
+        assert(identify_image(base,plain_size)==id);
+        puts("PASS: a DRM-wrapped image identifies once its code is readable, and is named as wrapped while it is not");
+    }
+
     /* The guard against another patch owning the frame loop. The clean executable that was
        just identified must not trip it -- a false positive here would refuse to install for
        someone whose game is fine -- and every guarded site must be noticed on its own. */
