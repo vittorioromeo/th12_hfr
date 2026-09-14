@@ -22,7 +22,7 @@ add four files to the game's folder and remove it by deleting them again.
 
 ## Supported games
 
-**Current build: v0.4.20-test.**
+**Current build: v0.5-test.**
 
 | Game | Version | Executables | State |
 | --- | --- | --- | --- |
@@ -355,7 +355,7 @@ For New Classic, also install **64-bit MinGW-w64 GCC/G++** (default
 ```powershell
 .\build64.ps1
 .\test64.ps1 -GameExe 'C:\Program Files (x86)\Steam\steamapps\common\th06nc\'
-.\package.ps1 -Version '0.4.20-th06nc-prototype' -IncludeExperimental64
+.\package.ps1 -Version '0.5-test' -IncludeExperimental64
 ```
 
 Run `build.ps1` before `test64.ps1`, which checks both launcher architectures. `build64.ps1`
