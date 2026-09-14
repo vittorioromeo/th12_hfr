@@ -22,7 +22,7 @@ add four files to the game's folder and remove it by deleting them again.
 
 ## Supported games
 
-**Current build: v0.5-test.**
+**Current build: v0.5.1-test.**
 
 | Game | Version | Executables | State |
 | --- | --- | --- | --- |
@@ -56,6 +56,10 @@ touhou_hfr.ini
 
 That is the whole installation. Start the game as you normally would — `dinput8.dll` loads the
 patch automatically — or run `touhou_hfr.exe`, which finds the game beside it and starts it.
+
+Steam and standalone copies are both fine. On a Steam copy the executable's code is encrypted
+until the game itself starts, so press **Play** in Steam rather than running `touhou_hfr.exe`;
+`dinput8.dll` installs the patch on that launch just the same.
 
 Press **F11** in game for the settings menu. Most settings are there, changes apply immediately,
 and **Save** writes them to `touhou_hfr.ini` so they become the default. A few — internal
@@ -361,7 +365,7 @@ For New Classic, also install **64-bit MinGW-w64 GCC/G++** (default
 ```powershell
 .\build64.ps1
 .\test64.ps1 -GameExe 'C:\Program Files (x86)\Steam\steamapps\common\th06nc\'
-.\package.ps1 -Version '0.5-test' -IncludeExperimental64
+.\package.ps1 -Version '0.5.1-test' -IncludeExperimental64
 ```
 
 Run `build.ps1` before `test64.ps1`, which checks both launcher architectures. `build64.ps1`

@@ -18,6 +18,11 @@ if [ -z "${RUN64:-}" ] && [ -x /usr/lib/wine/wine64 ]; then
 fi
 RUN=${RUN64:-wine}
 export RUN64="$RUN"
+if [ "$#" -ne 1 ]; then
+    echo "--- no New Classic executable given; the signature checks would be skipped" >&2
+    echo "    usage: ./test64.sh <th06nc.exe>" >&2
+    exit 2
+fi
 mkdir -p build/tests
 $CC -std=gnu11 -O2 -Wall -Wextra -Wno-unused-function -Wno-unused-parameter -static-libgcc \
     tools/test_fixed.c build/obj64/buffer.o build/obj64/hook.o build/obj64/trampoline.o \
