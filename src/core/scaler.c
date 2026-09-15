@@ -95,6 +95,13 @@ static int g_out_w, g_out_h;                 /* the real swap chain size */
 static int g_scaler_ok;                      /* redirection is live */
 static int g_display_hz = 60;                /* the display's own rate, for "auto" */
 static int g_scaler_enabled = 1;             /* may be turned off when unsupported */
+/* Another renderer in this process owns the picture: it hands the game its own render
+   target, composes the final image itself and presents it. See external_mode() below. */
+static int g_external;
+static IDirect3DSurface9* g_ext_bb;
+static IDirect3DDevice9* g_ext_dev;      /* the device under the wrapper: see external_overlay */
+static void external_release(void);
+static void ui_render_frame(IDirect3DDevice9* dev, const struct ScaleRect* content);
 static D3DFORMAT g_bb_format, g_ds_format;
 static unsigned g_stat_blits;
 
@@ -148,6 +155,7 @@ static void client_size(HWND h, int* w, int* t) {
 static void scaler_release_output(void) { SAFE_RELEASE(g_real_bb); SAFE_RELEASE(g_swap); g_out_w = g_out_h = 0; g_own_present = 0; }
 static void texscale_release(void); static void dim_release(void); static int dim_in_game(void);
 static void scaler_release(void) {
+    external_release();
     texscale_release(); dim_release();
     g_scaler_ok = 0;
     g_pass_w = g_pass_h = 0;
@@ -203,7 +211,7 @@ static int window_override_pp(D3DPRESENT_PARAMETERS* out, HWND hwnd);
    while the caller's copy (the game's own globals) keeps describing the native size. */
 static void scaler_adjust_pp(D3DPRESENT_PARAMETERS* out, const D3DPRESENT_PARAMETERS* game, HWND hwnd, int want_w, int want_h) {
     *out = *game;
-    if (!g_scaler_enabled) return;
+    if (g_external || !g_scaler_enabled) return;
     if (g_native_w <= 0) {
         g_native_w = (int)game->BackBufferWidth; g_native_h = (int)game->BackBufferHeight;
         g_iscale = cfg.internal_scale < 1 ? 1 : cfg.internal_scale > 4 ? 4 : cfg.internal_scale;
@@ -233,6 +241,134 @@ static void scaler_adjust_pp(D3DPRESENT_PARAMETERS* out, const D3DPRESENT_PARAME
     out->MultiSampleQuality = 0;
 }
 
+/* ------------------------------------------------- letting another renderer own the picture
+ * A rotation wrapper such as THRotator is not a competitor for the frame loop -- it is a
+ * renderer. It replaces d3d9.dll, hands the game a render target of its own rather than the
+ * back buffer, and in EndScene composes that target into the real back buffer, rotated and
+ * with the HUD rearranged, before the game ever calls Present.
+ *
+ * This patch does the same thing to the same surface, which is the whole problem. Both give
+ * the game "a back buffer" that is really their own texture, so whichever answers
+ * GetBackBuffer last is the one the game draws on and the other composes an empty surface.
+ * Turning off this patch's own presentation chain is not enough: the redirection, the filter
+ * chain, the internal resolution and the letterbox all still run, and all of them assume
+ * this patch owns the image.
+ *
+ * So when another renderer is present, hand it the picture completely. The simulation is
+ * untouched by that decision -- sub-stepping, interpolation, frame pacing, dimming, replay
+ * and input are all upstream of who composes the image -- and those are what this patch is
+ * for. What it gives up is everything downstream: scaling modes, filters, sharpening,
+ * internal resolution, texture upscaling, borderless fullscreen and window management, all
+ * of which the other renderer is doing instead, in its own coordinate system.
+ *
+ * The menu is the one thing that still has to be drawn. It is drawn from the Present hook,
+ * which is after the other renderer has composed, onto the real back buffer -- reached
+ * through the swap chain, because GetBackBuffer on the device is exactly the call the other
+ * renderer has taken over. That puts it on top, in screen space, unrotated.
+ */
+static int external_mode(void) { return g_external; }
+static void external_release(void) {
+    if (g_ext_bb) { g_ext_bb->lpVtbl->Release(g_ext_bb); g_ext_bb = NULL; }
+    if (g_ext_dev) { g_ext_dev->lpVtbl->Release(g_ext_dev); g_ext_dev = NULL; }
+}
+/* The surface the other renderer presents, and its size. The device's own GetBackBuffer is
+   the wrapper's redirection; the swap chain is not wrapped, so it still answers truthfully. */
+static void external_create(IDirect3DDevice9* dev) {
+    external_release();
+    if (!g_external || !dev) return;
+    IDirect3DSwapChain9* chain = NULL;
+    if (FAILED(dev->lpVtbl->GetSwapChain(dev, 0, &chain)) || !chain) {
+        LOG("external renderer: no swap chain to draw the menu on; the menu is unavailable");
+        return;
+    }
+    HRESULT hr = chain->lpVtbl->GetBackBuffer(chain, 0, D3DBACKBUFFER_TYPE_MONO, &g_ext_bb);
+    chain->lpVtbl->Release(chain);
+    if (FAILED(hr) || !g_ext_bb) {
+        g_ext_bb = NULL;
+        LOG("external renderer: the presented surface is not reachable (0x%08lx); the menu is unavailable", (long)hr);
+        return;
+    }
+    D3DSURFACE_DESC d;
+    if (SUCCEEDED(g_ext_bb->lpVtbl->GetDesc(g_ext_bb, &d)) && d.Width && d.Height) {
+        g_out_w = (int)d.Width; g_out_h = (int)d.Height;
+    }
+    if (!g_state && FAILED(dev->lpVtbl->CreateStateBlock(dev, D3DSBT_ALL, &g_state))) g_state = NULL;
+    /* Drawing the menu needs a scene of our own, and closing it is the difficulty: the
+       device's EndScene *is* the other renderer's compositor, so ending our scene with it
+       composes its picture over the menu we just drew. Measured, not assumed -- it is why
+       three earlier placements of this drew nothing at all.
+       The way past it is the device underneath. The renderer wraps the device, but not the
+       swap chain, so the chain still points at the real one, whose BeginScene and EndScene
+       are its own and do not compose anything. */
+    IDirect3DDevice9* under = NULL;
+    IDirect3DSwapChain9* c2 = NULL;
+    if (SUCCEEDED(dev->lpVtbl->GetSwapChain(dev, 0, &c2)) && c2) {
+        if (FAILED(c2->lpVtbl->GetDevice(c2, &under))) under = NULL;
+        c2->lpVtbl->Release(c2);
+    }
+    if (under && under != dev) {
+        g_ext_dev = under;
+        LOG("external renderer: the menu will be drawn on the %dx%d surface it presents", g_out_w, g_out_h);
+    } else {
+        if (under) under->lpVtbl->Release(under);
+        external_release();
+        LOG("external renderer: this one shares its device rather than wrapping it, so a scene "
+            "of ours cannot be closed without running its compositor over the menu. The menu is "
+            "unavailable here; the settings in touhou_hfr.ini are still read normally.");
+    }
+}
+/* Does this device hand the game something other than the surface it presents? A wrapper
+   that only changes how the finished image reaches the window returns the real back buffer
+   from both the device and the swap chain. One that composes the image itself has to take
+   over the device's GetBackBuffer -- that is how it gets the game to draw on its target --
+   and has no reason to touch the chain, so the two answers differ. Which is the difference
+   between a wrapper this patch can compose through and one it must hand the picture to.
+   Only ever called when someone else's d3d9.dll is loaded, so a device that answers oddly
+   for its own reasons cannot change anything for a normal installation. */
+static int external_detect_substitution(IDirect3DDevice9* dev) {
+    IDirect3DSurface9 *from_device = NULL, *from_chain = NULL;
+    IDirect3DSwapChain9* chain = NULL;
+    int substituted = 0;
+    if (!dev || FAILED(orig_GetBackBuffer(dev, 0, 0, D3DBACKBUFFER_TYPE_MONO, &from_device)) || !from_device) return 0;
+    if (SUCCEEDED(dev->lpVtbl->GetSwapChain(dev, 0, &chain)) && chain) {
+        if (SUCCEEDED(chain->lpVtbl->GetBackBuffer(chain, 0, D3DBACKBUFFER_TYPE_MONO, &from_chain)) && from_chain) {
+            substituted = from_device != from_chain;
+            from_chain->lpVtbl->Release(from_chain);
+        }
+        chain->lpVtbl->Release(chain);
+    }
+    from_device->lpVtbl->Release(from_device);
+    return substituted;
+}
+
+/* Drawn from the EndScene hook, after the other renderer's own EndScene has returned -- that
+   is where it composed, and these games call Present at the *start* of a frame, so anything
+   drawn from a Present hook is composed over before it is ever shown. Everything the other
+   renderer had bound is put back afterwards. */
+static HRESULT (__stdcall *orig_EndScene)(IDirect3DDevice9*);
+static void external_overlay(IDirect3DDevice9* dev) {
+    if (!g_external || !g_ext_bb || !g_ext_dev || !dev) return;
+    IDirect3DDevice9* u = g_ext_dev;
+    IDirect3DSurface9 *rt = NULL, *ds = NULL;
+    u->lpVtbl->GetRenderTarget(u, 0, &rt);
+    u->lpVtbl->GetDepthStencilSurface(u, &ds);
+    if (g_state) g_state->lpVtbl->Capture(g_state);
+    if (SUCCEEDED(u->lpVtbl->BeginScene(u))) {
+        if (SUCCEEDED(u->lpVtbl->SetRenderTarget(u, 0, g_ext_bb))) {
+            D3DVIEWPORT9 vp; vp.X = 0; vp.Y = 0; vp.Width = (DWORD)g_out_w; vp.Height = (DWORD)g_out_h; vp.MinZ = 0.0f; vp.MaxZ = 1.0f;
+            u->lpVtbl->SetDepthStencilSurface(u, NULL);
+            u->lpVtbl->SetViewport(u, &vp);
+            ui_render_frame(dev, NULL);   /* the menu's own device is the one it was built on */
+        }
+        u->lpVtbl->EndScene(u);
+    }
+    if (g_state) g_state->lpVtbl->Apply(g_state);
+    u->lpVtbl->SetRenderTarget(u, 0, rt);
+    u->lpVtbl->SetDepthStencilSurface(u, ds);
+    if (rt) rt->lpVtbl->Release(rt);
+    if (ds) ds->lpVtbl->Release(ds);
+}
+
 /* Create the render target the game draws into, plus its depth stencil, and take hold of the
    real back buffer. Any failure leaves the patch in stock behaviour rather than half applied. */
 static int scaler_create(IDirect3DDevice9* dev, const D3DPRESENT_PARAMETERS* used, HWND hwnd) {
@@ -243,6 +379,7 @@ static int scaler_create(IDirect3DDevice9* dev, const D3DPRESENT_PARAMETERS* use
     resolve_filter();
     g_bb_format = used->BackBufferFormat;
     g_ds_format = used->EnableAutoDepthStencil ? used->AutoDepthStencilFormat : D3DFMT_D24S8;
+    if (g_external) { external_create(dev); return 0; }
     if (!g_scaler_enabled || g_native_w <= 0 || g_native_h <= 0) return 0;
     int cw = 0, ch = 0;
     RECT c;
@@ -498,7 +635,6 @@ static void select_filter(IDirect3DDevice9* dev, const struct ScaleRect* dst,
     } else *sampler = D3DTEXF_LINEAR;
 }
 
-static void ui_render_frame(IDirect3DDevice9* dev, const struct ScaleRect* content);
 static void hfr_ui_apply_pending(IDirect3DDevice9* dev);   /* menu changes, applied between frames */
 static int  hfr_housekeeping(void);                        /* window and menu upkeep, once a frame */
 static int  g_frame_hook_installed;                        /* whether hfr_frame runs for this game */
@@ -576,6 +712,12 @@ static void scaler_blit(IDirect3DDevice9* dev) {
     g_stat_blits++;
 }
 
+static HRESULT __stdcall hook_EndScene(IDirect3DDevice9* dev) {
+    static int busy;
+    HRESULT hr = orig_EndScene(dev);
+    if (!busy) { busy = 1; external_overlay(dev); busy = 0; }
+    return hr;
+}
 static HRESULT hook_Present_inner(IDirect3DDevice9* dev, const RECT* src, const RECT* dst, HWND wnd, const RGNDATA* dirty);
 static HRESULT __stdcall hook_Present(IDirect3DDevice9* dev, const RECT* src, const RECT* dst, HWND wnd, const RGNDATA* dirty) {
     g_t_present_in = now_s();

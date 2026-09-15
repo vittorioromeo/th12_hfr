@@ -55,11 +55,12 @@ static DWORD WINAPI notice_dialog(LPVOID unused) {
 }
 /* At most one notice a run: two boxes stacked over a game nobody has looked at yet is worse
    than one, and the buffer is shared. */
-static void show_notice(const char* text) {
-    if (InterlockedCompareExchange(&g_notice_shown, 1, 0) != 0) return;
+static int show_notice(const char* text) {
+    if (InterlockedCompareExchange(&g_notice_shown, 1, 0) != 0) return 0;
     snprintf(g_notice_text, sizeof g_notice_text, "%s", text);
     HANDLE t = CreateThread(NULL, 0, notice_dialog, NULL, 0, NULL);
     if (t) CloseHandle(t);
+    return 1;
 }
 
 /* Returns non-zero when something else has the frame loop. `installed` says whether this

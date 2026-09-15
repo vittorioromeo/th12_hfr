@@ -235,6 +235,36 @@ The patch detects the ones it knows and tells you; it cannot detect everything. 
 looks wrong, try the game with only this patch installed. Translation patches are a separate
 case — see below.
 
+### Rotation and layout wrappers (THRotator)
+
+**THRotator and this patch work together** on TH10–13. They divide the job rather than share
+it: THRotator owns the picture — the render target, the rotation, the HUD layout, the window
+and the presentation — and this patch owns everything upstream of that, which is the frame
+rate and its pacing, sub-stepping, interpolation, dimming, replays and input.
+
+Install both as each normally wants; `d3d9.dll` and `dinput8.dll` do not collide, so the game
+loads them both. This patch recognises THRotator when it starts and steps out of the picture
+by itself. The log says so, in one block listing what each side is doing.
+
+What this patch stops doing in that mode: scaling mode, upscaling filters, sharpening,
+internal resolution, texture upscaling, window sizing and borderless fullscreen. THRotator is
+doing its own version of all of those, in its own coordinate system, and two programs
+composing one image is how you get a picture nobody can explain. Configure them in THRotator.
+
+`external_renderer` under `[video]` decides this: `-1` (the default) recognises it,
+`1` forces the same treatment for another renderer this patch does not know by name, and `0`
+keeps composing the picture here.
+
+**F11 works here too.** Drawing it over someone else's composed image needs a scene of this
+patch's own, and with a wrapper in the way the call that closes that scene is the wrapper's
+compositor — which would draw its picture over the menu. This patch gets past that by drawing
+through the device underneath the wrapper, so the menu lands on the presented image, in screen
+space, the right way up. Rotating and resizing are handled: the surface is picked up again
+after every device reset, which is what THRotator does each time it turns the picture.
+
+Confirmed on TH12 with THRotator 2.1.0 at 360 Hz. If the menu ever does not appear, the log
+says which of the two paths it took, and the INI is read normally either way.
+
 ### Translation patches (thcrap)
 
 **thcrap works alongside this patch**, on Steam and standalone copies of TH10–13 alike. The two

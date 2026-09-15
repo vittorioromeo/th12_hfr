@@ -27,6 +27,7 @@ static void read_config(void) {
     cfg.debug = GetPrivateProfileIntA("hfr", "debug", 0, ini); g_log_lazy = cfg.debug >= 3;
     cfg.subtick_input = GetPrivateProfileIntA("hfr", "subtick_input", 1, ini);
     cfg.d3d9ex = GetPrivateProfileIntA("hfr", "d3d9ex", 1, ini);
+    cfg.external_renderer = GetPrivateProfileIntA("video", "external_renderer", -1, ini);
     cfg.max_frame_latency = GetPrivateProfileIntA("hfr", "max_frame_latency", 1, ini);
     cfg.flipex = GetPrivateProfileIntA("hfr", "flipex", 0, ini);
     cfg.scaling = GetPrivateProfileIntA("video", "scaling", 1, ini);
@@ -159,8 +160,8 @@ BOOL WINAPI DllMain(HINSTANCE h, DWORD reason, LPVOID res) {
         if (cfg.log) { char path[MAX_PATH]; GetModuleFileNameA(NULL, path, MAX_PATH); char* p = strrchr(path, '\\'); if (p) strcpy(p + 1, "touhou_hfr.log"); g_log = fopen(path, "w"); }
         LOG("Touhou HFR v0.5.2-test loading; fps=%d vsync=%d substep=%d subtick_input=%d d3d9ex=%d max_frame_latency=%d flipex=%d enemy_interp=%d",
             cfg.fps, cfg.vsync, cfg.substep, cfg.subtick_input, cfg.d3d9ex, cfg.max_frame_latency, cfg.flipex, cfg.enemy_interp);
-        LOG("video: scaling=%d filter=%s resizable=%d window_scale=%d snap_aspect=%d fullscreen_mode=%d internal_scale=%d texture_scale=%d (%s) dim=%d/%d/%d/%d/%d sharpen=%s/%d cursor=%d",
-            cfg.scaling, cfg.filter_name, cfg.resizable, cfg.window_scale, cfg.snap_aspect, cfg.fullscreen_mode, cfg.internal_scale, cfg.texture_scale, cfg.texture_filter_name, cfg.dim[0], cfg.dim[1], cfg.dim[2], cfg.dim[3], cfg.dim[4], cfg.sharpen_name, cfg.sharpen_strength, cfg.cursor);
+        LOG("video: scaling=%d filter=%s resizable=%d window_scale=%d snap_aspect=%d fullscreen_mode=%d internal_scale=%d texture_scale=%d (%s) dim=%d/%d/%d/%d/%d sharpen=%s/%d cursor=%d external_renderer=%d",
+            cfg.scaling, cfg.filter_name, cfg.resizable, cfg.window_scale, cfg.snap_aspect, cfg.fullscreen_mode, cfg.internal_scale, cfg.texture_scale, cfg.texture_filter_name, cfg.dim[0], cfg.dim[1], cfg.dim[2], cfg.dim[3], cfg.dim[4], cfg.sharpen_name, cfg.sharpen_strength, cfg.cursor, cfg.external_renderer);
         int installed = g_game && install();
         /* Armed whether or not that worked: it is how a wrapped executable is identified at
            all, and how the imports are taken back from a patch that arrives later. */

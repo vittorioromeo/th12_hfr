@@ -80,6 +80,7 @@ static void fill_mode_ex(D3DPRESENT_PARAMETERS* pp, D3DDISPLAYMODEEX* m) {
     m->RefreshRate = pp->FullScreen_RefreshRateInHz; m->Format = pp->BackBufferFormat; m->ScanLineOrdering = D3DSCANLINEORDERING_PROGRESSIVE;
 }
 static char g_wrapper_path[MAX_PATH];   /* the non-system d3d9.dll presenting this game, if any */
+static int g_ext_features_lost;         /* it is doing something the user had asked this patch for */
 
 /* A d3d9 wrapper -- PivotDX9 and friends -- is not a conflict the way vpatch is: the patch
    installs, the game runs, the filters work. It only takes the last step, placing the image
@@ -89,6 +90,25 @@ static char g_wrapper_path[MAX_PATH];   /* the non-system d3d9.dll presenting th
    not be told off about a file they installed on purpose. video.warn_wrapper=0 silences it. */
 static void warn_if_wrapper_presents(void) {
     if (!cfg.warn_wrapper || g_own_present || cfg.flipex || cfg.own_present == 0) return;   /* asked for in the INI: no warning */
+    /* A renderer that composes the picture is a different conversation from a wrapper that
+       only places it in the window. Nothing here is broken and nothing wants renaming -- the
+       two patches have divided the work -- so say which half went where and stop. */
+    if (external_mode()) {
+        if (!g_ext_features_lost) { LOG("external renderer: no setting in use depends on the picture being ours"); return; }
+        char text[900];
+        snprintf(text, sizeof text,
+            "Another renderer is composing this game's picture:\n\n%s\n\n"
+            "Touhou HFR has handed it the picture and kept the rest. The high frame rate, the "
+            "smoothing, sub-stepping, dimming, replays and the F11 menu all still work.\n\n"
+            "What that renderer is doing instead of Touhou HFR: scaling mode, upscaling "
+            "filters, sharpening, internal resolution, texture upscaling, window sizing and "
+            "borderless fullscreen. Configure those in its own settings.\n\n"
+            "This is not an error -- nothing needs renaming or moving. Set warn_wrapper=0 "
+            "under [video] in the INI to stop showing this.", g_wrapper_path[0] ? g_wrapper_path : "(a renderer in this process)");
+        if (show_notice(text))
+            LOG("warning shown: the picture belongs to another renderer, so this patch's video settings are inert");
+        return;
+    }
     if (cfg.scaling == SCALE_STRETCH && !cfg.fullscreen_mode) {
         LOG("presentation is not ours, but no setting in use depends on it");
         return;
@@ -111,11 +131,12 @@ static void warn_if_wrapper_presents(void) {
             "take effect -- the game will fill the window. Filters, resizing and the menu still "
             "work. touhou_hfr.log says what failed.\n\n"
             "Set warn_wrapper=0 under [video] in the INI to stop showing this.");
-    LOG("warning shown: presentation is not ours, so scaling and borderless fullscreen are inert");
-    show_notice(text);
+    if (show_notice(text))
+        LOG("warning shown: presentation is not ours, so scaling and borderless fullscreen are inert");
 }
 
 static void texscale_init(IDirect3DDevice9* dev); static void dim_init(IDirect3DDevice9* dev);
+static void enter_external_renderer(const char* why);
 static void after_device(IDirect3DDevice9* dev) {
     dim_init(dev);
     warn_if_wrapper_presents();    /* g_own_present is settled by now, however it turned out */
@@ -351,6 +372,8 @@ static HRESULT __stdcall hook_CreateDevice(IDirect3D9* d3d, UINT adapter, D3DDEV
         patch_vtable(vt, 16, (void*)hook_Reset, (void**)&orig_Reset);
         patch_vtable(vt, 17, (void*)hook_Present, (void**)&orig_Present);
         patch_vtable(vt, 18, (void*)hook_GetBackBuffer, (void**)&orig_GetBackBuffer);
+        /* Only in external mode, and only after the substitution test below has settled it:
+           see external_overlay. Nothing else here needs EndScene. */
         if (g_using_ex || cfg.texture_scale > 1)
             patch_vtable(vt, 23, (void*)hook_CreateTexture, (void**)&orig_CreateTexture);
         if (cfg.texture_scale > 1) patch_vtable(vt, 65, (void*)hook_SetTexture, (void**)&orig_SetTexture);
@@ -373,6 +396,18 @@ static HRESULT __stdcall hook_CreateDevice(IDirect3D9* d3d, UINT adapter, D3DDEV
             LOG("internal resolution x%d: the game draws at %dx%d", g_iscale, g_native_w, g_native_h);
         }
         window_attach(g_device_window);
+        /* A wrapper this patch did not recognise, doing the one thing it cannot share. Two
+           compositors on one surface is the worst of the three outcomes, so hand the picture
+           over anyway and say what to set to get it right from the start next time. */
+        if (g_wrapper_path[0] && !g_external && cfg.external_renderer != 0 && external_detect_substitution(dev)) {
+            LOG("this d3d9.dll gives the game a render target of its own, the way this patch does:");
+            LOG("  it composes the picture itself, so the picture is now its business.");
+            LOG("  It was handed a %ux%u presentation to match the window rather than the game's own"
+                " size; set external_renderer=1 in the INI so it is told the truth from the start.",
+                use.BackBufferWidth, use.BackBufferHeight);
+            enter_external_renderer("it substitutes the game's render target");
+        }
+        if (g_external) patch_vtable(vt, 42, (void*)hook_EndScene, (void**)&orig_EndScene);
         scaler_create(dev, &use, g_device_window);
         if (!hfr_menu_init(dev, g_device_window)) LOG("menu: unavailable");
         else LOG("menu: ready (open with virtual key 0x%02x)", cfg.menu_key);
@@ -387,7 +422,29 @@ static HRESULT __stdcall hook_CreateDevice(IDirect3D9* d3d, UINT adapter, D3DDEV
    chain and resize it with Reset -- which in turn means Direct3D 9Ex has to go, because 9Ex
    forces the game's textures into the default pool where a reset destroys them and the game
    has no code to reload them. */
+/* Hand the picture over: everything downstream of the simulation belongs to the other
+   renderer now. Announced in one place, because a user reading the log needs to see the
+   whole trade in one go rather than inferring it from five settings quietly changing. */
+static void enter_external_renderer(const char* why) {
+    /* Worth a notice only if something the user asked for is being given up. Someone who
+       stretches to fill with no filter and no upscaling loses nothing here. */
+    g_ext_features_lost = cfg.scaling != SCALE_STRETCH || cfg.fullscreen_mode ||
+                          cfg.filter != FILTER_NEAREST || cfg.sharpen >= 0 ||
+                          cfg.internal_scale > 1 || cfg.texture_scale > 1 || cfg.window_scale;
+    g_external = 1;
+    g_want_own_present = 0;
+    cfg.d3d9ex = 0;
+    cfg.texture_scale = 0;
+    cfg.internal_scale = 1;
+    LOG("external renderer (%s): it owns the picture, this patch owns the simulation", why);
+    LOG("  kept: the frame rate and its pacing, sub-stepping, interpolation, dimming, replay,");
+    LOG("        input, and the F11 menu drawn on top of what it presents");
+    LOG("  given up: scaling modes, filters, sharpening, internal resolution, texture");
+    LOG("        upscaling, window sizing and borderless fullscreen -- that renderer is");
+    LOG("        doing its own version of those, in its own coordinate system");
+}
 static void detect_d3d9_wrapper(void) {
+    if (cfg.external_renderer > 0) { enter_external_renderer("external_renderer=1"); return; }
     if (cfg.flipex) {                               /* flip model exists only on the device's own chain */
         g_want_own_present = 0;
         LOG("presentation through the game's own chain in flip model (flipex)");
@@ -404,12 +461,31 @@ static void detect_d3d9_wrapper(void) {
     if (!m || !GetModuleFileNameA(m, module, MAX_PATH) || !GetSystemDirectoryA(system, MAX_PATH)) return;
     size_t n = strlen(system);
     if (n && _strnicmp(module, system, n) == 0) return;      /* the real one */
-    g_want_own_present = 0;
     snprintf(g_wrapper_path, sizeof g_wrapper_path, "%s", module);
+    /* A d3d9.dll of someone else's is not one kind of thing. Some of them only change how
+       the finished image reaches the window, and this patch can still compose it; a rotation
+       wrapper redirects the game's render target and composes the image itself, which is the
+       same job this patch does, on the same surface. There is no way to tell which from the
+       file, and guessing wrong either way is worse than the default: assume the renderer is
+       doing the more thorough thing, because a patch that quietly fights it produces a
+       picture nobody can explain. external_renderer=0 says otherwise. */
+    /* THRotator publishes a function for exactly this question. Using it rather than the
+       file name means no guessing, and the version it returns is worth having in the log. */
+    typedef uint32_t (*ThrotatorVersionFn)(char*, uint32_t);
+    ThrotatorVersionFn version = (ThrotatorVersionFn)GetProcAddress(m, "THRotator_GetVersionString");
+    if (version && cfg.external_renderer != 0) {
+        char v[64] = "";
+        if (version(v, (uint32_t)sizeof v) == 0 || !v[0]) snprintf(v, sizeof v, "version unknown");
+        char why[MAX_PATH + 96];
+        snprintf(why, sizeof why, "THRotator %s", v);
+        enter_external_renderer(why);
+        return;
+    }
+    g_want_own_present = 0;
     LOG("d3d9 wrapper in use (%s): presenting through the game's own chain", module);
     LOG("  the wrapper decides how the image reaches the window, so the scaling modes and");
     LOG("  borderless fullscreen cannot take effect. Filters and the menu still work.");
-    LOG("  Rename that d3d9.dll to use them -- this patch replaces what it does.");
+    LOG("  external_renderer=0 was set, so this patch keeps composing the picture.");
     if (cfg.d3d9ex) {
         cfg.d3d9ex = 0;
         LOG("Direct3D 9Ex disabled: resizing needs Reset, and a reset with 9Ex would lose every game texture");

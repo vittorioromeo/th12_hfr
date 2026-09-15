@@ -46,6 +46,8 @@ static struct {
     int debug;
     int subtick_input;      /* poll the keyboard/joystick every tick and feed movement/focus to the player */
     int d3d9ex;             /* create the device through Direct3D9Ex */
+    int external_renderer;  /* -1 auto, 0 never, 1 always: leave the picture to another
+                               renderer in the process (THRotator and the like) */
     int max_frame_latency;  /* IDirect3DDevice9Ex::SetMaximumFrameLatency (0 = leave default) */
     int flipex;             /* windowed: D3DSWAPEFFECT_FLIPEX (experimental) */
     /* output scaling */

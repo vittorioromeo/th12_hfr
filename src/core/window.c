@@ -62,6 +62,7 @@ static void set_client_size(HWND h, LONG style, int cw, int ch) {
    display means a mode switch and the monitor's own upscaler. Give it a borderless window
    covering the monitor instead; the scaler letterboxes into it. */
 static int window_override_pp(D3DPRESENT_PARAMETERS* out, HWND hwnd) {
+    if (external_mode()) return 0;   /* the renderer's request, not ours to rewrite */
     if (cfg.fullscreen_mode != FS_BORDERLESS || out->Windowed) return 0;
     RECT m; monitor_rect(hwnd ? hwnd : g_wnd, &m);
     if (m.right - m.left < 1 || m.bottom - m.top < 1) return 0;
@@ -132,6 +133,15 @@ static LRESULT CALLBACK hfr_wndproc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     LRESULT handled = 0;
     if (msg == WM_MOUSEMOVE || (msg >= WM_LBUTTONDOWN && msg <= WM_MBUTTONDBLCLK) || msg == WM_MOUSEWHEEL) cursor_mouse_message();
     if (hfr_menu_wndproc(h, msg, wp, lp, &handled)) return handled;
+    /* With another renderer composing the picture, every message below this line is about a
+       window this patch no longer arranges. Passing them through is the point: the size it
+       is given, what maximise means, how small it may be dragged, are all that renderer's
+       to answer now. Whether the window is minimised is still worth knowing -- there is no
+       frame to prepare either way. */
+    if (external_mode()) {
+        if (msg == WM_SIZE) g_minimized = (wp == SIZE_MINIMIZED);
+        return g_orig_wndproc ? CallWindowProcA(g_orig_wndproc, h, msg, wp, lp) : DefWindowProcA(h, msg, wp, lp);
+    }
     /* F10 is a system key: left to DefWindowProc it puts the window into keyboard menu mode,
        which swallows the next key and stalls the game. When it is our size-cycle key on a
        game without its own, it goes no further than here. */
@@ -291,6 +301,11 @@ static void window_cycle_size(void) {
    unless something (usually the game's own reset path) has changed them. */
 static void window_enforce(void) {
     if (!g_win_ready || !g_wnd || g_minimized) return;
+    /* The other renderer sizes and styles this window to suit the picture it is composing,
+       often from its own saved presets. Adding a resize border, re-asserting a borderless
+       rectangle or applying a startup scale on top of that is two programs pulling at the
+       same window once a frame. */
+    if (external_mode()) return;
     LONG style = GetWindowLongA(g_wnd, GWL_STYLE);
     int game_fullscreen = !(style & WS_CAPTION) && (style & WS_POPUP) && !g_hfr_fullscreen;
     int want_borderless = g_hfr_fullscreen || (cfg.fullscreen_mode == FS_BORDERLESS && game_fullscreen);
@@ -362,7 +377,7 @@ static void poll_menu_key(void) {
     }
     /* The size cycle key, for a game that has no such key of its own. Same level-based press
        detection as the menu key, polled only: nothing else needs to agree about it. */
-    if (cfg.size_cycle_key && g_game && !g_game->native_size_cycle) {
+    if (cfg.size_cycle_key && g_game && !g_game->native_size_cycle && !external_mode()) {
         int cheld = (GetAsyncKeyState(cfg.size_cycle_key) & 0x8000) != 0;
         if (menu_key_press(&g_cycle_key, cheld, focus)) window_cycle_size();
     }

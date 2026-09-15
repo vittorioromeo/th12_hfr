@@ -10,6 +10,7 @@ The other documents, and why this is not one of them:
 | `ARCHITECTURE.md` | where the code lives and how the pieces fit |
 | `ADDING_A_GAME.md` | the procedure for a new game |
 | `RESOLUTION.md` | how the scaling, filter and menu machinery works, in detail |
+| [MOD_COMPATIBILITY.md](MOD_COMPATIBILITY.md) | THRotator/thprac source audit, confirmed hook conflicts, and proposed compatibility work |
 | `DEVNOTES.md`, `TH11_DEVNOTES.md` | historical, from the original per-game builds. Left alone: they describe a build that no longer exists, and rewriting them would destroy the record of how the sub-stepping design was arrived at. |
 
 This file is the findings — the reasoning, the wrong turns, and the things that will bite again.
@@ -586,6 +587,53 @@ purpose. Offering a scaling mode that silently does nothing is worse than not of
 Both notices share one piece of dialog machinery and show at most one box a run.
 
 ---
+
+### 5c. Ending your own scene is someone else's compositor
+
+A rotation wrapper such as THRotator is not a rival for the frame loop; it is a renderer. It
+replaces `d3d9.dll`, answers `GetBackBuffer` with a target of its own so the game draws there,
+and in `EndScene` composes that target onto the real back buffer — rotated, HUD rearranged —
+before the game ever calls `Present`. That is the same trick this patch plays on the same
+surface, which is the whole conflict: whichever of the two answers `GetBackBuffer` last is the
+one the game draws on, and the other composes an empty surface.
+
+So `external_renderer` mode hands the picture over completely (`g_scaler_enabled = 0`) and
+keeps only what is upstream of composition. The part worth writing down is the menu.
+
+Drawing an overlay on someone else's composed image needs a scene. Three placements were tried
+against a stand-in wrapper — inside the Present hook, inside an `EndScene` hook, and with no
+scene at all — and all three *succeeded*: the right surface (confirmed by pointer, against the
+stand-in's own), `SetRenderTarget` returning `D3D_OK`, `Clear` returning `D3D_OK`. None of them
+appeared on screen.
+
+The reason is that with a wrapper installed, `device->EndScene` **is** the compositor. Opening
+a scene to draw the menu and then closing it runs the wrapper's composition over the menu that
+was just drawn. It is not a race, a stale surface or a lost render target — the drawing is real
+and is then painted over, every frame, by the call used to finish it. Worse, if the patch's own
+`EndScene` hook is installed, closing the scene re-enters that hook and recurses.
+
+The way past it is the device underneath. A wrapper wraps the device but has no reason to wrap
+the swap chain, so `GetSwapChain(0)->GetDevice()` hands back the real device, whose
+`BeginScene`/`EndScene` compose nothing. The overlay is drawn through that, from an `EndScene`
+hook, after the compositor has run. When the chain hands back the same object the patch hooked
+— which is what a stand-in that patches a vtable instead of wrapping looks like — there is no
+safe way to close a scene, and the menu says so rather than drawing nothing in silence.
+
+Lesson, and it generalises: when every call in a sequence returns success and the result is
+still invisible, stop checking the calls and ask what runs *after* them. And a stand-in built
+to test a class of program tests the parts it actually imitates: this one reproduced the render
+target substitution and the compositor faithfully enough to find a real bug, and not the object
+wrapping — so the menu path stayed unverified until THRotator 2.1.0 itself ran it. It works:
+TH12 at 360 Hz, menu on the presented surface, surface re-acquired across every device reset,
+including the rotation between 1280x960 and 960x1280.
+
+One more thing that only a real install shows. `after_device` runs again after every successful
+reset, and a rotation wrapper resets whenever it turns the picture — so anything that belongs
+there once a run has to say so once a run. The wrapper notice was already guarded by
+`show_notice`, which shows at most one box per process, but the log line sat *outside* that
+guard and claimed a warning had been shown six times in one session. A log that says something
+happened when it did not is worse than no log line at all, because it is the thing you reason
+from later; `show_notice` now reports whether it spoke, and only then is it written down.
 
 ## 6. Multi-game
 
