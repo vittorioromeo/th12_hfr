@@ -7,10 +7,14 @@ static int __thiscall fake_sub(void* arg) {
     return 1;
 }
 /* These tests drive the runner through the profile's own globals, which is the point: the
-   macros that read them are part of what is under test. A game whose simulation is described
-   but whose structures are not yet -- TH14 today -- has zeroes there, and writing through a
-   zero is a page fault rather than a test result. Give those fields somewhere real to point,
-   so the runner is still exercised and a described game still exercises its own addresses. */
+   macros that read them are part of what is under test. A game whose structures are not
+   described yet has zeroes there, so the fields get somewhere real to point and the described
+   path is still exercised end to end.
+
+   This is a fixture convenience and nothing more. It is emphatically NOT the answer to "what
+   happens when a profile leaves an address out" -- that is test_runner_undescribed() below,
+   and handing the fixture an address instead of writing that test is how TH14 shipped a build
+   that page-faulted on its first tick. */
 static uint8_t test_missing_globals[7][8];
 static void test_fill_missing(struct GameProfile* g) {
     uintptr_t* fields[] = { &g->addr.speed, &g->addr.player, &g->addr.enemy_manager, &g->addr.game_manager,
@@ -58,6 +62,41 @@ static void test_runner(void) {
     memset((void*)game.addr.crit, 0, sizeof(CRITICAL_SECTION));   /* keep the fixture dump comparable between runs */
     G_UPDATE_RUNNER=NULL;*(void**)game.addr.game_manager=NULL;g_game=real;g_stop_node=NULL;g_major=1;g_dt=1;
     puts("PASS: shared runner boundary/minor/duplicate ticks, input edges, list stop and immediate pause");
+}
+
+/* A profile that describes the scheduler and nothing else. Every optional address is zero and
+   the ini has both sub-step switches on, which is exactly the state TH14 shipped in: the pass
+   must run, take its minor ticks, and touch none of them. The crash this exists for was
+   set_factor writing the game speed through a null addr.speed, on the first tick, inside the
+   first call the frame function makes. */
+static int test_bare_calls;
+static int __thiscall fake_bare(void* arg) { ++test_bare_calls; return 1; }
+static void test_runner_undescribed(void) {
+    const struct GameProfile* real=g_game;
+    struct GameProfile game=*real;
+    game.classes=NULL;game.class_count=0;game.place_enemy=NULL;
+    game.addr.speed=0;game.addr.player=0;game.addr.player_callback=0;
+    game.addr.enemy_manager=0;game.addr.anm_manager=0;
+    game.addr.game_manager=0;game.addr.gm_callback=0;
+    game.addr.game_input=0;game.addr.game_pressed=0;game.addr.game_released=0;
+    game.addr.poll_input=0;game.addr.record_callback=0;game.addr.playback_callback=0;
+    g_game=&game;
+    InitializeCriticalSection((LPCRITICAL_SECTION)game.addr.crit);
+    uint8_t runner[0x60]={0};
+    struct UpdateFunc a={0},b={0};
+    a.flags=b.flags=2;a.func=fake_bare;b.func=fake_bare;
+    struct ListNode second={&b,NULL,NULL},first={&a,&second,NULL};
+    *(struct ListNode**)(runner+0x18)=&first;G_UPDATE_RUNNER=runner;
+    G_MISC_FLAGS=0;G_REPLAY_MANAGER=NULL;
+    cfg.substep=1;cfg.subtick_input=1;g_skip_update=0;g_dt=0.25f;g_logical=1;
+    /* A boundary tick runs both nodes; every callback is unclassified, so both are MODE_FRAME. */
+    g_major=1;test_bare_calls=0;assert(hfr_runner(runner)==2 && test_bare_calls==2);
+    /* And a minor tick runs none of them, and must reach the end rather than a null write. */
+    g_major=0;test_bare_calls=0;assert(hfr_runner(runner)==2 && test_bare_calls==0);
+    DeleteCriticalSection((LPCRITICAL_SECTION)game.addr.crit);
+    memset((void*)game.addr.crit,0,sizeof(CRITICAL_SECTION));
+    G_UPDATE_RUNNER=NULL;g_game=real;g_major=1;g_dt=1;g_stop_node=NULL;
+    puts("PASS: a profile that describes only the scheduler survives a pass and writes through none of the addresses it lacks");
 }
 
 /* ---------------------------------------------------------------- the runner's ending

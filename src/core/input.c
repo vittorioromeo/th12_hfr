@@ -105,7 +105,12 @@ static void replay_stage_start(uint8_t* rm) {
     LOG("stage %d first frame (%s): sub-step sequence restarted%s", stage, playing ? "playback" : "recording",
         (playing && g_stream_stage >= 0 && g_play[g_stream_stage].n) ? ", per-tick input available" : "");
 }
-static int subtick_active(uint8_t* rm) { return cfg.subtick_input && cfg.substep && g_logic_rate != 60 && rm && g_frame_active && g_stream_stage >= 0; }
+/* ... and the same for sub-tick input: it reads the game's input word and calls its polling
+   routine, so a profile without those addresses cannot have it however the ini is written. */
+static int subtick_active(uint8_t* rm) {
+    return cfg.subtick_input && cfg.substep && g_logic_rate != 60 && rm && g_frame_active && g_stream_stage >= 0
+        && g_game->addr.poll_input && g_game->addr.game_input;
+}
 /* start of a non-boundary tick: feed the player fresh (or recorded) movement/focus bits */
 static void subtick_input_begin(void) {
     uint8_t* rm = G_REPLAY_MANAGER;

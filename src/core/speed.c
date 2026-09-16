@@ -1,6 +1,12 @@
 /* ------------------------------------------------------------------ game speed handling */
+/* The game speed the simulation reads. A profile that has not described where it lives has
+   nothing to scale and nothing that can be sub-stepped, so this is where that degrades: the
+   factor is still tracked, and the write -- through a null pointer -- is not made. Leaving it
+   unguarded is a page fault on the first tick of a half-described game, which is what TH14 hit
+   the first time it ran. */
 static inline void set_factor(float f) {
     g_factor = f;
+    if (!g_game->addr.speed) return;
     G_GAME_SPEED = g_logical * f;
 }
 

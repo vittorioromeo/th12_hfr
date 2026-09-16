@@ -80,7 +80,36 @@ conflict §5e of the runtime notes is about, and it is the reason `runner_ret` i
 from the first commit rather than after someone reports a practice menu that does not open.
 Not yet verified against a running game.
 
-## 5. What a trace still has to supply
+## 5. The first run: a null write in set_factor
+
+The first build faulted before the title screen, at `hfr_runner+…`, `movss [edx],xmm0` with
+EDX zero, reached from the frame function's `call 0x401280` at `0x46a99e`. That is
+`set_factor` storing the game speed through `addr.speed`, which this profile does not describe
+yet, once per node per tick.
+
+The harness had already caught it — and it was silenced. `test_runner` drives the runner
+through the profile's own globals, faulted on the same instruction for the same reason, and
+the response was to hand the fixture a piece of memory to point at instead of asking why a
+described game never hit it. A fixture convenience was written where a guard belonged, and the
+signal it was giving was thrown away. `test_runner_undescribed()` is the test that should have
+been written: every optional address zeroed, both sub-step switches on, a boundary tick and a
+minor tick, and it fails on the instruction above if the guard is removed.
+
+What the guards do now:
+
+- `set_factor` keeps tracking the factor and does not make the write when `addr.speed` is zero.
+- `subtick_active` additionally requires `poll_input` and `game_input`, which it calls and
+  writes through.
+- `install()` switches off what the profile cannot support rather than leaving it on and
+  inert: with no class table, `substep` goes off, so the logic rate stays at 60 rather than
+  leaving it and taking minor ticks no system can use; with no input path, `subtick_input`
+  goes off. The log said `substep=1` and `logic rate: 360 ticks/s` on a game where nothing
+  could be sub-stepped, which is a claim the patch should not make about itself.
+
+The general rule ADDING_A_GAME.md already states -- "anything a profile leaves out degrades
+rather than breaks" -- was true of the install path and not of the run path. It is now.
+
+## 6. What a trace still has to supply
 
 The UpdateFunc class table and the dimming rules cannot be read out of the executable. Both
 come from the patch's own log while a stage is running: the registered update list names every

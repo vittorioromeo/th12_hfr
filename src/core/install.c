@@ -96,8 +96,19 @@ static int install(void) {
            mis-stepped in that state -- node_mode answers MODE_FRAME for a callback it does
            not know -- but the frame rate is the only thing on offer, and saying so here is
            cheaper than someone wondering why the sub-step switches do nothing. */
-        if (!g_class_count)
+        /* ... and the settings that depend on them are switched off rather than left on and
+           inert. An inert setting is not harmless: with substep on, the logic rate leaves 60
+           and the runner starts taking minor ticks that no system can use, and the log claims
+           a sub-stepping that is not happening. Turn them off here, where the profile is
+           known, so the rate, the log and the menu all say the same thing. */
+        if (!g_class_count) {
+            cfg.substep = 0;
             LOG("this game's systems are not classified yet: the frame rate is raised, the simulation stays at 60 Hz and nothing is sub-stepped.");
+        }
+        if (!g_game->addr.poll_input || !g_game->addr.game_input) {
+            if (cfg.subtick_input) LOG("this game's input path is not described: sub-tick input is off.");
+            cfg.subtick_input = 0;
+        }
     } else {
         LOG("this game's simulation is not described yet: no high frame rate or sub-stepping.");
         LOG("  scaling, filters, window resizing and the menu do not depend on it and are active.");
