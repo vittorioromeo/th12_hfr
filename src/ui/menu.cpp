@@ -394,13 +394,24 @@ void draw_timing_section(void) {
     help("How often the game's logic runs. Auto follows the display, which is\n"
          "what you want unless you are comparing against stock 60 Hz.");
 
+    bool can_substep = hfr_ui_get(UI_SUBSTEP_AVAILABLE) != 0;
+    ImGui::BeginDisabled(!can_substep);
     toggle("Sub-step gameplay", UI_SUBSTEP);
-    help("Off: stock 60 Hz logic, presented at the display rate. On: bullets,\n"
-         "the player, lasers, items and sprites advance a fraction of a frame\n"
-         "at a time, which is what makes motion smooth at high refresh rates.");
+    ImGui::EndDisabled();
+    help(can_substep
+         ? "Off: stock 60 Hz logic, presented at the display rate. On: bullets,\n"
+           "the player, lasers, items and sprites advance a fraction of a frame\n"
+           "at a time, which is what makes motion smooth at high refresh rates."
+         : "This game's systems are not classified yet, so there is nothing to\n"
+           "sub-step. The frame rate above still applies.");
+    bool can_subtick = hfr_ui_get(UI_SUBTICK_AVAILABLE) != 0;
+    ImGui::BeginDisabled(!can_subtick);
     toggle("Sub-tick input", UI_SUBTICK_INPUT);
-    help("Poll movement and focus every tick instead of once per frame.\n"
-         "Recorded into replays and reproduced on playback.");
+    ImGui::EndDisabled();
+    help(can_subtick
+         ? "Poll movement and focus every tick instead of once per frame.\n"
+           "Recorded into replays and reproduced on playback."
+         : "This game's input path is not described yet.");
     toggle("Interpolate enemy sprites", UI_ENEMY_INTERP);
     help("Enemy scripts run at 60 Hz; this draws their sprites between those\n"
          "positions so they move as smoothly as everything else.");

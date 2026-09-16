@@ -36,6 +36,14 @@ int hfr_ui_get(int id) {
     case UI_DIM_BACKGROUND: case UI_DIM_ITEMS: case UI_DIM_EFFECTS: case UI_DIM_SPECIAL: case UI_DIM_PLAYER_SHOTS:
         return cfg.dim[id - UI_DIM_BACKGROUND];
     case UI_DIM_AVAILABLE:      return g_dim_available && g_game && g_game->draw.world_prio > 0;
+    /* Sub-stepping is not a switch, it is a set of described systems: with none of them
+       classified there is nothing to step a fraction of a frame, and turning it on only makes
+       the runner take minor ticks on which every node is skipped -- the game then draws from
+       state its own update never advanced. Same for sub-tick input and the two addresses it
+       reads and writes. Both are read-only answers about the profile, so the menu greys them
+       out and the setters below refuse them however they are asked. */
+    case UI_SUBSTEP_AVAILABLE:  return g_game && g_class_count != 0;
+    case UI_SUBTICK_AVAILABLE:  return g_game && g_game->addr.poll_input && g_game->addr.game_input;
     case UI_SHARPEN:            return cfg.sharpen;
     case UI_SHARPEN_STRENGTH:   return cfg.sharpen_strength;
     case UI_CURSOR:             return cfg.cursor;
@@ -66,8 +74,8 @@ void hfr_ui_set(int id, int value) {
     case UI_FULLSCREEN_MODE: cfg.fullscreen_mode = !!value; break;
     case UI_VSYNC:           cfg.vsync = !!value; g_pending_chain = 1; break;
     case UI_FPS:             cfg.fps = value < 0 ? 0 : (value > 1000 ? 1000 : value); g_pending_rate = 1; break;
-    case UI_SUBSTEP:         cfg.substep = !!value; g_pending_rate = 1; break;
-    case UI_SUBTICK_INPUT:   cfg.subtick_input = !!value; break;
+    case UI_SUBSTEP:         cfg.substep = !!value && hfr_ui_get(UI_SUBSTEP_AVAILABLE); g_pending_rate = 1; break;
+    case UI_SUBTICK_INPUT:   cfg.subtick_input = !!value && hfr_ui_get(UI_SUBTICK_AVAILABLE); break;
     case UI_ENEMY_INTERP:    cfg.enemy_interp = !!value; break;
     case UI_DEBUG:           cfg.debug = !!value; break;
     case UI_DIM_BACKGROUND: case UI_DIM_ITEMS: case UI_DIM_EFFECTS: case UI_DIM_SPECIAL: case UI_DIM_PLAYER_SHOTS:

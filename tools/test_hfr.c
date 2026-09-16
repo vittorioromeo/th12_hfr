@@ -10,7 +10,15 @@
 static uint8_t test_fixture[0x200000] __attribute__((section(".fixture")));
 
 
+/* The scheduler is game-independent, but recompute_rate now asks the profile whether anything
+   can be sub-stepped at all -- correctly, since a rate above 60 is meaningless otherwise. So
+   give it a profile that says yes, and test the scheduler rather than the profile. */
+static const struct node_class test_schedule_classes[] = {{0x1000, MODE_SUB, "Fake"}};
 static void test_schedule(void) {
+    const struct GameProfile* schedule_real = g_game;
+    struct GameProfile schedule_game = *schedule_real;
+    schedule_game.classes = test_schedule_classes; schedule_game.class_count = 1;
+    g_game = &schedule_game;
     cfg.substep=1;
     for (int rate=60;rate<=1000;++rate) {
         set_logic_rate(rate);
@@ -39,6 +47,7 @@ static void test_schedule(void) {
     recompute_rate(360);
     assert(g_logic_rate==144 && g_tick==tick && g_units_acc==acc);
     g_replay_playing=0;g_replay_rate=0;
+    g_game = schedule_real;
     puts("PASS: scheduler at every integer rate 60..1000, cross-rate presentation, stage reset, stock mode");
 }
 static void test_replay_parser(void) {

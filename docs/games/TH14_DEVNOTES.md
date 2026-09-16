@@ -136,7 +136,33 @@ The test goes with it: `test_runner_undescribed` now also calls the catch-up tic
 five zeroed and asserts it declines, and asserts that a described game still has it. Removing
 the guard page-faults the harness, which was checked both times rather than assumed.
 
-## 7. What a trace still has to supply
+## 7. The third run: a switch the game could not honour
+
+The third build started, ran at 360 Hz, and then crashed inside `th14.exe` itself rather than
+in the patch. The log says why, two lines earlier: `menu: tick rate -> 360 (substep=1)`. The
+sub-step toggle was still there to be pressed.
+
+`install()` had turned `substep` off, but off is not the same as unavailable. With it back on
+the logic rate leaves 60 and the runner starts taking minor ticks -- and with no classified
+systems every node is `MODE_FRAME`, so a minor tick walks the whole list and calls none of it.
+Five presents out of six then draw from state the game's own update never advanced, and it is
+the game that faults, not us.
+
+So availability is now a property of the profile and not of the setting, the way it already was
+in the New Classic backend:
+
+- `UI_SUBSTEP_AVAILABLE` answers `class_count != 0` and `UI_SUBTICK_AVAILABLE` answers whether
+  `poll_input` and `game_input` are described. The menu greys both out and says why.
+- The setters refuse them anyway, so an ini, a replay's recorded settings or a stale value
+  cannot turn on what the profile cannot support.
+- `recompute_rate` will not leave 60 without classified systems, which is the last line: even
+  if something set the flag, the rate cannot follow.
+
+The lesson, and it is the same one three times in a row: **a half-described profile must make
+the features it cannot support unavailable, not merely switched off.** Anything reachable from
+the menu is reachable.
+
+## 8. What a trace still has to supply
 
 The UpdateFunc class table and the dimming rules cannot be read out of the executable. Both
 come from the patch's own log while a stage is running: the registered update list names every

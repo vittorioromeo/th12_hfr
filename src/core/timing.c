@@ -50,7 +50,11 @@ static void recompute_rate(int refresh) {
     if (refresh < 60) refresh = 60;
     if (refresh > 1000) refresh = 1000;
     g_refresh = refresh;
-    int want = cfg.substep ? (g_replay_playing ? (g_replay_rate ? g_replay_rate : 60) : refresh) : 60;
+    /* No classified systems, no sub-stepping, whatever the setting says: leaving 60 would
+       make the runner take minor ticks that skip every node, and the game would draw from
+       state its own update never ran. */
+    int substep = cfg.substep && g_class_count;
+    int want = substep ? (g_replay_playing ? (g_replay_rate ? g_replay_rate : 60) : refresh) : 60;
     if (want != g_logic_rate || g_tick == 0) set_logic_rate(want);
     else g_lacc = 0;
 }
