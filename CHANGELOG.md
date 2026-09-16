@@ -4,8 +4,14 @@ Newest first. Versions are the release archive names; `-test` means what it says
 Full release notes for each version are on the
 [releases page](https://github.com/vittorioromeo/th12_hfr/releases).
 
-## Unreleased
+## v0.5.4-test
 
+New Classic: sub-stepped projectiles behave, and the patch loads on Proton.
+
+- **New Classic loads under Proton.** The game resolved its DXGI factory from the system
+  library rather than from the proxy beside it, so the patch was never started -- no error,
+  just an ordinary 60 Hz game. The proxy now recognises that startup path as well as its own.
+  The override is still `WINEDLLOVERRIDES="dxgi=n,b" %command%`.
 - **New Classic: bullets no longer fly too far while they are appearing.** With `[fixed60]
   substep=1`, a bullet's spawn-in animation -- the brief drift outward before it starts
   travelling properly -- was given a full extra frame of full-speed motion every frame, so it
