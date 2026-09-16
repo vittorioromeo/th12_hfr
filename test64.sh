@@ -44,5 +44,9 @@ $CC -std=gnu11 -O2 -Wall -Wextra -static-libgcc tools/test_dxgi_proxy_start.c \
 for factory in CreateDXGIFactory CreateDXGIFactory1 CreateDXGIFactory2; do
     WINEDLLOVERRIDES="${WINEDLLOVERRIDES:+$WINEDLLOVERRIDES;}dxgi=n,b" \
         $RUN ./build/tests/proxy-start/test_proxy_start.exe "$factory"
+    WINEDLLOVERRIDES="${WINEDLLOVERRIDES:+$WINEDLLOVERRIDES;}dxgi=n,b" \
+        $RUN ./build/tests/proxy-start/test_proxy_start.exe "$factory" --system-factory
 done
+WINEDLLOVERRIDES="${WINEDLLOVERRIDES:+$WINEDLLOVERRIDES;}dxgi=n,b" \
+    $RUN ./build/tests/proxy-start/test_proxy_start.exe CreateDXGIFactory2 --unload
 python3 tools/test_fixed_profile.py "$1"

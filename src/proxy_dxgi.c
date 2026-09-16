@@ -26,6 +26,8 @@
  * proxy: it forwards all 57 of the real library's exports, and on the first factory call --
  * safely outside the loader lock, and long before the frame loop it is about to patch --
  * it loads touhou_hfr64.dll and starts the runtime.
+ * On Proton, a temporary observer on the EXE's GetProcAddress import also catches
+ * DxLib resolving a factory directly from the system DXGI module (see below).
  *
  * It is deliberately incurious. It does not know which game it is in, does not read the INI,
  * and does nothing at all if touhou_hfr64.dll is absent; the runtime checks the executable's
@@ -33,6 +35,7 @@
  */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <string.h>
 #include "dxgi_exports.h"
 
 /* Opt-in diagnostic build for failures before the runtime can create its own log.
@@ -41,7 +44,6 @@
 #ifdef HFR_PROXY_DIAGNOSTICS
 #include <stdio.h>
 #include <stdarg.h>
-#include <string.h>
 static char proxy_log_path[MAX_PATH];
 static void proxy_trace_init(HINSTANCE self) {
     DWORD saved = GetLastError();
@@ -102,8 +104,10 @@ DXGI_EXPORTS(DECLARE_EXPORT)
    answers a bare name with whatever module of that base name is already loaded, which here
    would be this file. Windows distinguishes the two by path -- the patch's own x86
    dinput8.dll proxy has resolved the system dinput8 this way since the first release -- but
-   a loader that does not (Wine's, today) would hand us ourselves, and every forwarded call
-   would then jump straight back into its own stub. So the answer is checked. If it is this
+   a loader that does not would hand us ourselves, and every forwarded call would then
+   jump straight back into its own stub. Wine 11 with native DXVK and the reported Proton
+   Experimental build do load two distinct modules; do not assume this guard explains a
+   Proton startup failure. The answer is still checked. If it is this
    module, nothing is resolved: every export keeps the stub that fails, which is a game that
    reports it cannot create a device rather than one that hangs in a loop. */
 static void load_real(HINSTANCE self) {
@@ -133,7 +137,9 @@ static void load_real(HINSTANCE self) {
    there would race the game to the frame loop. The factory call is neither: the game makes
    it while initialising Direct3D, on its own main thread, with nothing else running yet. */
 typedef DWORD (WINAPI *StartFn)(void*);
+static void disarm_factory_lookup(void);
 static void start_runtime(void) {
+    disarm_factory_lookup();
     static LONG once;
     if (InterlockedCompareExchange(&once, 1, 0)) return;
     char path[MAX_PATH];
@@ -185,12 +191,96 @@ static HRESULT WINAPI hfr_dxgi_factory2(UINT flags, REFIID riid, void** out) {
     start_runtime(); return ((Factory2)orig_factory2)(flags, riid, out);
 }
 
+/* Proton can load this proxy through D3D11's imports, then give DxLib the SYSTEM
+   DXGI handle for its later bare-name load. None of our exports is called in that
+   case. Observe only the EXE's GetProcAddress import until it resolves a real DXGI
+   factory. The resolved address and LastError are returned unchanged; other modules'
+   imports and DXGI's export table are untouched. Initialization still happens on
+   the game's startup thread, after LoadLibrary/GetProcAddress have returned from
+   the loader, before the game calls its factory. No worker thread or DllMain start.
+   Chain to the previous IAT value, including another mod's hook, and remove our
+   observation as soon as either startup path fires. */
+typedef FARPROC (WINAPI *LookupFn)(HMODULE, LPCSTR);
+static LookupFn previous_lookup;
+static void** lookup_slot;
+static FARPROC WINAPI hfr_factory_lookup(HMODULE module, LPCSTR name) {
+    FARPROC result = previous_lookup(module, name);
+    DWORD error = GetLastError();
+    if (result && real_dxgi && module == real_dxgi && (ULONG_PTR)name > 0xffff &&
+        (!strcmp(name, "CreateDXGIFactory") || !strcmp(name, "CreateDXGIFactory1") ||
+         !strcmp(name, "CreateDXGIFactory2"))) {
+        proxy_trace("system factory lookup intercepted: %s module=%p result=%p",
+                    name, (void*)module, (void*)result);
+        start_runtime();
+    }
+    SetLastError(error);
+    return result;
+}
+
+/* Find by import name, not by a fixed RVA or resolved pointer: the EXE can be
+   rebased, and a previous mod may already own the slot. This walks a loaded x64
+   image, with the import arrays and names bounded by its SizeOfImage. */
+static void** find_lookup_slot(void) {
+    BYTE* base = (BYTE*)GetModuleHandleW(NULL);
+    if (!base) return NULL;
+    const IMAGE_DOS_HEADER* dos = (const void*)base;
+    if (dos->e_magic != IMAGE_DOS_SIGNATURE || dos->e_lfanew <= 0) return NULL;
+    const IMAGE_NT_HEADERS64* nt = (const void*)(base + dos->e_lfanew);
+    if (nt->Signature != IMAGE_NT_SIGNATURE ||
+        nt->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC) return NULL;
+    DWORD size = nt->OptionalHeader.SizeOfImage;
+    IMAGE_DATA_DIRECTORY dir = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
+    if (!dir.VirtualAddress || dir.VirtualAddress >= size || dir.Size > size-dir.VirtualAddress) return NULL;
+    for (size_t offset=0; offset+sizeof(IMAGE_IMPORT_DESCRIPTOR)<=dir.Size; offset+=sizeof(IMAGE_IMPORT_DESCRIPTOR)) {
+        const IMAGE_IMPORT_DESCRIPTOR* imp = (const void*)(base+dir.VirtualAddress+offset);
+        if (!imp->Name) break;
+        if (imp->Name > size-sizeof "kernel32.dll" ||
+            _strnicmp((const char*)base+imp->Name, "kernel32.dll", sizeof "kernel32.dll")) continue;
+        if (!imp->OriginalFirstThunk || !imp->FirstThunk ||
+            imp->OriginalFirstThunk >= size || imp->FirstThunk >= size) continue;
+        const IMAGE_THUNK_DATA64* names = (const void*)(base+imp->OriginalFirstThunk);
+        IMAGE_THUNK_DATA64* slots = (void*)(base+imp->FirstThunk);
+        for (size_t i=0; i<(size-imp->OriginalFirstThunk)/sizeof *names &&
+                         i<(size-imp->FirstThunk)/sizeof *slots; ++i) {
+            ULONGLONG rva = names[i].u1.AddressOfData;
+            if (!rva) break;
+            if (IMAGE_SNAP_BY_ORDINAL64(rva) || rva > size-sizeof(WORD)-sizeof "GetProcAddress") continue;
+            const IMAGE_IMPORT_BY_NAME* name = (const void*)(base+rva);
+            if (!memcmp(name->Name, "GetProcAddress", sizeof "GetProcAddress"))
+                return (void**)&slots[i].u1.Function;
+        }
+    }
+    return NULL;
+}
+static int exchange_lookup(void* expected, void* replacement) {
+    DWORD old, ignored;
+    if (!VirtualProtect(lookup_slot, sizeof *lookup_slot, PAGE_READWRITE, &old)) return 0;
+    void* found = InterlockedCompareExchangePointer(lookup_slot, replacement, expected);
+    if (!VirtualProtect(lookup_slot, sizeof *lookup_slot, old, &ignored))
+        proxy_trace("factory lookup: could not restore IAT page protection: error=%lu", GetLastError());
+    return found == expected;
+}
+static void disarm_factory_lookup(void) {
+    if (lookup_slot && *lookup_slot == (void*)hfr_factory_lookup &&
+        exchange_lookup((void*)hfr_factory_lookup, (void*)previous_lookup))
+        proxy_trace("factory lookup import restored");
+}
+static void arm_factory_lookup(void) {
+    if (!real_dxgi) return;
+    lookup_slot = find_lookup_slot();
+    if (!lookup_slot || !*lookup_slot) { proxy_trace("factory lookup import not found"); return; }
+    previous_lookup = (LookupFn)*lookup_slot;
+    if (exchange_lookup((void*)previous_lookup, (void*)hfr_factory_lookup))
+        proxy_trace("factory lookup import armed: slot=%p previous=%p", (void*)lookup_slot, (void*)previous_lookup);
+    else { proxy_trace("factory lookup import could not be armed: error=%lu", GetLastError()); lookup_slot = NULL; }
+}
+
 BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID reserved) {
     (void)reserved;
     if (reason == DLL_PROCESS_ATTACH) {
         DisableThreadLibraryCalls(instance);
         proxy_trace_init(instance);
-        proxy_trace("diagnostic build 2026-09-16 attached: module=%p", (void*)instance);
+        proxy_trace("factory-fallback build 2026-09-16 attached: module=%p", (void*)instance);
         load_real(instance);
         /* Point the three factory stubs at the wrappers above rather than at the real
            library, so the generated stub still does the jumping and nothing else changes. */
@@ -201,6 +291,8 @@ BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID reserved) {
         real_CreateDXGIFactory1 = (void*)hfr_dxgi_factory1;
         real_CreateDXGIFactory2 = (void*)hfr_dxgi_factory2;
         proxy_trace("factory hooks ready");
+        arm_factory_lookup();
     }
+    else if (reason == DLL_PROCESS_DETACH && !reserved) disarm_factory_lookup();
     return TRUE;
 }

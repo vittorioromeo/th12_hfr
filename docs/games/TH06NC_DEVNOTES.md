@@ -1765,6 +1765,9 @@ Reinstating the early-out makes it fail with ten named lines.
 
 ## 23. Proton autoload investigation (2026-09-16)
 
+**Follow-up:** [section 24](#24-proton-factory-bypass-confirmed-and-fix-candidate-2026-09-16)
+records the returned diagnostic logs and the resulting startup fix candidate.
+
 **Status: the reported failure is not reproduced; a diagnostic proxy is ready for one
 targeted run. No Proton compatibility fix has been established.** The game runs normally
 but HFR has no visible effect and F11 does nothing. The screenshot shows `dxgi.dll`,
@@ -1870,3 +1873,68 @@ to Proton's log. Interpret the last completed stage before changing the loading 
 - **Runtime started:** follow the runtime log's fingerprint/signature/hook result.
 - **No diagnostic attachment anywhere:** verify the replacement DLL is the one Steam
   launched with before investigating HFR internals.
+
+## 24. Proton factory bypass confirmed and fix candidate (2026-09-16)
+
+The returned `touhou_hfr_proxy.log` contains exactly five startup records: attachment,
+system-DXGI load request, distinct system/proxy handles, resolved system factories, and
+`factory hooks ready`. **There is no intercepted factory and no attempt to load HFR.**
+The accompanying `steam-4659620 (1).log` confirms these same records at lines 417-422,
+followed immediately by DXVK's `CreateDXGIFactory2` warning and graphics initialization.
+This identifies the failure as **bypassing the proxy's factory wrappers**, rather than a
+runtime dependency failure or bad INI. Both logs agree, so missing file-log writes cannot
+explain the absent factory records.
+
+DxLib stores the handle returned by `LoadLibraryW("dxgi.dll")` and resolves its factory
+through the EXE's `KERNEL32.dll!GetProcAddress` import (RVA `0x2c0090` in the inspected
+build). Resolving against System32's DXGI instead of the proxy explains the observed
+bypass. The exact cause of that module selection is still an inference: the diagnostic
+did not trace the game's load request or returned handle. Proton's
+[loader source](https://github.com/ValveSoftware/wine/blob/experimental_11.0/dlls/ntdll/loader.c)
+does maintain a cached module and consults it in basename lookup; the fix does not depend
+on that cache's behavior or on a particular Proton version.
+
+### Fix: recognize both factory startup paths
+
+`src/proxy_dxgi.c` now temporarily observes **only the main executable's GetProcAddress
+import**. It finds the slot by PE import names, not by a game-specific address, and saves
+the existing function pointer, including an earlier mod's hook. When a successful lookup
+asks the already-loaded system DXGI module for one of the three factory entry points,
+the observer restores the previous import and calls the same `start_runtime` used by the
+ordinary proxy factory wrappers. It returns the original resolved address and LastError
+unchanged. Other modules, names, ordinal requests and failed lookups pass through.
+
+The ordinary factory path also removes the observer. An explicit unload before startup
+restores the import too. Restoration uses a compare/exchange, so it does not overwrite a
+different hook installed later. No DXGI export table or code bytes are rewritten, no
+background thread is started, and HFR initialization is not moved into DllMain. The game's
+startup thread enters HFR after the underlying lookup has returned and before the factory
+is invoked. The runtime's existing fingerprint/signature checks remain authoritative.
+
+This is deliberately an autoloader change. It requires no new runtime DLL, settings,
+executable fingerprint or Linux-specific graphics backend. The usual Proton override
+remains `WINEDLLOVERRIDES="dxgi=n,b" %command%`.
+
+### Validation and delivery
+
+- `test_dxgi_proxy_start --system-factory` deliberately resolves from System32 to
+  reproduce the bypass independently of loader cache behavior. It fails with the old
+  proxy and passes with the candidate on Windows, for Factory, Factory1 and Factory2.
+- The tests verify an earlier lookup hook is called, returned pointers and LastError
+  survive, unrelated/failed/ordinal lookups do not initialize HFR, initialization happens
+  once, and the prior import is restored. They also exercise ordinary proxy calls,
+  D3D11-first loading, and unloading the unused proxy. The system-factory and unload
+  cases are included in `test64.ps1` and `test64.sh`.
+- A separate probe using Wine 11.0 WoW64 and native DXVK 3.1.1 resolves Factory2 from
+  System32. The new trace records `system factory lookup intercepted`, import restoration,
+  the **real** runtime DLL loading, and entry into `hfr_start`. The runtime correctly
+  rejects that non-game executable. This validates the new startup path on Wine; the
+  local host still lacks a usable Vulkan/display stack and is not a gameplay test.
+
+`tools/build_dxgi_diagnostic.ps1` now creates
+`build/touhou-hfr-proton-factory-fix-2026-09-16.zip`, containing just the replacement
+`dxgi.dll` and instructions. Its trace identifies it as `factory-fallback build`; the
+older logging-only ZIP is distinct. The user keeps their runtime DLL and INI. A final
+F11/gameplay check in the affected Proton installation is still required before calling
+the reported issue resolved. If startup gets further but fails, the candidate logs the
+next stage so another blind diagnostic rebuild should not be necessary.

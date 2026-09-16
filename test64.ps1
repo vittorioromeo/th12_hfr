@@ -35,7 +35,11 @@ try {
     foreach($factory in @('CreateDXGIFactory','CreateDXGIFactory1','CreateDXGIFactory2')) {
         & ./build/tests/proxy-start/test_proxy_start.exe $factory
         if($LASTEXITCODE){throw "Proxy startup regression failed: $factory"}
+        & ./build/tests/proxy-start/test_proxy_start.exe $factory --system-factory
+        if($LASTEXITCODE){throw "System DXGI startup regression failed: $factory"}
     }
+    & ./build/tests/proxy-start/test_proxy_start.exe CreateDXGIFactory2 --unload
+    if($LASTEXITCODE){throw 'Proxy unload regression failed'}
     & $pythonPath tools/test_fixed_profile.py $fixture
     if($LASTEXITCODE){throw 'x64 profile and launcher regression failed'}
 } finally {Pop-Location;$env:PATH=$savedPath}
