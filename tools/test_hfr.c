@@ -277,9 +277,16 @@ int main(int argc,char**argv) {
        that does not describe the simulation has none, so run what does not depend on one and
        say which were skipped -- the same split install() makes. */
     int sim = g_game->addr.runner_fn && g_game->addr.frame_calls[0];
+    /* And a third state between "no simulation" and "everything": the scheduler is described
+       but the UpdateFunc class table is not, so the game runs at the display's rate with its
+       simulation at 60 Hz. The runner tests build their own class table and hold either way;
+       the replay round-trip drives a real sub-step switch and needs a real class. */
+    int subs = sim && g_class_count;
     test_schedule();test_replay_parser();test_scale_rect();test_snap_client();test_menu_key();
-    if (sim) { test_replay_roundtrip();test_runner();test_runner_tail(); }
-    else puts("SKIP: replay round-trip and the shared runner (this game's simulation is not described)");
+    if (sim) { test_runner();test_runner_tail(); }
+    else puts("SKIP: the shared runner (this game's simulation is not described)");
+    if (subs) test_replay_roundtrip();
+    else puts("SKIP: replay round-trip (this game has no sub-steppable systems described)");
     /* A failed patch transaction must leave all game code unchanged. */
     patch_begin();uint8_t changed[6]={0};
     uintptr_t addr=id->signatures[0].addr;

@@ -90,10 +90,22 @@ struct GameProfile {
     int provisional;
     int mask_minor_player_edges;
     uint32_t critical_flag_mask;    /* zero: the runner always locks */
-    int runner_stack_arg;
+    /* How the game hands the update runner its object, and how the frame callbacks and the
+       screenshot routine take their arguments. These are not cosmetic: the entry thunk, the
+       frame shim and the screenshot stub are each written for one of them, and picking the
+       wrong one unbalances the stack on the first frame. TH14 changed all three at once
+       (see docs/games/TH14_DEVNOTES.md), which is why they are named rather than assumed. */
+    enum RunnerArg { RUNNER_ARG_EBX = 0, RUNNER_ARG_STACK, RUNNER_ARG_ECX } runner_arg;
+    /* The three frame callbacks take their context in ECX (thiscall) rather than pushed. */
+    int frame_ctx_ecx;
+    /* The screenshot routine takes the filename pushed (stdcall) rather than in EAX. */
+    int screenshot_stack_arg;
     int runner_return8_ends;
     int native_size_cycle;          /* the game cycles its own window sizes on F10 (TH11 on) */
-    int remove_node_runner_first;   /* remove_node(runner, node) rather than (node, runner) (TH13) */
+    /* How remove_node is called. TH10-12 pass (node, runner) in ECX/EDX, TH13 swapped them,
+       and TH14 made it a method: the runner in ECX and the node pushed. */
+    enum RemoveNodeAbi { REMOVE_NODE_NODE_FIRST = 0, REMOVE_NODE_RUNNER_FIRST,
+                         REMOVE_NODE_RUNNER_THIS } remove_node_abi;
     const char* d3dx;
     /* Two-byte "frndint" sites in the sprite quad builder that snap every corner to a whole pixel;
        NOPed when the game draws at a higher internal resolution (video.internal_scale). */

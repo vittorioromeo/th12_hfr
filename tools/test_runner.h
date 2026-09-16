@@ -6,11 +6,24 @@ static int __thiscall fake_sub(void* arg) {
     test_edges=input_read(g_game->addr.game_pressed);
     return 1;
 }
+/* These tests drive the runner through the profile's own globals, which is the point: the
+   macros that read them are part of what is under test. A game whose simulation is described
+   but whose structures are not yet -- TH14 today -- has zeroes there, and writing through a
+   zero is a page fault rather than a test result. Give those fields somewhere real to point,
+   so the runner is still exercised and a described game still exercises its own addresses. */
+static uint8_t test_missing_globals[7][8];
+static void test_fill_missing(struct GameProfile* g) {
+    uintptr_t* fields[] = { &g->addr.speed, &g->addr.player, &g->addr.enemy_manager, &g->addr.game_manager,
+                            &g->addr.game_input, &g->addr.game_pressed, &g->addr.game_released };
+    for (size_t i=0;i<sizeof fields/sizeof *fields;++i)
+        if (!*fields[i]) *fields[i]=(uintptr_t)test_missing_globals[i];
+}
 static void test_runner(void) {
     const struct GameProfile* real=g_game;
     struct GameProfile game=*real;
     struct node_class classes[]={{(uintptr_t)fake_frame,MODE_FRAME,"Frame"},{(uintptr_t)fake_sub,MODE_SUB,"Sub"}};
     game.classes=classes;game.class_count=2;game.addr.player_callback=(uintptr_t)fake_sub;
+    test_fill_missing(&game);
     g_game=&game;g_sub_enabled[0]=g_sub_enabled[1]=1;
     uint8_t runner[0x60]={0},manager[0x80]={0};
     /* The game initialises its critical section at startup; the fixture is bare memory. TH11
@@ -61,6 +74,13 @@ __asm__(
     "  inc dword ptr [_test_tail_reached]\n  ret\n"
     ".globl _test_tail_pad4\n_test_tail_pad4:\n"     /* ... and for TH10's `ret 4` */
     "  inc dword ptr [_test_tail_reached]\n  ret 4\n"
+    /* The three ways the game enters the runner: its argument in EBX, on the stack, or -- TH14
+       on -- in ECX. Each is a separate thunk in update_runner.c and so a separate caller here;
+       an untested one is how a game gets a runner that reads the wrong pointer every frame. */
+    ".globl _test_call_runner_ecx_entry\n_test_call_runner_ecx_entry:\n"
+    "  mov ecx, [esp+4]\n"
+    "  mov [_test_tail_esp], esp\n  call _hfr_runner_ecx_entry\n  sub [_test_tail_esp], esp\n"
+    "  ret\n"
     /* The two ways the game enters the runner: its argument in EBX, or on the stack. */
     ".globl _test_call_runner_entry\n_test_call_runner_entry:\n"
     "  push ebx\n  mov ebx, [esp+8]\n"
@@ -74,10 +94,11 @@ __asm__(
 );
 extern int test_call_runner_entry(void* runner);
 extern int test_call_runner_stack_entry(void* runner);
+extern int test_call_runner_ecx_entry(void* runner);
 extern void test_tail_pad(void), test_tail_pad4(void);
 
 static void test_runner_tail(void) {
-    int stack = g_game->runner_stack_arg;
+    int stack = g_game->runner_arg == RUNNER_ARG_STACK;
     uintptr_t tail = g_game->addr.runner_ret;
     /* The profile's ending is inside the game, past the runner's entry, and is the return
        instruction that matches how the runner takes its argument. */
@@ -101,6 +122,7 @@ static void test_runner_tail(void) {
     struct GameProfile game = *real_game;
     struct node_class classes[] = {{(uintptr_t)fake_frame,MODE_FRAME,"Frame"},{(uintptr_t)fake_sub,MODE_SUB,"Sub"}};
     game.classes=classes;game.class_count=2;game.addr.player_callback=(uintptr_t)fake_sub;
+    test_fill_missing(&game);
     g_game=&game;g_sub_enabled[0]=g_sub_enabled[1]=1;
     InitializeCriticalSection((LPCRITICAL_SECTION)game.addr.crit);
     uint8_t runner[0x60]={0};
@@ -115,7 +137,9 @@ static void test_runner_tail(void) {
     /* A stand-in ending, which records that it ran. The stack it leaves behind is the whole
        point: nothing but the game's own epilogue may have moved it. */
     g_runner_tail = stack ? (void*)test_tail_pad4 : (void*)test_tail_pad;
-    int r = stack ? test_call_runner_stack_entry(runner) : test_call_runner_entry(runner);
+    int r = stack ? test_call_runner_stack_entry(runner)
+          : real_game->runner_arg == RUNNER_ARG_ECX ? test_call_runner_ecx_entry(runner)
+          : test_call_runner_entry(runner);
     assert(test_tail_reached == 1);              /* the pass ended on it, not on a ret of ours */
     assert(r == 2);                              /* ... and the return value survived the jump */
     assert(test_tail_esp == (stack ? -4 : 0));   /* cdecl leaves the argument, `ret 4` takes it */

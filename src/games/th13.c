@@ -311,7 +311,7 @@ static const struct GameProfile th13_profile = {
         .enemy_list = 0xb0, .enemy_flags = 0x521c, .enemy_position = 0x1230, .enemy_skip_mask = 0x4000000,
     },
     .speed_sites = th13_speed_sites, .speed_site_count = sizeof th13_speed_sites / sizeof *th13_speed_sites,
-    .critical_flag_mask = 0xff, .runner_return8_ends = 1, .remove_node_runner_first = 1,
+    .critical_flag_mask = 0xff, .runner_return8_ends = 1, .remove_node_abi = REMOVE_NODE_RUNNER_FIRST,
     .classes = th13_classes, .class_count = sizeof th13_classes / sizeof *th13_classes,
     .mask_minor_player_edges = 0, .d3dx = "d3dx9_43.dll",
     .native_size_cycle = 1,

@@ -10,6 +10,10 @@ static int hfr_housekeeping(void) {
     return window_pump(g_dev);                        /* minimised, or resizing the swap chain */
 }
 
+static int __stdcall hfr_frame(void* ctx);
+/* The same hook for a game whose frame callbacks are thiscall: the context arrives in ECX and
+   the callee pops nothing, which is what fastcall with one argument compiles to. */
+static int __attribute__((fastcall)) hfr_frame_ecx(void* ctx) { return hfr_frame(ctx); }
 static int __stdcall hfr_frame(void* ctx) {
     double now = now_s();
     if (hfr_housekeeping()) { Sleep(1); return 0; }
@@ -45,7 +49,7 @@ static int __stdcall hfr_frame(void* ctx) {
        vsync included) or outside it (its loop, its own waits). The stats line reports both. */
     if (g_frame_out_at > 0) { double outside = now - g_frame_out_at; if (outside > g_gap_outside_max) g_gap_outside_max = outside; if (outside > 0.008) g_gap_outside_long++; }
     double t_in = now_s(); g_t_first_draw = g_t_present_in = g_t_present_out = 0;
-    int r = orig_frame_vsync(ctx);
+    int r = frame_call_original(ctx);
     g_frame_out_at = now_s();
     if (cfg.debug && g_frame_out_at - t_in > 0.012) {   /* a long frame: say where inside it the time went */
         static unsigned logged; if (logged++ < 60)

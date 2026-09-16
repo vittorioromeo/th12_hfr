@@ -32,9 +32,15 @@ you remove the patch by deleting them again.
 | Touhou 11 — Subterranean Animism | v1.00a | `th11.exe`, `th11e.exe` | supported |
 | Touhou 12 — Undefined Fantastic Object | v1.00b | `th12.exe`, `th12e.exe` | supported |
 | Touhou 13 — Ten Desires | v1.00c | `th13.exe`, `th13e.exe` | supported |
+| Touhou 14 — Double Dealing Character | v1.00b | `th14.exe` | **partial** — frame rate only, see below |
 | Touhou Koumakyou: New Classic | see [notes](docs/games/TH06NC_DEVNOTES.md#2-product-and-inspected-build) | `th06nc.exe` | **experimental**, smaller feature set — [details](#new-classic) |
 
-Japanese and English executables are both supported, and so are the Steam releases. Other
+TH14 is new and only half described. It runs at the display's rate, with the whole picture
+path — resizing, scaling, filters, borderless, the F11 menu — and its simulation stays at
+60 Hz: no sub-stepping, no dimming, no replay extension. Only the Japanese `th14.exe` is
+recognised so far; the English and Steam builds still have to be checked.
+
+Japanese and English executables are both supported for TH10–13, and so are the Steam releases. Other
 versions, other games, and the `th06c.exe` (Classic) executable bundled with New Classic are
 not: the patch verifies the executable's code before touching anything and declines to install
 if it does not recognise it.

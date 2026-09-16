@@ -16,10 +16,12 @@ struct ConflictSite { uintptr_t addr; size_t size; uint8_t bytes[8]; const char*
 #include "games/th11_signatures.h"
 #include "games/th12_signatures.h"
 #include "games/th13_signatures.h"
+#include "games/th14_signatures.h"
 #include "games/th10_conflicts.h"
 #include "games/th11_conflicts.h"
 #include "games/th12_conflicts.h"
 #include "games/th13_conflicts.h"
+#include "games/th14_conflicts.h"
 struct GameIdentity {
     unsigned id, image_size;    /* the smallest accepted SizeOfImage; see identify_image */
     const char *name, *legacy_ini, *replay_magic;
@@ -32,7 +34,7 @@ struct GameIdentity {
 /* Named slots, so a profile says which game it is rather than counting rows. Inserting a game
    at the front of the table used to silently repoint every profile after it at its neighbour's
    identity -- the same trap as a positional initialiser, and just as quiet. */
-enum { GI_TH10, GI_TH11, GI_TH12, GI_TH13 };
+enum { GI_TH10, GI_TH11, GI_TH12, GI_TH13, GI_TH14 };
 static const struct GameIdentity game_identities[] = {
     /* TH10 follows the same naming as the later games: th10.exe is the Japanese original and
        th10e.exe the English one (an earlier note here claimed a th10j.exe; that was a local
@@ -42,6 +44,9 @@ static const struct GameIdentity game_identities[] = {
     [GI_TH11] = {11,0xcd000,"TH11 v1.00a","th11_hfr.ini","t11r",{"th11e.exe","th11.exe"},th11_signatures,sizeof th11_signatures/sizeof *th11_signatures,th11_conflicts,sizeof th11_conflicts/sizeof *th11_conflicts},
     [GI_TH12] = {12,0xd9000,"TH12 v1.00b","th12_hfr.ini","t12r",{"th12e.exe","th12.exe"},th12_signatures,sizeof th12_signatures/sizeof *th12_signatures,th12_conflicts,sizeof th12_conflicts/sizeof *th12_conflicts},
     [GI_TH13] = {13,0xe9000,"TH13 v1.00c",NULL,"t13r",{"th13e.exe","th13.exe"},th13_signatures,sizeof th13_signatures/sizeof *th13_signatures,th13_conflicts,sizeof th13_conflicts/sizeof *th13_conflicts},
+    /* TH14's replay magic is not asserted while the simulation is undescribed: nothing reads
+       it until replays are extended, and a wrong four bytes there would be a silent one. */
+    [GI_TH14] = {14,0x101000,"TH14 v1.00b",NULL,"t14r",{"th14e.exe","th14.exe"},th14_signatures,sizeof th14_signatures/sizeof *th14_signatures,th14_conflicts,th14_conflict_count},
 };
 #define GAME_COUNT (sizeof game_identities / sizeof *game_identities)
 static const IMAGE_NT_HEADERS32* image_header(const uint8_t* image, size_t size) {

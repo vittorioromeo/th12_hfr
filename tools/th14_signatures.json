@@ -1,0 +1,64 @@
+[
+ {
+  "address": "0x401280",
+  "bytes": "55 8b ec 51 80"
+ },
+ {
+  "address": "0x469a27",
+  "bytes": "e8 34 09 00 00"
+ },
+ {
+  "address": "0x469a45",
+  "bytes": "e8 06 0f 00 00"
+ },
+ {
+  "address": "0x469a51",
+  "bytes": "e8 ca 0c 00 00"
+ },
+ {
+  "address": "0x46aa80",
+  "bytes": "80 3d 59 91 4d 00 01"
+ },
+ {
+  "address": "0x46abf6",
+  "bytes": "e8 05 a4 fd ff"
+ },
+ {
+  "address": "0x401382",
+  "bytes": "5f 8b c6 5e 5b 8b e5 5d c3"
+ },
+ {
+  "address": "0x46a99e",
+  "bytes": "e8 dd 68 f9 ff"
+ },
+ {
+  "address": "0x4013b0",
+  "bytes": "55 8b ec 51 80 3d 15 58",
+  "description": "the draw runner"
+ },
+ {
+  "address": "0x401630",
+  "bytes": "55 8b ec 8b 55 08 56 8b",
+  "description": "remove_node, node on the stack"
+ },
+ {
+  "address": "0x46a950",
+  "bytes": "51 56 57 8b f9 8b 0d cc 56 4f"
+ },
+ {
+  "address": "0x445000",
+  "bytes": "55 8b ec 83 ec 10 83 3d c4 97"
+ },
+ {
+  "address": "0x46ab70",
+  "bytes": "55 8b ec 81 ec 08 01 00 00 a1"
+ },
+ {
+  "address": "0x46a720",
+  "bytes": "56 8b f1 e8 f8 04 00 00 f2 0f"
+ },
+ {
+  "address": "0x46a360",
+  "bytes": "f6 05 54 7a 4f 00 40 56 8b f1"
+ }
+]

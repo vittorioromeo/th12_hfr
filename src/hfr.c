@@ -30,5 +30,6 @@
 #include "games/th11.c"
 #include "games/th12.c"
 #include "games/th13.c"
+#include "games/th14.c"
 #include "core/install.c"
 #include "core/entry.c"

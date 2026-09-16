@@ -8,9 +8,16 @@ static inline void* node_arg(struct UpdateFunc* uf) {
     return g_game->layout.node_arg ? *(void**)((uint8_t*)uf + g_game->layout.node_arg) : uf->arg;
 }
 typedef void (__fastcall *RemoveNodeFn)(void* a, void* b);
+typedef void (__attribute__((thiscall)) *RemoveNodeThisFn)(void* runner, void* node);
 static inline void game_remove_node(struct UpdateFunc* uf, uint8_t* runner) {
-    RemoveNodeFn f = (RemoveNodeFn)g_game->addr.remove_node;
-    if (g_game->remove_node_runner_first) f(runner, uf); else f(uf, runner);
+    switch (g_game->remove_node_abi) {
+        case REMOVE_NODE_RUNNER_THIS:
+            ((RemoveNodeThisFn)g_game->addr.remove_node)(runner, uf); return;
+        case REMOVE_NODE_RUNNER_FIRST:
+            ((RemoveNodeFn)g_game->addr.remove_node)(runner, uf); return;
+        default:
+            ((RemoveNodeFn)g_game->addr.remove_node)(uf, runner); return;
+    }
 }
 /* TH13's runner keeps the next list node in the runner itself and re-reads it after every
    callback, so a callback that removes the node after it (its remove function fixes the cell
@@ -126,6 +133,7 @@ done:
 void* g_runner_tail;   /* external linkage: the thunks below reach it by name */
 extern void hfr_runner_entry(void);        /* the runner is in EBX */
 extern void hfr_runner_stack_entry(void);  /* ... or on the stack (TH10) */
+extern void hfr_runner_ecx_entry(void);    /* ... or in ECX (TH14 on) */
 extern void hfr_runner_tail_ret(void);     /* fallbacks: our own ending, matching each one */
 extern void hfr_runner_tail_ret4(void);
 __asm__(
@@ -138,6 +146,9 @@ __asm__(
     ".globl _hfr_runner_stack_entry\n_hfr_runner_stack_entry:\n"
     "  mov eax, [esp+4]\n  push eax\n  call _hfr_runner\n  add esp, 4\n"
     "  jmp dword ptr [_g_runner_tail]\n"
+    ".globl _hfr_runner_ecx_entry\n_hfr_runner_ecx_entry:\n"
+    "  push ecx\n  call _hfr_runner\n  add esp, 4\n"
+    "  jmp dword ptr [_g_runner_tail]\n"
     ".globl _hfr_runner_tail_ret4\n_hfr_runner_tail_ret4:\n"
     "  ret 4\n"
     ".att_syntax\n"
@@ -146,13 +157,23 @@ __asm__(
    an int3 too: a debugger or another patch may already own that instruction, which is the
    whole reason for jumping to it, and it restores the byte itself when it runs. Anything else
    means the profile is pointing somewhere it should not, and we end the pass ourselves. */
+/* The entry thunk for a game's calling convention, and the ending that matches it. Only the
+   stack form returns with `ret 4`; a runner whose object arrives in a register returns with a
+   plain `ret` whichever register it is. */
+void* runner_entry_thunk(void) {
+    switch (g_game->runner_arg) {
+        case RUNNER_ARG_STACK: return (void*)hfr_runner_stack_entry;
+        case RUNNER_ARG_ECX:   return (void*)hfr_runner_ecx_entry;
+        default:               return (void*)hfr_runner_entry;
+    }
+}
 static int runner_tail_usable(uintptr_t addr, int stack_arg) {
     if (!addr) return 0;
     uint8_t b = *(volatile uint8_t*)addr;
     return b == 0xcc || b == (stack_arg ? 0xc2 : 0xc3);
 }
 static void runner_tail_select(void) {
-    int stack_arg = g_game->runner_stack_arg;
+    int stack_arg = g_game->runner_arg == RUNNER_ARG_STACK;
     void* own = stack_arg ? (void*)hfr_runner_tail_ret4 : (void*)hfr_runner_tail_ret;
     if (runner_tail_usable(g_game->addr.runner_ret, stack_arg)) {
         g_runner_tail = (void*)g_game->addr.runner_ret;

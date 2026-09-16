@@ -11,4 +11,11 @@
 #define G_REPLAY_MANAGER  (*(uint8_t**)g_game->addr.replay_manager) /* mode at +0x10; frame/stage offsets in profile */
 
 typedef int (__stdcall *FrameFn)(void* ctx);
-#define orig_frame_vsync ((FrameFn)g_game->addr.frame_fn)
+/* TH14 on: the frame functions are thiscall. With one pointer argument thiscall and fastcall
+   are the same code -- the argument in ECX, no stack arguments for the callee to pop -- so
+   the attribute gcc has says exactly what the game does. */
+typedef int (__attribute__((fastcall)) *FrameFnEcx)(void* ctx);
+static inline int frame_call_original(void* ctx) {
+    return g_game->frame_ctx_ecx ? ((FrameFnEcx)g_game->addr.frame_fn)(ctx)
+                                 : ((FrameFn)g_game->addr.frame_fn)(ctx);
+}

@@ -1,4 +1,4 @@
-static const struct GameProfile* const game_profiles[] = {&th10_profile,&th11_profile,&th12_profile,&th13_profile};
+static const struct GameProfile* const game_profiles[] = {&th10_profile,&th11_profile,&th12_profile,&th13_profile,&th14_profile};
 static int select_game(const uint8_t* image, size_t size) {
     const struct GameIdentity* id=identify_image(image,size);
     g_game=NULL;
@@ -92,19 +92,29 @@ static int install(void) {
     if (sim) {
         install_speed_sites();
         if (g_game->install_sites) g_game->install_sites();
+        /* A game can have its scheduler described and its systems not. Nothing is
+           mis-stepped in that state -- node_mode answers MODE_FRAME for a callback it does
+           not know -- but the frame rate is the only thing on offer, and saying so here is
+           cheaper than someone wondering why the sub-step switches do nothing. */
+        if (!g_class_count)
+            LOG("this game's systems are not classified yet: the frame rate is raised, the simulation stays at 60 Hz and nothing is sub-stepped.");
     } else {
         LOG("this game's simulation is not described yet: no high frame rate or sub-stepping.");
         LOG("  scaling, filters, window resizing and the menu do not depend on it and are active.");
     }
     /* Wrap the game's screenshot routine so the back buffer hook knows when the caller is
-       going to lock what it gets. The filename arrives in EAX, so the stub must not touch it;
-       "mov dword [flag], imm" and a relative call do not. */
+       going to lock what it gets. Through TH13 the filename arrives in EAX, so the stub must
+       not touch it; "mov dword [flag], imm" and a relative call do not. */
     if (g_game->addr.screenshot_call && g_game->addr.screenshot_fn) {
         uint8_t* stub=g_p;
         E(0xC7,0x05);E32((uint32_t)(uintptr_t)&g_in_screenshot);E32(1);
+        /* TH14 on: the filename is pushed and the routine pops it (stdcall), so the stub has
+           to hand the argument on and clean it up itself. Otherwise the routine would be
+           given the stub's own return address. */
+        if (g_game->screenshot_stack_arg) E(0xFF,0x74,0x24,0x04);   /* push dword [esp+4] */
         ECALL(g_game->addr.screenshot_fn);
         E(0xC7,0x05);E32((uint32_t)(uintptr_t)&g_in_screenshot);E32(0);
-        E(0xC3);
+        if (g_game->screenshot_stack_arg) E(0xC2,0x04,0x00); else E(0xC3);
         stub_end();          /* account for these bytes: they are flushed from the I-cache below */
         site_call(g_game->addr.screenshot_call,stub);
     } else LOG("screenshot routine not known for this game; its screenshots are unsupported");
@@ -125,8 +135,9 @@ static int install(void) {
             patch_bytes(g_game->addr.latency_cmp,latency,7,site_expected(g_game->addr.latency_cmp,7));
         }
         runner_tail_select();   /* where the replacement runner ends (update_runner.c) */
-        patch_jmp(g_game->addr.runner_fn,g_game->runner_stack_arg ? (void*)hfr_runner_stack_entry : (void*)hfr_runner_entry,site_expected(g_game->addr.runner_fn,5));
-        for (int i=0;i<3;++i) if (g_game->addr.frame_calls[i]) site_call(g_game->addr.frame_calls[i],hfr_frame);
+        patch_jmp(g_game->addr.runner_fn,runner_entry_thunk(),site_expected(g_game->addr.runner_fn,5));
+        void* frame_hook=g_game->frame_ctx_ecx ? (void*)hfr_frame_ecx : (void*)hfr_frame;
+        for (int i=0;i<3;++i) if (g_game->addr.frame_calls[i]) site_call(g_game->addr.frame_calls[i],frame_hook);
         g_frame_hook_installed = 1;
     }
     if (!hook_import("d3d9.dll","Direct3DCreate9",hook_Direct3DCreate9,(void**)&orig_Direct3DCreate9)) {
