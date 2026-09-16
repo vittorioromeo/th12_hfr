@@ -25,10 +25,10 @@ int main(int argc, char** argv) {
     /* The proxy is loaded from a copy under a different name. Both files are the same
        bytes, but a loader that keys modules by base name -- Wine's does -- cannot hold the
        proxy and the system dxgi.dll open at once, and then there is nothing to compare
-       against. Renaming the copy sidesteps that and leaves the forwarding itself, which is
-       what this test is about, fully exercised. The same-name case is what the proxy's own
-       self-load guard covers, and what the patch's x86 dinput8 proxy has been doing on
-       Windows since the first release. */
+       against on affected Wine versions. Renaming the copy tests forwarding separately;
+       it does not prove the normal installation works on Proton. The companion
+       test_dxgi_proxy_start.c uses the actual basename and a stand-in runtime to check
+       activation. Real-game Proton loading still needs an integration test. */
     char source[MAX_PATH], copy[MAX_PATH], system_path[MAX_PATH];
     if (!GetFullPathNameA(argc > 1 ? argv[1] : "build\\dxgi.dll", MAX_PATH, source, NULL)) {
         printf("FAIL: cannot resolve the proxy path\n"); return 2;

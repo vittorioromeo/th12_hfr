@@ -24,6 +24,18 @@ try {
     if($LASTEXITCODE){throw 'dxgi proxy test build failed'}
     & ./build/tests/test_dxgi_proxy.exe build/dxgi.dll
     if($LASTEXITCODE){throw 'dxgi proxy regression failed'}
+    # Use the actual dxgi.dll basename and a stand-in runtime in an isolated folder.
+    # Forwarding alone can pass even if the runtime initialization hook is never called.
+    New-Item -ItemType Directory -Force build/tests/proxy-start | Out-Null
+    Copy-Item -LiteralPath build/dxgi.dll -Destination build/tests/proxy-start/dxgi.dll
+    & $compilerPath -std=gnu11 -O2 -Wall -Wextra -shared -static-libgcc -DPROXY_TEST_RUNTIME tools/test_dxgi_proxy_start.c -o build/tests/proxy-start/touhou_hfr64.dll
+    if($LASTEXITCODE){throw 'Proxy test runtime build failed'}
+    & $compilerPath -std=gnu11 -O2 -Wall -Wextra -static-libgcc tools/test_dxgi_proxy_start.c -o build/tests/proxy-start/test_proxy_start.exe
+    if($LASTEXITCODE){throw 'Proxy startup test build failed'}
+    foreach($factory in @('CreateDXGIFactory','CreateDXGIFactory1','CreateDXGIFactory2')) {
+        & ./build/tests/proxy-start/test_proxy_start.exe $factory
+        if($LASTEXITCODE){throw "Proxy startup regression failed: $factory"}
+    }
     & $pythonPath tools/test_fixed_profile.py $fixture
     if($LASTEXITCODE){throw 'x64 profile and launcher regression failed'}
 } finally {Pop-Location;$env:PATH=$savedPath}

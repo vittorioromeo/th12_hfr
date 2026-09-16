@@ -33,4 +33,16 @@ python3 tools/test_fixed_stubs.py build/tests/fixed-plan.json
 # call answering exactly as the real library does, and inert in a process that is not the game.
 $CC -std=gnu11 -O1 -Wall -Wextra -o build/tests/test_dxgi_proxy.exe tools/test_dxgi_proxy.c -lole32
 $RUN ./build/tests/test_dxgi_proxy.exe build/dxgi.dll
+# The actual proxy basename, with a stand-in runtime: every factory must start it once.
+# This checks activation independently of whether Wine can forward same-name DXGI modules.
+mkdir -p build/tests/proxy-start
+cp build/dxgi.dll build/tests/proxy-start/dxgi.dll
+$CC -std=gnu11 -O2 -Wall -Wextra -shared -static-libgcc -DPROXY_TEST_RUNTIME \
+    tools/test_dxgi_proxy_start.c -o build/tests/proxy-start/touhou_hfr64.dll
+$CC -std=gnu11 -O2 -Wall -Wextra -static-libgcc tools/test_dxgi_proxy_start.c \
+    -o build/tests/proxy-start/test_proxy_start.exe
+for factory in CreateDXGIFactory CreateDXGIFactory1 CreateDXGIFactory2; do
+    WINEDLLOVERRIDES="${WINEDLLOVERRIDES:+$WINEDLLOVERRIDES;}dxgi=n,b" \
+        $RUN ./build/tests/proxy-start/test_proxy_start.exe "$factory"
+done
 python3 tools/test_fixed_profile.py "$1"

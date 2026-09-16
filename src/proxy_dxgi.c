@@ -35,6 +35,49 @@
 #include <windows.h>
 #include "dxgi_exports.h"
 
+/* Opt-in diagnostic build for failures before the runtime can create its own log.
+   Preserve LastError, and report to both a separate file and Proton's +debugstr log.
+   No tracing or extra file I/O is compiled into the ordinary release proxy. */
+#ifdef HFR_PROXY_DIAGNOSTICS
+#include <stdio.h>
+#include <stdarg.h>
+#include <string.h>
+static char proxy_log_path[MAX_PATH];
+static void proxy_trace_init(HINSTANCE self) {
+    DWORD saved = GetLastError();
+    DWORD n = GetModuleFileNameA(self, proxy_log_path, sizeof proxy_log_path);
+    char* slash = n && n < sizeof proxy_log_path ? strrchr(proxy_log_path, '\\') : NULL;
+    if (slash && (size_t)(slash-proxy_log_path)+sizeof "\\touhou_hfr_proxy.log" <= sizeof proxy_log_path)
+        strcpy(slash+1, "touhou_hfr_proxy.log");
+    else proxy_log_path[0] = 0;
+    SetLastError(saved);
+}
+static void proxy_trace(const char* fmt, ...) {
+    DWORD saved = GetLastError();
+    char line[1200];
+    int used = snprintf(line, sizeof line, "Touhou HFR proxy [pid=%lu tid=%lu]: ",
+                        GetCurrentProcessId(), GetCurrentThreadId());
+    va_list ap; va_start(ap, fmt);
+    vsnprintf(line+used, sizeof line-used-2, fmt, ap);
+    va_end(ap);
+    size_t n = strlen(line); line[n++] = '\n'; line[n] = 0;
+    OutputDebugStringA(line);
+    if (proxy_log_path[0]) {
+        HANDLE file = CreateFileA(proxy_log_path, FILE_APPEND_DATA, FILE_SHARE_READ|FILE_SHARE_WRITE,
+                                  NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (file != INVALID_HANDLE_VALUE) {
+            DWORD written;
+            WriteFile(file, line, (DWORD)n, &written, NULL);
+            CloseHandle(file);
+        }
+    }
+    SetLastError(saved);
+}
+#else
+#define proxy_trace_init(self) ((void)0)
+#define proxy_trace(...) ((void)0)
+#endif
+
 static HMODULE real_dxgi;
 /* Called instead of an export this system's dxgi.dll does not have. Returning E_NOTIMPL
    rather than jumping through a null pointer keeps a missing name a failed call. */
@@ -66,10 +109,12 @@ DXGI_EXPORTS(DECLARE_EXPORT)
 static void load_real(HINSTANCE self) {
     char path[MAX_PATH];
     UINT n = GetSystemDirectoryA(path, MAX_PATH);
-    if (!n || n > MAX_PATH - 12) return;
+    if (!n || n > MAX_PATH - 12) { proxy_trace("GetSystemDirectory failed/too long: n=%u error=%lu", n, GetLastError()); return; }
     lstrcatA(path, "\\dxgi.dll");
+    proxy_trace("loading system DXGI: %s", path);
     HMODULE found = LoadLibraryA(path);
-    if (!found) return;
+    if (!found) { proxy_trace("system DXGI load failed: error=%lu", GetLastError()); return; }
+    proxy_trace("system DXGI=%p proxy=%p", (void*)found, (void*)self);
     if (found == (HMODULE)self) {
         OutputDebugStringA("Touhou HFR: this loader cannot tell the proxy from the system "
                            "dxgi.dll; no export was forwarded.");
@@ -79,6 +124,8 @@ static void load_real(HINSTANCE self) {
     real_dxgi = found;
 #define RESOLVE(name) { FARPROC p = GetProcAddress(real_dxgi, #name); if (p) real_##name = (void*)p; }
     DXGI_EXPORTS(RESOLVE)
+    proxy_trace("system factories=%p/%p/%p", real_CreateDXGIFactory,
+                real_CreateDXGIFactory1, real_CreateDXGIFactory2);
 }
 
 /* Starting the runtime waits for the game's first call into us. Doing it from DllMain would
@@ -93,17 +140,26 @@ static void start_runtime(void) {
     HMODULE self;
     if (!GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
                             GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                            (LPCSTR)&start_runtime, &self)) return;
+                            (LPCSTR)&start_runtime, &self)) {
+        proxy_trace("runtime start: GetModuleHandleEx failed: error=%lu", GetLastError()); return;
+    }
     DWORD n = GetModuleFileNameA(self, path, MAX_PATH);
-    if (!n || n >= MAX_PATH) return;
+    if (!n || n >= MAX_PATH) { proxy_trace("runtime start: GetModuleFileName failed/too long: n=%lu error=%lu", n, GetLastError()); return; }
+    proxy_trace("runtime start: proxy module=%p path=%s", (void*)self, path);
     char* slash = path;
     for (char* p = path; *p; ++p) if (*p == '\\') slash = p;
-    if (slash == path || (size_t)(slash - path) > MAX_PATH - 24) return;
+    if (slash == path || (size_t)(slash - path) > MAX_PATH - 24) { proxy_trace("runtime start: invalid/too long parent path"); return; }
     lstrcpyA(slash + 1, "touhou_hfr64.dll");
+    proxy_trace("loading runtime: %s", path);
     HMODULE runtime = LoadLibraryA(path);
-    if (!runtime) return;
+    if (!runtime) { proxy_trace("runtime LoadLibrary failed: error=%lu", GetLastError()); return; }
+    proxy_trace("runtime loaded: module=%p", (void*)runtime);
     StartFn start = (StartFn)(void*)GetProcAddress(runtime, "hfr_start");
-    if (start) start(NULL);
+    if (start) {
+        DWORD result = start(NULL);
+        proxy_trace("hfr_start returned %lu (1=installed; otherwise see touhou_hfr.log)", result);
+        (void)result;
+    } else proxy_trace("runtime has no hfr_start export: error=%lu", GetLastError());
 }
 
 /* The names DxLib asks for. Each starts the runtime once, then calls the real factory --
@@ -117,12 +173,15 @@ static void* orig_factory1 = (void*)proxy_absent;
 static void* orig_factory2 = (void*)proxy_absent;
 
 static HRESULT WINAPI hfr_dxgi_factory(REFIID riid, void** out) {
+    proxy_trace("CreateDXGIFactory intercepted");
     start_runtime(); return ((Factory)orig_factory)(riid, out);
 }
 static HRESULT WINAPI hfr_dxgi_factory1(REFIID riid, void** out) {
+    proxy_trace("CreateDXGIFactory1 intercepted");
     start_runtime(); return ((Factory)orig_factory1)(riid, out);
 }
 static HRESULT WINAPI hfr_dxgi_factory2(UINT flags, REFIID riid, void** out) {
+    proxy_trace("CreateDXGIFactory2 intercepted");
     start_runtime(); return ((Factory2)orig_factory2)(flags, riid, out);
 }
 
@@ -130,6 +189,8 @@ BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID reserved) {
     (void)reserved;
     if (reason == DLL_PROCESS_ATTACH) {
         DisableThreadLibraryCalls(instance);
+        proxy_trace_init(instance);
+        proxy_trace("diagnostic build 2026-09-16 attached: module=%p", (void*)instance);
         load_real(instance);
         /* Point the three factory stubs at the wrappers above rather than at the real
            library, so the generated stub still does the jumping and nothing else changes. */
@@ -139,6 +200,7 @@ BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID reserved) {
         real_CreateDXGIFactory  = (void*)hfr_dxgi_factory;
         real_CreateDXGIFactory1 = (void*)hfr_dxgi_factory1;
         real_CreateDXGIFactory2 = (void*)hfr_dxgi_factory2;
+        proxy_trace("factory hooks ready");
     }
     return TRUE;
 }
