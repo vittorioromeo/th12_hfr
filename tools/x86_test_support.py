@@ -1,5 +1,5 @@
-"""Emulate the actual x86 stubs emitted by test_th11.c. Requires unicorn.
-Usage: python tools/test_th11_stubs.py build/native11
+"""Emulate the actual x86 stubs emitted by tools/test_hfr.c. Requires unicorn.
+Usage: python tools/test_th12_stubs.py build/tests/th12.exe   (one module per game)
 The .game/.stubs/.json files are local test artifacts, never release contents.
 """
 import json

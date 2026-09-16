@@ -1,8 +1,15 @@
-# THRotator and thprac compatibility research
+# THRotator and thprac compatibility
 
-Research snapshot: 2026-09-15. This records source inspection, executable disassembly,
-and automated patch-range comparisons. **Neither combination has been run in a game
-during this investigation. This is a feasibility report, not a supported installation recipe.**
+Sections 1 to 9 are the original research snapshot of 2026-09-15: source inspection, executable
+disassembly and automated patch-range comparisons, written before anything had been run in a
+game. They are left as they were written, because the two implementation sections at the end are
+partly a record of where the research was right and where it was not. **Read the implementation
+status for what actually shipped**, and treat the recommendations above it as what was believed
+at the time:
+
+- [THRotator mode](#implementation-status-throtator-mode-2026-09-15) — shipped in v0.5.3-test
+- [thprac's update hook](#implementation-status-thpracs-update-hook-2026-09-16) — shipped in
+  v0.5.3-test
 
 ## Recommendation
 
@@ -26,7 +33,7 @@ larger maintenance burden. These two reimplementation decisions should be made s
 
 | Project | Inspected revision |
 | --- | --- |
-| Touhou HFR | `5afebd382396db9697a92810114069252a22fee3` (`v0.5.2-test` in source) |
+| Touhou HFR | `5afebd382396db9697a92810114069252a22fee3` (`v0.5.2-test` in source), as the research was written |
 | [THRotator][rotator] | `a9e95cdb7b425ee13bef929ad8beb99fe0e2ebb6` |
 | [thprac][thprac] | `585fae1aad4b720f350655a44e3f2ec7fc0dfa25` |
 
@@ -40,8 +47,10 @@ This validates the HFR baseline and the addresses used below, **not co-loading**
 Steam co-loading was not tested; the address analysis applies to the supported decrypted
 game layouts, not their on-disk Steam wrappers.
 
-No runtime changes, mod installations, game launches or changes to game directories were
-made for this investigation. The added code is the read-only audit utility described below.
+No runtime changes, mod installations, game launches or changes to game directories were made
+for the research itself; the only code it added is the read-only audit utility described below.
+Both mods have since been run against the patch, and both compatibility modes shipped — the
+implementation sections at the end have the details.
 
 ## What a multiple-DLL proxy can solve
 
@@ -77,9 +86,9 @@ making either of these two mods understand New Classic.
 ## THRotator: graphics ownership is the main issue
 
 HFR already has part of the needed infrastructure. In
-[`detect_d3d9_wrapper`](src/backends/d3d9.c), automatic mode notices a non-system
+[`detect_d3d9_wrapper`](../src/backends/d3d9.c), automatic mode notices a non-system
 `d3d9.dll`, selects the game's presentation chain and disables HFR's D3D9Ex path.
-HFR's [import hooks](src/core/imports.c) preserve the previous IAT target, and its
+HFR's [import hooks](../src/core/imports.c) preserve the previous IAT target, and its
 device hooks retain the previous vtable functions.
 
 These are useful foundations, but `own_present=0` alone does not establish compatibility:
@@ -95,7 +104,7 @@ These are useful foundations, but `own_present=0` alone does not establish compa
 These behaviors are in [THRotatorDirect3D.cpp][rotator-device] (`GetBackBuffer` around
 line 696, `SetViewport` around 2365, `EndScene` around 2394, `InternalPresent` around
 2710), and the viewport counter in [THRotatorEditor.cpp][rotator-editor]. HFR's extra
-scene is in [`scaler_blit`](src/core/scaler.c).
+scene is in [`scaler_blit`](../src/core/scaler.c).
 
 With the current code, the likely call sequence is:
 
@@ -153,7 +162,7 @@ replaces what the wrapper does, which is untrue for THRotator's rotation and HUD
 
 ### Reproducible patch-range audit
 
-[`tools/check_thprac_overlap.py`](tools/check_thprac_overlap.py) compares fresh HFR
+[`tools/check_thprac_overlap.py`](../tools/check_thprac_overlap.py) compares fresh HFR
 patch plans with literal thprac hook declarations, hotkey patches, explicit tracker
 hooks, `SetDpadHook` sites and native FPS-operand writes in the four game files.
 Optional patches are included even if disabled by default.
@@ -191,8 +200,8 @@ with a synthetic source fixture.
 
 ### Confirmed unreachable hooks
 
-HFR [installs](src/core/install.c) a jump at the original update-runner entry to its own
-[`hfr_runner`](src/backends/update_runner.c). It executes the callback list itself and
+HFR [installs](../src/core/install.c) a jump at the original update-runner entry to its own
+[`hfr_runner`](../src/backends/update_runner.c). It executes the callback list itself and
 returns directly. It never executes the original runner's return instruction.
 
 thprac hooks exactly those original returns:
@@ -278,7 +287,7 @@ A concrete incompatibility exists in thprac's `ReplayClearParam`: on finding `PR
 it truncates the file there. `CloneReplayWithParams` uses this operation. Any following
 HFR chunks would be lost. A compatibility fix should remove/replace only `PRAC` while
 preserving other chunks. See [thprac replay handling][thprac-games] and
-[HFR replay handling](src/core/replay.c).
+[HFR replay handling](../src/core/replay.c).
 
 Metadata coexistence does not prove replay determinism. Test practice warps, restarts,
 resource changes and input streams together, including editing/re-saving replays. A replay

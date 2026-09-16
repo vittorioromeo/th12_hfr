@@ -2,7 +2,7 @@
    English (th10e.exe) executables: every site the simulation writes (speed sites, gated blocks,
    the hit-test guard, replay and frame call sites, the frame limiter waits) plus function
    entries spread across the code section so that a different build fails to match. See
-   TH10_DEVNOTES.md for what each site is. */
+   docs/games/TH10_DEVNOTES.md for what each site is. */
 static const struct GameSignature th10_signatures[] = {
     {0x4392c1, 5, {0xe8,0xaa,0x73,0xfe,0xff}},   /* the screenshot call, the one site the patch does write */
     {0x413508, 2, {0x75,0x5b}},   /* FPS watchdog: skip clock reset/fallback at HFR */

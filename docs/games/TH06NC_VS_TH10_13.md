@@ -6,9 +6,9 @@ are 32-bit Direct3D 9 games running one engine family; **Touhou Koumakyou: New C
 of what the patch does for each, written against the source as of v0.5.3-test.
 
 The per-game records are [TH10_DEVNOTES.md](TH10_DEVNOTES.md),
-[TH11_DEVNOTES.md](TH11_DEVNOTES.md), [DEVNOTES.md](DEVNOTES.md) (TH12),
+[TH11_DEVNOTES.md](TH11_DEVNOTES.md), [DEVNOTES.md](TH12_DEVNOTES.md) (TH12),
 [TH13_DEVNOTES.md](TH13_DEVNOTES.md) and [TH06NC_DEVNOTES.md](TH06NC_DEVNOTES.md); the shared
-runtime is described in [DEVNOTES_RUNTIME.md](DEVNOTES_RUNTIME.md).
+runtime is described in [DEVNOTES_RUNTIME.md](../DEVNOTES_RUNTIME.md).
 
 ---
 

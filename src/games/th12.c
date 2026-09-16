@@ -27,85 +27,81 @@ static void th12_install_sites(void) {
     uint8_t FMUL_SPEED[6] = { 0xD8, 0x0D, 0, 0, 0, 0 }; { uint32_t a = (uint32_t)(uintptr_t)&g_factor; memcpy(FMUL_SPEED + 2, &a, 4); }
 
     /* --- Player shots: pos += vel * speed (0x437016..0x43702a, 20 bytes) --- */
-    { static const uint8_t ex[] = { 0xD9, 0x46, 0xE0, 0x8B, 0x44, 0x24, 0x10, 0xD8, 0x00, 0xD9, 0x18, 0xD9, 0x46, 0xE8, 0xD8, 0x46, 0xE4, 0xD9, 0x5E, 0xE4 };
-      STUB_BEGIN();
+    {       STUB_BEGIN();
       E(0xD9, 0x46, 0xE0); E(FMUL_SPEED[0], FMUL_SPEED[1], FMUL_SPEED[2], FMUL_SPEED[3], FMUL_SPEED[4], FMUL_SPEED[5]);
       E(0x8B, 0x44, 0x24, 0x10);          /* mov eax,[esp+0x10] (same frame: we jumped, not called) */
       E(0xD8, 0x00, 0xD9, 0x18);          /* fadd [eax]; fstp [eax] */
       E(0xD9, 0x46, 0xE8); E(FMUL_SPEED[0], FMUL_SPEED[1], FMUL_SPEED[2], FMUL_SPEED[3], FMUL_SPEED[4], FMUL_SPEED[5]);
       E(0xD8, 0x46, 0xE4, 0xD9, 0x5E, 0xE4);
       EJMP(0x43702a);
-      hook_site(0x437016, 20, ex); }
+      site_hook(0x437016, 20); }
     /* --- Player shots: angle += angular velocity * speed (0x436fe2: fld [esi+0x18]; push ecx; fadd [esi+0x14]) --- */
-    { static const uint8_t ex[] = { 0xD9, 0x46, 0x18, 0x51, 0xD8, 0x46, 0x14 };
-      STUB_BEGIN();
+    {       STUB_BEGIN();
       E(0xD9, 0x46, 0x18); E(FMUL_SPEED[0], FMUL_SPEED[1], FMUL_SPEED[2], FMUL_SPEED[3], FMUL_SPEED[4], FMUL_SPEED[5]);
       E(0x51); E(0xD8, 0x46, 0x14);
       EJMP(0x436fe9);
-      hook_site(0x436fe2, 7, ex); }
+      site_hook(0x436fe2, 7); }
     /* --- Player: death particles once per frame: cmp [edi+0xa34],3 @0x436dd9 (jne @0x436de0 -> 0x436e91) --- */
-    { static const uint8_t ex[] = { 0x83, 0xBF, 0x34, 0x0A, 0x00, 0x00, 0x03 };
-      STUB_BEGIN();
+    {       STUB_BEGIN();
       E(0x83, 0xBF, 0x34, 0x0A, 0x00, 0x00, 0x03);   /* cmp [edi+0xa34],3 */
       EJCC(0x85, 0x436de0);                           /* jne -> original jne (taken) */
       E_timer_unchanged(R_EDI, 0xa30, 0xa34);
       EJCC(0x84, 0x436e91);                           /* unchanged -> skip block */
       E(0x39, 0xFF);                                  /* cmp edi,edi -> ZF=1 */
       EJMP(0x436de0);
-      hook_site(0x436dd9, 7, ex); }
+      site_hook(0x436dd9, 7); }
     /* --- Player: state_timer % 60 == 0 counter once per frame @0x4374fc --- */
-    { static const uint8_t ex[] = { 0x8B, 0x87, 0x34, 0x0A, 0x00, 0x00 };
-      STUB_BEGIN();
+    {       STUB_BEGIN();
       E(0x8B, 0x87, 0x34, 0x0A, 0x00, 0x00);          /* mov eax,[edi+0xa34] */
       E(0x3B, 0x87, 0x30, 0x0A, 0x00, 0x00);          /* cmp eax,[edi+0xa30] */
       EJCC(0x84, 0x43753d);
       EJMP(0x437502);
-      hook_site(0x4374fc, 6, ex); }
+      site_hook(0x4374fc, 6); }
     /* --- Player: option gather counter inc [edi+0xc418] once per frame @0x4368f7 --- */
-    { static const uint8_t ex[] = { 0xFF, 0x87, 0x18, 0xC4, 0x00, 0x00 };
-      STUB_BEGIN();
+    {       STUB_BEGIN();
       E_timer_unchanged(R_EDI, 0xa30, 0xa34);
       EJCC(0x84, 0x4368fd);
       E(0xFF, 0x87, 0x18, 0xC4, 0x00, 0x00);
       EJMP(0x4368fd);
-      hook_site(0x4368f7, 6, ex); }
+      site_hook(0x4368f7, 6); }
     /* --- Bullet: per-frame counters [ebp+4]-- and [ebp+0x520]-- once per frame @0x409fdb..0x409ff7 --- */
-    { static const uint8_t ex[] = { 0x8B, 0x45, 0x04, 0x85, 0xC0 };
-      STUB_BEGIN();
+    {       STUB_BEGIN();
       E_timer_unchanged(R_EBP, 0x4e4, 0x4e8);
       EJCC(0x84, 0x409ff7);
       E(0x8B, 0x45, 0x04, 0x85, 0xC0);
       EJMP(0x409fe0);
-      hook_site(0x409fdb, 5, ex); }
+      site_hook(0x409fdb, 5); }
 
     /* --- Items: "+= 0.2 per frame" (fadd qword [0x4a3fb8]) -> += 0.2 * speed --- */
     { static const uintptr_t sites[] = { 0x425fc5, 0x426080, 0x426218 };
-      static const uint8_t ex[] = { 0xDC, 0x05, 0xB8, 0x3F, 0x4A, 0x00 };
       for (int i = 0; i < 3; i++) {
           STUB_BEGIN();
           E(0xDD, 0x05, 0xB8, 0x3F, 0x4A, 0x00);        /* fld qword [0x4a3fb8] */
           E(0xD8, 0x0D, 0xD0, 0x2E, 0x4B, 0x00);        /* fmul dword [speed] */
           E(0xDE, 0xC1);                                /* faddp st(1),st */
           EJMP(sites[i] + 6);
-          hook_site(sites[i], 6, ex);
+          site_hook(sites[i], 6);
       } }
     /* --- Items: UFO attraction acceleration: scale increment before "fadd [edi+0x9bc]" @0x426926 --- */
-    { static const uint8_t ex[] = { 0xD8, 0x87, 0xBC, 0x09, 0x00, 0x00 };
-      STUB_BEGIN();
+    {       STUB_BEGIN();
       E(0xD8, 0x0D, 0xD0, 0x2E, 0x4B, 0x00);            /* fmul dword [speed] */
       E(0xD8, 0x87, 0xBC, 0x09, 0x00, 0x00);
       EJMP(0x42692c);
-      hook_site(0x426926, 6, ex); }
+      site_hook(0x426926, 6); }
     /* --- Items: state-5 countdown [edi+0x9c0]-- once per frame @0x425c5c (jns @0x425c63 -> 0x426f53) --- */
-    { static const uint8_t ex[] = { 0x83, 0x87, 0xC0, 0x09, 0x00, 0x00, 0xFF };
-      STUB_BEGIN();
+    {       STUB_BEGIN();
       E_not_major();                                    /* (state-5 items do not tick their timer) */
       EJCC(0x84, 0x426f53);                             /* not a frame tick: behave as "not negative yet" */
       E(0x83, 0x87, 0xC0, 0x09, 0x00, 0x00, 0xFF);
       EJMP(0x425c63);
-      hook_site(0x425c5c, 7, ex); }
+      site_hook(0x425c5c, 7); }
 
-    /* --- Lasers: ex wait counter [laser+0x44c]-- once per frame (timer +0x14/+0x18 ticked by the manager) --- */
+    /* --- Lasers: ex wait counter [laser+0x44c]-- once per frame (timer +0x14/+0x18 ticked by the manager) ---
+       The expected bytes here and in the graze loop below are built from the same table row as
+       the stub, rather than read from the frozen signatures: that ties each row's register and
+       offsets to the site's real bytes, so a mistyped offset fails the patch instead of quietly
+       emitting the wrong stub. Where the expected bytes are a plain literal there is nothing to
+       tie, and site_hook() reads the frozen table instead. */
     { struct { uintptr_t addr; uint8_t reg; uintptr_t skip, cont; } L[] = {
           { 0x42979a, R_EDI, 0x4297ab, 0x4297a0 },   /* LaserLine  */
           { 0x42c90c, R_ESI, 0x42c91d, 0x42c912 },   /* LaserCurve */
@@ -136,30 +132,25 @@ static void th12_install_sites(void) {
       } }
 
     /* --- Stage: spell/bomb background distortion (uses RNG every frame) only on frame ticks @0x403145 --- */
-    { static const uint8_t ex[] = { 0x8B, 0x8B, 0xDC, 0x35, 0x00, 0x00, 0x33, 0xFF, 0x3B, 0xCF };
-      STUB_BEGIN();
+    {       STUB_BEGIN();
       E(0x8B, 0x8B, 0xDC, 0x35, 0x00, 0x00);          /* mov ecx,[ebx+0x35dc] */
       E(0x33, 0xFF, 0x3B, 0xCF);                      /* xor edi,edi; cmp ecx,edi */
       EJCC(0x84, 0x4036dd);
       E_not_major();
       EJCC(0x84, 0x4036dd);
       EJMP(0x403155);
-      hook_site(0x403145, 10, ex); }
+      site_hook(0x403145, 10); }
     /* --- Stage: distortion frame counter [ebx+0x35d8]++ only on frame ticks @0x4036dd --- */
-    { static const uint8_t ex[] = { 0xB8, 0x01, 0x00, 0x00, 0x00, 0x01, 0x83, 0xD8, 0x35, 0x00, 0x00 };
-      STUB_BEGIN();
+    {       STUB_BEGIN();
       E(0xB8, 0x01, 0x00, 0x00, 0x00);                /* mov eax,1 (also the return value) */
       E_not_major();
       EJCC(0x84, 0x4036e8);
       E(0x01, 0x83, 0xD8, 0x35, 0x00, 0x00);          /* add [ebx+0x35d8],eax */
       EJMP(0x4036e8);
-      hook_site(0x4036dd, 11, ex); }
+      site_hook(0x4036dd, 11); }
 
     /* --- Player movement: fixed-point step = ftol(vel*speed) loses up to 1 unit per tick; carry the residual --- */
-    {
-      static const uint8_t ex[] = { 0xE8, 0x11, 0xCA, 0x05, 0x00 };
-      static const uint8_t ex2[] = { 0xE8, 0xFE, 0xC9, 0x05, 0x00 };
-      for (int i = 0; i < 2; i++) {
+    {       for (int i = 0; i < 2; i++) {
           uintptr_t site = i == 0 ? 0x4367ca : 0x4367dd;
           uint8_t* st = g_p;
           E(0x81,0x3d); E32((uint32_t)(uintptr_t)&g_factor); E32(0x3f800000);
@@ -171,14 +162,13 @@ static void th12_install_sites(void) {
           E(0xDE, 0xE9);                                            /* fsubp st(1),st  -> residual */
           E(0xD9, 0x1D); E32((uint32_t)(uintptr_t)&g_move_residual[i]);        /* fstp dword [res] */
           E(0xC3);                                                  /* ret */
-          patch_call(site, st, i == 0 ? ex : ex2);
+          site_call(site, st);
       } }
 
     /* --- Timer::add sites whose argument is a script/engine constant in frames, not a per-frame rate:
            add value * logical speed (stock semantics) instead of value * logical * dt.
            0x439ac2: player shot cycle timer -= 14 ; 0x43adbd: ANM "timer -= N" helper --- */
-    { static const uint8_t ex1[] = { 0xE8, 0x59, 0xAF, 0x02, 0x00 }, ex2[] = { 0xE8, 0x5E, 0x9C, 0x02, 0x00 };
-      uint8_t* st = g_p;
+    { uint8_t* st = g_p;
       E(0x8B, 0x46, 0x04, 0x89, 0x06);                              /* mov eax,[esi+4]; mov [esi],eax */
       E(0xD9, 0x44, 0x24, 0x04);                                    /* fld dword [esp+4] */
       E(0xD8, 0x0D); E32((uint32_t)(uintptr_t)&g_logical);          /* fmul dword [g_logical] */
@@ -186,52 +176,47 @@ static void th12_install_sites(void) {
       ECALL(0x4931e0);
       E(0x89, 0x46, 0x04);                                          /* mov [esi+4],eax */
       E(0xC2, 0x04, 0x00);                                          /* ret 4 */
-      patch_call(0x439ac2, st, ex1);
-      patch_call(0x43adbd, st, ex2); }
+      site_call(0x439ac2, st);
+      site_call(0x43adbd, st); }
 
     /* --- MotionState::step (0x464db0): pos += vel  ->  pos += vel * g_factor (player shots, damage sources; enemies/bombs run with factor 1) --- */
-    { static const uint8_t ex[] = { 0xD9, 0x43, 0x0C, 0x8B, 0xF3, 0xD8, 0x03, 0xD9, 0x1B, 0xD9, 0x43, 0x10, 0xD8, 0x43, 0x04, 0xD9, 0x5B, 0x04, 0xD9, 0x43, 0x14, 0xD8, 0x43, 0x08, 0xD9, 0x5B, 0x08 };
-      STUB_BEGIN();
+    {       STUB_BEGIN();
       E(0xD9, 0x43, 0x0C); E(FMUL_SPEED[0], FMUL_SPEED[1], FMUL_SPEED[2], FMUL_SPEED[3], FMUL_SPEED[4], FMUL_SPEED[5]); E(0xD8, 0x03, 0xD9, 0x1B);
       E(0xD9, 0x43, 0x10); E(FMUL_SPEED[0], FMUL_SPEED[1], FMUL_SPEED[2], FMUL_SPEED[3], FMUL_SPEED[4], FMUL_SPEED[5]); E(0xD8, 0x43, 0x04, 0xD9, 0x5B, 0x04);
       E(0xD9, 0x43, 0x14); E(FMUL_SPEED[0], FMUL_SPEED[1], FMUL_SPEED[2], FMUL_SPEED[3], FMUL_SPEED[4], FMUL_SPEED[5]); E(0xD8, 0x43, 0x08, 0xD9, 0x5B, 0x08);
       E(0x8B, 0xF3);                                   /* mov esi,ebx */
       EJMP(0x464dd7);
-      hook_site(0x464dbc, 27, ex); }
+      site_hook(0x464dbc, 27); }
 
     /* --- Player shots (0x439b10 loop): speed += accel * factor @0x439b72 --- */
-    { static const uint8_t ex[] = { 0xD9, 0x47, 0x18, 0x51, 0xD8, 0x47, 0x14 };
-      STUB_BEGIN();
+    {       STUB_BEGIN();
       E(0xD9, 0x47, 0x18); E(FMUL_SPEED[0], FMUL_SPEED[1], FMUL_SPEED[2], FMUL_SPEED[3], FMUL_SPEED[4], FMUL_SPEED[5]);
       E(0x51); E(0xD8, 0x47, 0x14);
       EJMP(0x439b79);
-      hook_site(0x439b72, 7, ex); }
+      site_hook(0x439b72, 7); }
 
     /* --- Enemy hit test guard (0x439ed0): "player state timer unchanged this frame -> no damage".
            With sub-steps the integer timer changes on one tick in K; use "player timer advanced since the
            previous Player update" instead (tracked by the runner). @0x439ef2: cmp eax,[esi+0xa30]; jne 0x439f05 --- */
-    { static const uint8_t ex[] = { 0x3B, 0x86, 0x30, 0x0A, 0x00, 0x00 };
-      STUB_BEGIN();
+    {       STUB_BEGIN();
       E(0x50);                                            /* push eax */
       E(0xA1); E32((uint32_t)(uintptr_t)&g_ptf_prev);      /* mov eax,[g_ptf_prev] */
       E(0x3B, 0x05); E32((uint32_t)(uintptr_t)&g_ptf_cur); /* cmp eax,[g_ptf_cur] */
       E(0x58);                                            /* pop eax */
       EJCC(0x85, 0x439f05);                               /* changed -> proceed */
       EJMP(0x439efa);                                     /* unchanged -> return 0 */
-      hook_site(0x439ef2, 6, ex); }
+      site_hook(0x439ef2, 6); }
 
     /* --- Enemy death ring effect callback (0x4107e0): shrink/fade once per frame @0x410814 --- */
-    { static const uint8_t ex[] = { 0xD9, 0x47, 0x20, 0x80, 0x47, 0x2B, 0x03, 0xDC, 0x25, 0x20, 0x42, 0x4A, 0x00, 0xD9, 0x5F, 0x20 };
-      STUB_BEGIN();
+    {       STUB_BEGIN();
       E_timer_unchanged(R_EDI, 0x0c, 0x10);
       EJCC(0x84, 0x410824);
       ECOPY(0x410814, 16);
       EJMP(0x410824);
-      hook_site(0x410814, 16, ex); }
+      site_hook(0x410814, 16); }
 
     /* --- Scrolling-mesh effect VM callback (0x45dcd0, fastcall ECX=vm): per-frame UV scroll; run once per frame --- */
-    { static const uint8_t ex[] = { 0x83, 0xEC, 0x18, 0xD9, 0x05, 0xC8, 0x3D, 0x4A, 0x00 };
-      STUB_BEGIN();
+    {       STUB_BEGIN();
       E(0x50);                                            /* push eax */
       E(0x8B, 0x81); E32(0x68);                           /* mov eax,[ecx+0x68] (timer prev) */
       E(0x3B, 0x81); E32(0x6c);                           /* cmp eax,[ecx+0x6c] (timer cur) */
@@ -240,7 +225,7 @@ static void th12_install_sites(void) {
       E(0x31, 0xC0, 0xC3);                                /* xor eax,eax; ret   (skip this tick) */
       ECOPY(0x45dcd0, 9);                                 /* run: original prologue */
       EJMP(0x45dcd9);
-      hook_site(0x45dcd0, 9, ex); }
+      site_hook(0x45dcd0, 9); }
 
     /* --- LaserCurve (update 0x42c770, ESI = laser): the trail is a ring of nodes (5 floats
            each at [esi+0xf9c], count [esi+0x470]) that the update shifts by one node per
@@ -253,23 +238,19 @@ static void th12_install_sites(void) {
            last node towards the next frame's position, which is exactly what the nodes are:
            the head's position at each whole frame. TH13 computes its curve lasers from a
            float timer instead and needs nothing; TH10 and TH11 have no curved lasers. --- */
-    { static const uint8_t ex[] = { 0x8B, 0x8E, 0x70, 0x04, 0x00, 0x00 };   /* mov ecx,[esi+0x470] */
-      STUB_BEGIN();
+    {       STUB_BEGIN();
       E(0x8B, 0x96, 0x9C, 0x0F, 0x00, 0x00);          /* mov edx,[esi+0xf9c]: the node ring, read inside the skipped block */
       E_timer_unchanged(R_ESI, 0x28, 0x2c);
       EJCC(0x84, 0x42c965);                            /* no whole frame passed: no shift */
       E(0x8B, 0x8E, 0x70, 0x04, 0x00, 0x00);
       EJMP(0x42c92b);
-      hook_site(0x42c925, 6, ex); }
-    { static const uint8_t ex[] = { 0xD9, 0x02, 0xD8, 0x46, 0x5C, 0xD9, 0x1A,
-                                    0xD9, 0x46, 0x60, 0xD8, 0x42, 0x04, 0xD9, 0x5A, 0x04,
-                                    0xD9, 0x46, 0x64, 0xD8, 0x42, 0x08, 0xD9, 0x5A, 0x08 };
-      STUB_BEGIN();
+      site_hook(0x42c925, 6); }
+    {       STUB_BEGIN();
       E(0xD9, 0x46, 0x5C); E(FMUL_SPEED[0], FMUL_SPEED[1], FMUL_SPEED[2], FMUL_SPEED[3], FMUL_SPEED[4], FMUL_SPEED[5]); E(0xD8, 0x02, 0xD9, 0x1A);
       E(0xD9, 0x46, 0x60); E(FMUL_SPEED[0], FMUL_SPEED[1], FMUL_SPEED[2], FMUL_SPEED[3], FMUL_SPEED[4], FMUL_SPEED[5]); E(0xD8, 0x42, 0x04, 0xD9, 0x5A, 0x04);
       E(0xD9, 0x46, 0x64); E(FMUL_SPEED[0], FMUL_SPEED[1], FMUL_SPEED[2], FMUL_SPEED[3], FMUL_SPEED[4], FMUL_SPEED[5]); E(0xD8, 0x42, 0x08, 0xD9, 0x5A, 0x08);
       EJMP(0x42c97e);
-      hook_site(0x42c965, 25, ex); }
+      site_hook(0x42c965, 25); }
 
     /* --- Player shot behaviours (table 0x4aebd8, called with EDX = shot from the shot update):
            homing 0x43a480 (turn towards the target, speed +-0.2 per call), 0x43a810 (stop at the
@@ -284,15 +265,14 @@ static void th12_install_sites(void) {
           STUB_BEGIN(); E(0x9c); E_timer_unchanged(R_EDX, 0, 4);
           E(0x75, 0x04, 0x9d, 0x31, 0xc0, 0xc3);       /* unchanged: restore flags, return 0 */
           E(0x9d); ECOPY(S[i].addr, S[i].n); EJMP(S[i].addr + S[i].n);
-          hook_site(S[i].addr, S[i].n, site_expected(S[i].addr, S[i].n));
+          site_hook(S[i].addr, S[i].n);
       } }
-    { static const uint8_t ex[] = { 0xDC, 0x05, 0x40, 0x41, 0x4A, 0x00 };   /* fadd qword [0x4a4140] (28.0) */
-      STUB_BEGIN();
+    {       STUB_BEGIN();
       E(0xDD, 0x05, 0x40, 0x41, 0x4A, 0x00);            /* fld qword [0x4a4140] */
       E(FMUL_SPEED[0], FMUL_SPEED[1], FMUL_SPEED[2], FMUL_SPEED[3], FMUL_SPEED[4], FMUL_SPEED[5]);
       E(0xDE, 0xC1);                                    /* faddp st(1),st */
       EJMP(0x43a756);
-      hook_site(0x43a750, 6, ex); }
+      site_hook(0x43a750, 6); }
     stub_end();
     LOG("site patches installed (%u bytes of stubs)", (unsigned)g_stub_used);
 }

@@ -27,7 +27,7 @@ instead; this warning was in the file all along and was still not enough to stop
 conclusions being built on `xrefs` output.** The AMD64 `unwind_begin_rva` comes
 from `.pdata`, whose entries may be function fragments rather than complete functions.
 Start disassembly on a known instruction boundary; an arbitrary byte offset is not reliable.
-See [TH06NC_DEVNOTES.md](../../TH06NC_DEVNOTES.md) for the investigation using this tool.
+See [TH06NC_DEVNOTES.md](../../docs/games/TH06NC_DEVNOTES.md) for the investigation using this tool.
 
 - `xrefs64.py <exe> <rva> [...]` — **AMD64 xrefs, decoded from real function boundaries.**
   Prefer this to `inspect_pe.py xrefs`, which decodes executable sections linearly and so

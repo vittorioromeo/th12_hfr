@@ -2,7 +2,8 @@
 import re,sys,unicodedata
 from pathlib import Path
 root=Path(__file__).resolve().parent.parent
-docs=sorted(list(root.glob('*.md'))+list(root.glob('shaders/*.md'))+list(root.glob('tools/**/*.md')))
+SKIP={'build','third_party','.git','releases'}
+docs=sorted(p for p in root.rglob('*.md') if not SKIP & set(p.relative_to(root).parts))
 def anchors(p):
     out=set()
     for line in p.read_text(encoding='utf-8').splitlines():
@@ -25,11 +26,11 @@ for d in docs:
         file_part,_,anchor=target.partition('#')
         if file_part:
             t=(d.parent/file_part).resolve()
-            if not t.exists(): bad.append(f"{d.name}:{line}  missing file: {target}"); continue
+            if not t.exists(): bad.append(f"{d.relative_to(root)}:{line}  missing file: {target}"); continue
         else:
             t=d
         if anchor and t.suffix=='.md':
-            if anchor not in anchors(t): bad.append(f"{d.name}:{line}  missing anchor: {target}")
+            if anchor not in anchors(t): bad.append(f"{d.relative_to(root)}:{line}  missing anchor: {target}")
 print("\n".join(bad) if bad else "all internal links and anchors resolve")
 print(f"({len(docs)} documents checked)")
 sys.exit(1 if bad else 0)

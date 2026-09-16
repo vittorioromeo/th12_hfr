@@ -1,7 +1,7 @@
 > Written while this work was done on TH11 and TH12. The scaler, filter chain, window
 > management and menu described here are shared by all four x86 games today; addresses
 > and "both games" phrasing date from that period. New Classic's D3D11 backend has none
-> of it — see [TH06NC_VS_TH10_13.md](TH06NC_VS_TH10_13.md).
+> of it — see [TH06NC_VS_TH10_13.md](games/TH06NC_VS_TH10_13.md).
 
 # Output resolution, scaling and the in-game menu
 
@@ -390,9 +390,9 @@ not care whose patch it is, only that something has taken the frame loop.
 These sites are deliberately **not** part of identification. Identity is settled first, from
 signatures no known patch touches, and only then are they checked, so a mismatch always means
 "something else patched this game" and never "this is the wrong game" -- the test asserts that
-a game with vpatch's jump written over each site is still identified as the game. TH11 has no
-sites recorded, because the equivalent addresses have not been read out of a vpatch build for
-it and guessing would either miss or accuse the innocent; the module test still covers it.
+a game with vpatch's jump written over each site is still identified as the game. All four games
+have sites recorded now; a game that had none would still be covered by the module-name test,
+which is why leaving them out is an acceptable state for a new profile rather than a hole.
 
 The dialog runs on a thread of its own. A message box called from `DllMain` would hold the
 loader lock while it waited for the user; the thread cannot start until that lock is released,

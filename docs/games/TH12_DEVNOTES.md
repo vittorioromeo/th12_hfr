@@ -1,4 +1,10 @@
-> Historical notes for the original per-game build. The current unified runtime and source locations are documented in [ARCHITECTURE.md](ARCHITECTURE.md); installation instructions are in [README.md](README.md). Findings from the current work are in [DEVNOTES_RUNTIME.md](DEVNOTES_RUNTIME.md).
+> **TH12's reverse-engineering record, and the oldest document here.** The patch began as
+> `th12_hfr`, so this file carries both TH12's engine anatomy and address map — still current,
+> still what `src/games/th12.c` is built from — and the original single-game design rationale,
+> which the unified runtime has since moved on from. Where the two disagree, the current
+> runtime is described in [ARCHITECTURE.md](../../ARCHITECTURE.md) and the reasoning behind it
+> in [DEVNOTES_RUNTIME.md](../DEVNOTES_RUNTIME.md). Sections 3 and 10 are the parts to trust
+> unreservedly: the engine anatomy and the address appendix.
 
 # th12_hfr developer notes
 
@@ -724,7 +730,7 @@ replay chunk reader/writer, and the whole Direct3D 9Ex layer.
 | 0x44f560 | main loop; frame calls at 0x44f881 / 0x44f89e / 0x44f8aa |
 | 0x450600 / 0x4503f0 / 0x450080 | frame functions (vsync / limiter variants) |
 | 0x450720 | present (+ latency sleep `cmp byte [0x4cead3],1` at 0x450729) |
-| 0x4624c0 / 0x462620 | update runner / draw runner |
+| 0x4624c0 / 0x462620 | update runner / draw runner; their `ret`s at 0x4625fb and 0x462722 |
 | 0x462380 / 0x462420 / 0x462890 | register update / register draw / remove node |
 | 0x4ce89c | runner object (update list +0x18, draw list +0x3c, "scene ending" flag +0x48) |
 | 0x4cf0f8 / 0x4cf218 | runner critical section / depth (used when 0x4cee78 & 0x8000) |

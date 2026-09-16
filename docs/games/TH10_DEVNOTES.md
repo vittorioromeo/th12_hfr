@@ -1,8 +1,8 @@
 # TH10 (Mountain of Faith) port development notes
 
 > Per-game record for the unified runtime. The shared design is in
-> [ARCHITECTURE.md](ARCHITECTURE.md); what the runtime learned while taking on TH10 is in
-> [DEVNOTES_RUNTIME.md](DEVNOTES_RUNTIME.md) §4, §7 and §8. This file is the place to look for
+> [ARCHITECTURE.md](../../ARCHITECTURE.md); what the runtime learned while taking on TH10 is in
+> [DEVNOTES_RUNTIME.md](../DEVNOTES_RUNTIME.md) §4, §7 and §8. This file is the place to look for
 > *TH10 addresses, layouts, decisions and their reasons*. The source of truth for every number
 > is `src/games/th10.c` and `src/games/th10_signatures.h`; if they disagree with this file, the
 > code is right and this file needs fixing.
@@ -43,7 +43,7 @@ All addresses are absolute for v1.00a. Fields named as in `GameProfile` (`src/ga
 | --- | --- |
 | Game speed (shared float the timers point at) | `0x476f78` |
 | Update runner pointer | `0x491be4`; ending flag at the default `+0x48` (TH10's runner ends there, hence `runner_ending` unset) |
-| Runner function | `0x449c00`, `stdcall(runner)` |
+| Runner function | `0x449c00`, `stdcall(runner)`; its `ret 4` at `0x449d0e` is `runner_ret` (DEVNOTES_RUNTIME §5e) |
 | Remove update node | `0x449f60` |
 | Runner critical section / depth counter | `0x492274` / `0x49231c`, always entered |
 | `misc_flags` | `0x491ff4` (kept for the shared code paths; not a lock gate here) |

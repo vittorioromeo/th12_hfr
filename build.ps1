@@ -1,7 +1,6 @@
-param(
-    [ValidateSet('th10','th11','th12','all')][string]$Game='all', # compatibility: every build includes every adapter
-    [string]$Compiler='C:\msys64\mingw32\bin\gcc.exe'
-)
+# Requires an i686 MinGW-w64 cross compiler (gcc and g++). One build carries every
+# game adapter. The runtime is C; only the in-game menu and Dear ImGui are C++.
+param([string]$Compiler='C:\msys64\mingw32\bin\gcc.exe')
 $ErrorActionPreference='Stop'
 $compilerPath=(Get-Command $Compiler -ErrorAction Stop).Source
 $savedPath=$env:PATH
@@ -25,7 +24,7 @@ try {
     }
     & $cxxPath -shared -static -static-libgcc -static-libstdc++ -o build/touhou_hfr.dll @objects -ld3d9 -lwinmm -lgdi32 -ldwmapi -lpsapi '-Wl,--kill-at'
     if($LASTEXITCODE){throw 'Unified DLL build failed'}
-    & $compilerPath -std=gnu11 -O2 -Wall -Wextra -Wno-unused-function -s -mwindows -static-libgcc src/launcher.c -o build/touhou_hfr.exe -lbcrypt
+    & $compilerPath -std=gnu11 -O2 -msse2 -mfpmath=sse -Wall -Wextra -Wno-unused-function -s -mwindows -static-libgcc src/launcher.c -o build/touhou_hfr.exe -lbcrypt
     if($LASTEXITCODE){throw 'Unified launcher build failed'}
     Copy-Item -LiteralPath build/touhou_hfr.dll -Destination build/dinput8.dll
     Copy-Item -LiteralPath touhou_hfr.ini -Destination build/touhou_hfr.ini

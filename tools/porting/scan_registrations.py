@@ -1,6 +1,6 @@
 # usage: scan_registrations.py <game.exe> <registration helper VA>
-# Lists every UpdateFunc registration with its priority and callback (see DEVNOTES.md 3.2 and
-# TH13_DEVNOTES.md 4). The helper is the function every constructor calls with the callback
+# Lists every UpdateFunc registration with its priority and callback (see docs/games/TH12_DEVNOTES.md 3.2 and
+# docs/games/TH13_DEVNOTES.md 4). The helper is the function every constructor calls with the callback
 # stored at [node+8] and the priority in EBX just before (TH13: 0x470990 / 0x470ff0).
 import sys, pefile, capstone, struct
 pe=pefile.PE(sys.argv[1])

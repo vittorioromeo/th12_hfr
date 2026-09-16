@@ -1,6 +1,6 @@
 #!/bin/sh
-# Requires an i686 MinGW-w64 cross compiler (gcc and g++). Both game adapters are always
-# included. The runtime is C; only the in-game menu and Dear ImGui are C++.
+# Requires an i686 MinGW-w64 cross compiler (gcc and g++). One build carries every game
+# adapter. The runtime is C; only the in-game menu and Dear ImGui are C++.
 set -eu
 cd "$(dirname "$0")"
 mkdir -p build/obj

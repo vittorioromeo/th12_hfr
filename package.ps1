@@ -8,7 +8,10 @@ $name="touhou_hfr_v$Version"
 $stage=Join-Path $PSScriptRoot ("build/package-"+[guid]::NewGuid().ToString('N'))
 $package=Join-Path $stage $name
 $source=Join-Path $package 'source'
+try {
 New-Item -ItemType Directory -Path $source -Force | Out-Null
+
+# What a player unzips: the runtime, its configuration template, the installer and the docs.
 foreach($file in @('dinput8.dll','touhou_hfr.dll','touhou_hfr.exe','touhou_hfr.ini')) {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot "build/$file") -Destination $package
 }
@@ -18,8 +21,15 @@ if($IncludeExperimental64) {
     }
 }
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'shaders') -Destination $package -Recurse
+# Docs are copied wholesale rather than enumerated: a new document ships without
+# anyone remembering to add it here, and to package.sh, and to both source lists.
 # One name per Join-Path: Windows PowerShell 5.1 will not take an array as -ChildPath.
-foreach($file in @('README.md','ARCHITECTURE.md','DEVNOTES.md','DEVNOTES_RUNTIME.md','MOD_COMPATIBILITY.md','RESOLUTION.md','TH10_DEVNOTES.md','TH11_DEVNOTES.md','TH13_DEVNOTES.md','ADDING_A_GAME.md','TH11_README.md','TH12_README.md','TH06NC_DEVNOTES.md','TH06NC_VS_TH10_13.md','install.ps1')){Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination $package}
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'docs') -Destination $package -Recurse
+foreach($file in @('README.md','ARCHITECTURE.md','ADDING_A_GAME.md','install.ps1')){
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination $package
+}
+
+# ... and the complete source beside it, so a release can be rebuilt from itself.
 foreach($dir in @('src','tools','third_party','shaders')) {
     $base=Join-Path $PSScriptRoot $dir
     foreach($file in Get-ChildItem -LiteralPath $base -Recurse -File) {
@@ -30,14 +40,15 @@ foreach($dir in @('src','tools','third_party','shaders')) {
         Copy-Item -LiteralPath $file.FullName -Destination $dest
     }
 }
-foreach($file in @('build.ps1','build.sh','package.ps1','package.sh','test.ps1','test_th11.ps1','install.ps1','README.md','ARCHITECTURE.md','DEVNOTES.md','DEVNOTES_RUNTIME.md','MOD_COMPATIBILITY.md','RESOLUTION.md','TH10_DEVNOTES.md','TH11_DEVNOTES.md','TH13_DEVNOTES.md','ADDING_A_GAME.md','TH11_README.md','TH12_README.md','touhou_hfr.ini')) {
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'docs') -Destination $source -Recurse
+foreach($file in @('build.ps1','build.sh','build64.ps1','build64.sh','test.ps1','test.sh',
+                   'test64.ps1','test64.sh','package.ps1','package.sh','install.ps1',
+                   'touhou_hfr.ini','README.md','ARCHITECTURE.md','ADDING_A_GAME.md')) {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination $source
 }
-foreach($file in @('build64.ps1','test64.ps1','build64.sh','test64.sh','TH06NC_DEVNOTES.md','TH06NC_VS_TH10_13.md')) {
-    Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination $source
-}
+
 New-Item -ItemType Directory -Force (Join-Path $PSScriptRoot 'releases') | Out-Null
 $archive=Join-Path $PSScriptRoot "releases/$name.zip"
-if(Test-Path -LiteralPath $archive){Copy-Item -LiteralPath $archive -Destination (Join-Path $stage 'previous-release.zip')}
 Compress-Archive -LiteralPath $package -DestinationPath $archive -Force
 Write-Output "Release: $archive"
+} finally { Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue }

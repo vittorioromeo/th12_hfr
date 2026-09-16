@@ -1,7 +1,7 @@
 # Shared Touhou HFR runtime
 
 For why things are the way they are, rather than what they are, see
-[DEVNOTES_RUNTIME.md](DEVNOTES_RUNTIME.md).
+[DEVNOTES_RUNTIME.md](docs/DEVNOTES_RUNTIME.md).
 
 The current build contains **two runtimes** and five game adapters.
 
@@ -14,8 +14,8 @@ experimentally. It is a separate binary with its own clock, patch set and render
 it shares source with the x86 runtime only where that is possible (the F11 menu, the
 settings API, the patch transaction, the launcher's identity registry). The two
 cannot share object code. What each does and does not do is set out side by side in
-[TH06NC_VS_TH10_13.md](TH06NC_VS_TH10_13.md); the research record is
-[TH06NC_DEVNOTES.md](TH06NC_DEVNOTES.md). Other games are not supported yet.
+[TH06NC_VS_TH10_13.md](docs/games/TH06NC_VS_TH10_13.md); the research record is
+[TH06NC_DEVNOTES.md](docs/games/TH06NC_DEVNOTES.md). Other games are not supported yet.
 
 ## Source map
 
@@ -25,7 +25,9 @@ cannot share object code. What each does and does not do is set out side by side
 | Executable identity | `src/identity.h`, `src/games/*_signatures.h` | PE layout and frozen code signatures, shared with the launcher |
 | Game contract | `src/game_profile.h`, `src/dim_classes.h` | Addresses, object offsets, node classification, hook and sprite callbacks, and the dimming classes both runtimes share |
 | Shared core | `src/core/` | Patch transactions, x86 emission, dyadic scheduler, input, interpolation history, frame pacing, dimming, texture scaling, replay extensions, configuration and proxy |
-| Update backend | `src/backends/update_runner.c` | TH11/TH12 update-list ABI, node return values, pause boundaries and player input edges |
+| Import hooks | `src/core/imports.c` | Import-table hooking that chains to whoever held the slot, and takes a slot back if another patch overwrites it |
+| Other patches | `src/core/conflict.c` | Recognising a patch that owns the frame loop, the launcher marker thprac leaves, the module census and the one notice box a run may show |
+| Update backend | `src/backends/update_runner.c` | The TH10–TH13 update-list ABI, node return values, pause boundaries, player input edges, and ending the pass on the game's own return instruction |
 | Renderer backend | `src/backends/d3d9.c` | D3D9/9Ex, resource conversion, display refresh, reset and latency |
 | Output scaling | `src/core/scaler.c` | Render-target redirection, scaling geometry, filter passes, present blit |
 | Filter shaders | `src/core/shaders.c`, `shaders/` | Runtime shader compilation, filter registry, drop-in shader folder |
@@ -39,13 +41,13 @@ cannot share object code. What each does and does not do is set out side by side
 | x64 install | `src/proxy_dxgi.c`, `src/dxgi_exports.h` | The `dxgi.dll` the game loads itself, forwarding all 57 exports; how the patch installs when Steam is the launcher (TH06NC_DEVNOTES §23) |
 | x64 tests | `tools/test_fixed.c`, `tools/test_fixed_stubs.py`, `tools/test_fixed_profile.py`, `tools/test_dxgi_proxy.c` | Clock, history, schedule and patch transaction; Unicorn execution of every emitted AMD64 relay; signature and launcher checks; the dxgi proxy against the system's real one |
 | Launcher | `src/launcher.c`, `src/launcher64.c`, `src/fixed_identity.h` | Detect and launch a supported executable using the common identity code; x64 games are handed to the x64 launcher |
-| Tests | `tools/test_hfr.c`, `tools/test_*.h`, `tools/test_*_stubs.py` | Native shared-runtime tests and emulation of emitted x86 hooks |
+| Tests | `tools/test_hfr.c`, `tools/test_*.h`, `tools/test_*_stubs.py` | Native shared-runtime tests and emulation of emitted x86 hooks; [docs/TESTING.md](docs/TESTING.md) says what each suite covers |
+| Generated files | `tools/gen_signature_json.py`, `tools/embed_shaders.py` | `tools/th*_signatures.json` from the frozen headers (checked by both test suites); `src/core/shader_sources.h` from `shaders/*.hlsl` (by hand) |
 | Build | `build.sh`/`build.ps1` (x86), `build64.sh`/`build64.ps1` (x64) | Two independent builds; `package.sh`/`package.ps1` ship both when asked |
 
 This is deliberately a unity build: the small C modules form one translation
 unit, which keeps the existing assembly entry points and their C symbols together.
 The core is compiled once, regardless of the number of registered games.
-`hfr11.c` and `launcher11.c` are compatibility includes, not separate implementations.
 
 The shared core uses profile fields and callbacks rather than checking the game
 number. Game IDs occur in executable registration and replay metadata. The two
@@ -55,14 +57,20 @@ are not assumptions that every Touhou title uses this ABI or renderer.
 
 ## Detection and installation
 
-Detection requires x86 PE32 at image base `0x400000`, the expected image size
-(TH13 accepts two, since `th13e.exe` carries an extra section), and every frozen
+Detection requires x86 PE32 at image base `0x400000`, an image at least as large as
+the build's own (Steam and the static English builds append sections of their own, so
+this is a floor rather than an equality), and every frozen
 signature (83 for TH10, 66 for TH11, 69 for TH12, 101 for TH13). These cover all
 overwritten code ranges and selected native function entries. This is code-layout
 verification, not a whole-file checksum: resources and English text may differ.
 It does not establish compatibility with arbitrary third-party runtime patches.
 
-The DLL selects its adapter from the loaded image. The launcher maps a file as
+The DLL selects its adapter from the loaded image. On a DRM-wrapped copy there is
+nothing to recognise at load time, so identification is retried from a late entry point
+armed on `kernel32!QueryPerformanceCounter` — a function the game calls before it asks for
+Direct3D, and one no translation patch has any reason to take. That same entry point
+re-asserts the patch's import hooks if something else has overwritten them since
+(`DEVNOTES_RUNTIME.md` §5d). The launcher maps a file as
 inert bytes and applies the same checks before creating a process. It knows every
 supported executable, x86 and x64; if more than one supported game is present it requires an
 explicit target, and within one game it prefers English.
@@ -141,22 +149,14 @@ validation of the game's own compressed replay format.
 
 ## Adding another game
 
-1. Confirm the supported executable version, object layouts, update-list calling
-   convention and renderer. Use another backend if those differ; do not clone the core.
-2. Add an identity with reviewed byte signatures and a game profile. Register its
-   identity and profile in `identity.h` and `core/install.c`.
-3. Audit every subsystem to decide what can run at sub-tick rate. Review per-call
-   counters, RNG, callbacks, integer truncation, slow motion, pause and character
-   mechanics. Address translation alone is insufficient.
-4. Implement the required game hooks and sprite placement. Every overwritten
-   range must have a frozen signature. Add each supported executable as a local
-   fixture and emulate the generated stubs, including alternate branch paths and
-   register/stack/FPU effects.
-5. Test in game: all character/partner combinations, stages, bombs, items, pause,
-   slow motion, fullscreen/reset, stock/HFR replay recording and playback at
-   different display rates. A matching executable signature is not a gameplay test.
+[ADDING_A_GAME.md](ADDING_A_GAME.md) is the procedure, field by field. The two rules
+that belong here rather than there: a game whose object layouts, update-list calling
+convention or renderer genuinely differ wants another backend, not a clone of the core;
+and address translation alone is never enough — every subsystem has to be audited for
+per-call counters, RNG, integer truncation, slow motion, pause and character mechanics
+before it may run at sub-tick rate.
 
-## Validation for v0.2.0-test (historical)
+## Validation (as of v0.2.0-test, historical)
 
 Automated tests pass on all four supplied executable fixtures (JP and English,
 TH11 and TH12). They cover the actual full installer, required imports, each
@@ -172,9 +172,6 @@ prove every character and stage combination correct, and no native-versus-patche
 comparison over identical replays has been done for any game.
 
 Output scaling, the filter pipeline, window management and the menu are described in
-`RESOLUTION.md`; they live in the shared core because they are Direct3D and Win32 work that
-needed no game-specific addresses.
-
-Detailed reverse-engineering notes remain in `DEVNOTES.md` (TH12) and
-`TH11_DEVNOTES.md` (TH11). They describe the original implementations; use the
-source map above for their current locations.
+[RESOLUTION.md](docs/RESOLUTION.md); they live in the shared core because they are Direct3D
+and Win32 work that needed no game-specific addresses. [docs/README.md](docs/README.md) is
+the index of everything else, including one reverse-engineering record per game.

@@ -1,4 +1,4 @@
-/* New Classic local build fingerprint and verified RVA map; see TH06NC_DEVNOTES.md. */
+/* New Classic local build fingerprint and verified RVA map; see docs/games/TH06NC_DEVNOTES.md. */
 #include "../backends/fixed_game.h"
 static const struct FixedSignature th06nc_signatures[] = {
     {0x2760, 16, {0x48, 0x83, 0xec, 0x28, 0x4c, 0x8b, 0x15, 0x45, 0xc2, 0xa6, 0x00, 0x45, 0x33, 0xdb, 0x66, 0x44}},

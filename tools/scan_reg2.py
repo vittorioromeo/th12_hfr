@@ -1,4 +1,4 @@
-# lists every UpdateFunc/DrawFunc registration in th12.exe with its priority and callback (see DEVNOTES.md 3.2)
+# lists every UpdateFunc/DrawFunc registration in th12.exe with its priority and callback (see docs/games/TH12_DEVNOTES.md 3.2)
 import pefile, capstone, struct
 pe=pefile.PE('th12.exe')
 text=[s for s in pe.sections if s.Name.startswith(b'.text')][0]

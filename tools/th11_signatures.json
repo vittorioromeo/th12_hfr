@@ -6,325 +6,327 @@
  },
  {
   "address": "0x402b7c",
-  "bytes": "d91d48794a00",
+  "bytes": "d9 1d 48 79 4a 00",
   "description": "fstp dword ptr [0x4a7948]"
  },
  {
   "address": "0x402bc5",
-  "bytes": "8b8b1030000033ff3bcf",
+  "bytes": "8b 8b 10 30 00 00 33 ff 3b cf",
   "description": "mov ecx, dword ptr [ebx + 0x3010]; xor edi, edi; cmp ecx, edi"
  },
  {
   "address": "0x403121",
-  "bytes": "01830c300000",
+  "bytes": "01 83 0c 30 00 00",
   "description": "add dword ptr [ebx + 0x300c], eax"
  },
  {
   "address": "0x408070",
-  "bytes": "83ec0853558be9",
+  "bytes": "83 ec 08 53 55 8b e9",
   "description": "sub esp, 8; push ebx; push ebp; mov ebp, ecx"
  },
  {
   "address": "0x408cbc",
-  "bytes": "8b430485c0",
+  "bytes": "8b 43 04 85 c0",
   "description": "mov eax, dword ptr [ebx + 4]; test eax, eax"
  },
  {
   "address": "0x4169d0",
-  "bytes": "d91d48794a00",
+  "bytes": "d9 1d 48 79 4a 00",
   "description": "fstp dword ptr [0x4a7948]"
  },
  {
   "address": "0x41f963",
-  "bytes": "d91d48794a00",
+  "bytes": "d9 1d 48 79 4a 00",
   "description": "fstp dword ptr [0x4a7948]"
  },
  {
   "address": "0x41fe23",
-  "bytes": "d91d48794a00",
+  "bytes": "d9 1d 48 79 4a 00",
   "description": "fstp dword ptr [0x4a7948]"
  },
  {
   "address": "0x4235af",
-  "bytes": "838774040000ff",
+  "bytes": "83 87 74 04 00 00 ff",
   "description": "add dword ptr [edi + 0x474], -1"
  },
  {
   "address": "0x4238f9",
-  "bytes": "dc0530814900",
+  "bytes": "dc 05 30 81 49 00",
   "description": "fadd qword ptr [0x498130]"
  },
  {
   "address": "0x4239a1",
-  "bytes": "dc0530814900",
+  "bytes": "dc 05 30 81 49 00",
   "description": "fadd qword ptr [0x498130]"
  },
  {
   "address": "0x425de0",
-  "bytes": "8b8538040000",
+  "bytes": "8b 85 38 04 00 00",
   "description": "mov eax, dword ptr [ebp + 0x438]"
  },
  {
   "address": "0x426097",
-  "bytes": "8b452c99b903000000",
+  "bytes": "8b 45 2c 99 b9 03 00 00 00",
   "description": "mov eax, dword ptr [ebp + 0x2c]; cdq ; mov ecx, 3"
  },
  {
   "address": "0x427580",
-  "bytes": "8b461899b903000000",
+  "bytes": "8b 46 18 99 b9 03 00 00 00",
   "description": "mov eax, dword ptr [esi + 0x18]; cdq ; mov ecx, 3"
  },
  {
   "address": "0x42956d",
-  "bytes": "d91d48794a00",
+  "bytes": "d9 1d 48 79 4a 00",
   "description": "fstp dword ptr [0x4a7948]"
  },
  {
   "address": "0x42c73f",
-  "bytes": "d91d48794a00",
+  "bytes": "d9 1d 48 79 4a 00",
   "description": "fstp dword ptr [0x4a7948]"
  },
  {
   "address": "0x42c85d",
-  "bytes": "d91d48794a00",
+  "bytes": "d9 1d 48 79 4a 00",
   "description": "fstp dword ptr [0x4a7948]"
  },
  {
   "address": "0x42c8b6",
-  "bytes": "d91d48794a00",
+  "bytes": "d9 1d 48 79 4a 00",
   "description": "fstp dword ptr [0x4a7948]"
  },
  {
   "address": "0x42d2ae",
-  "bytes": "e86d910000",
+  "bytes": "e8 6d 91 00 00",
   "description": "call 0x436420"
  },
  {
   "address": "0x42d696",
-  "bytes": "d91d48794a00",
+  "bytes": "d9 1d 48 79 4a 00",
   "description": "fstp dword ptr [0x4a7948]"
  },
  {
   "address": "0x42d7db",
-  "bytes": "d91d48794a00",
+  "bytes": "d9 1d 48 79 4a 00",
   "description": "fstp dword ptr [0x4a7948]"
  },
  {
   "address": "0x42d845",
-  "bytes": "d91d48794a00",
+  "bytes": "d9 1d 48 79 4a 00",
   "description": "fstp dword ptr [0x4a7948]"
  },
  {
   "address": "0x42e21b",
-  "bytes": "e800820000",
+  "bytes": "e8 00 82 00 00",
   "description": "call 0x436420"
  },
  {
   "address": "0x42e6a5",
-  "bytes": "d91d48794a00",
+  "bytes": "d9 1d 48 79 4a 00",
   "description": "fstp dword ptr [0x4a7948]"
  },
  {
   "address": "0x42ef4b",
-  "bytes": "e8d0740000",
+  "bytes": "e8 d0 74 00 00",
   "description": "call 0x436420"
  },
  {
   "address": "0x43065f",
-  "bytes": "ff85a88b0000",
+  "bytes": "ff 85 a8 8b 00 00",
   "description": "inc dword ptr [ebp + 0x8ba8]"
  },
  {
   "address": "0x43066e",
-  "bytes": "8b55106a0b6a13",
+  "bytes": "8b 55 10 6a 0b 6a 13",
   "description": "mov edx, dword ptr [ebp + 0x10]; push 0xb; push 0x13"
  },
  {
   "address": "0x430722",
-  "bytes": "e8b95d0500",
+  "bytes": "e8 b9 5d 05 00",
   "description": "call 0x4864e0"
  },
  {
   "address": "0x430735",
-  "bytes": "e8a65d0500",
+  "bytes": "e8 a6 5d 05 00",
   "description": "call 0x4864e0"
  },
  {
   "address": "0x43078f",
-  "bytes": "019da48b0000",
+  "bytes": "01 9d a4 8b 00 00",
   "description": "add dword ptr [ebp + 0x8ba4], ebx"
  },
  {
   "address": "0x430b48",
-  "bytes": "019dc88b0000",
+  "bytes": "01 9d c8 8b 00 00",
   "description": "add dword ptr [ebp + 0x8bc8], ebx"
  },
  {
   "address": "0x430b4e",
-  "bytes": "8b1568324c00",
+  "bytes": "8b 15 68 32 4c 00",
   "description": "mov edx, dword ptr [0x4c3268]"
  },
  {
   "address": "0x430e50",
-  "bytes": "538bd88b8320090000",
+  "bytes": "53 8b d8 8b 83 20 09 00 00",
   "description": "push ebx; mov ebx, eax; mov eax, dword ptr [ebx + 0x920]"
  },
  {
   "address": "0x4312c6",
-  "bytes": "83be4809000003",
+  "bytes": "83 be 48 09 00 00 03",
   "description": "cmp dword ptr [esi + 0x948], 3"
  },
  {
   "address": "0x4314b8",
-  "bytes": "d91d48794a00",
+  "bytes": "d9 1d 48 79 4a 00",
   "description": "fstp dword ptr [0x4a7948]"
  },
  {
   "address": "0x4315a5",
-  "bytes": "d9471851d84714",
+  "bytes": "d9 47 18 51 d8 47 14",
   "description": "fld dword ptr [edi + 0x18]; push ecx; fadd dword ptr [edi + 0x14]"
  },
  {
   "address": "0x4315af",
-  "bytes": "d9470cd84710",
+  "bytes": "d9 47 0c d8 47 10",
   "description": "fld dword ptr [edi + 0xc]; fadd dword ptr [edi + 0x10]"
  },
  {
   "address": "0x4315d0",
-  "bytes": "d947e08b442410d800d918d947e8d847e4d95fe4",
+  "bytes": "d9 47 e0 8b 44 24 10 d8 00 d9 18 d9 47 e8 d8 47 e4 d9 5f e4",
   "description": "fld dword ptr [edi - 0x20]; mov eax, dword ptr [esp + 0x10]; fadd dword ptr [eax]; fstp dword ptr [eax]; fld dword ptr [edi - 0x18]; fadd dword ptr [edi - 0x1c]; fstp dword ptr [edi - 0x1c]"
  },
  {
   "address": "0x431ab6",
-  "bytes": "8b8648090000",
+  "bytes": "8b 86 48 09 00 00",
   "description": "mov eax, dword ptr [esi + 0x948]"
  },
  {
   "address": "0x4343fc",
-  "bytes": "e80f4e0200",
+  "bytes": "e8 0f 4e 02 00",
   "description": "call 0x459210"
  },
  {
   "address": "0x434562",
-  "bytes": "d9461851d84614",
+  "bytes": "d9 46 18 51 d8 46 14",
   "description": "fld dword ptr [esi + 0x18]; push ecx; fadd dword ptr [esi + 0x14]"
  },
  {
   "address": "0x43456c",
-  "bytes": "d9460cd84610",
+  "bytes": "d9 46 0c d8 46 10",
   "description": "fld dword ptr [esi + 0xc]; fadd dword ptr [esi + 0x10]"
  },
  {
   "address": "0x434814",
-  "bytes": "3b8744090000",
+  "bytes": "3b 87 44 09 00 00",
   "description": "cmp eax, dword ptr [edi + 0x944]"
  },
  {
   "address": "0x434e30",
-  "bytes": "558bec83e4f8",
+  "bytes": "55 8b ec 83 e4 f8",
   "description": "push ebp; mov ebp, esp; and esp, 0xfffffff8"
  },
  {
   "address": "0x4352a0",
-  "bytes": "558bec83e4f8",
+  "bytes": "55 8b ec 83 e4 f8",
   "description": "push ebp; mov ebp, esp; and esp, 0xfffffff8"
  },
  {
   "address": "0x4355cd",
-  "bytes": "e83e3c0200",
+  "bytes": "e8 3e 3c 02 00",
   "description": "call 0x459210"
  },
  {
   "address": "0x435a0d",
-  "bytes": "e84e110000",
+  "bytes": "e8 4e 11 00 00",
   "description": "call 0x436b60"
  },
  {
   "address": "0x436420",
-  "bytes": "81ec1c010000",
+  "bytes": "81 ec 1c 01 00 00",
   "description": "sub esp, 0x11c"
  },
  {
   "address": "0x436b60",
-  "bytes": "81ec08010000",
+  "bytes": "81 ec 08 01 00 00",
   "description": "sub esp, 0x108"
  },
  {
   "address": "0x4403c5",
-  "bytes": "e85660ffff",
+  "bytes": "e8 56 60 ff ff",
   "description": "call 0x436420"
  },
  {
   "address": "0x44587e",
-  "bytes": "e8fd070000",
+  "bytes": "e8 fd 07 00 00",
   "description": "call 0x446080"
  },
  {
   "address": "0x44589b",
-  "bytes": "e8b00d0000",
+  "bytes": "e8 b0 0d 00 00",
   "description": "call 0x446650"
  },
  {
   "address": "0x4458a7",
-  "bytes": "e8740b0000",
+  "bytes": "e8 74 0b 00 00",
   "description": "call 0x446420"
  },
  {
   "address": "0x446650",
-  "bytes": "53558b6c240c568b3568324c00",
+  "bytes": "53 55 8b 6c 24 0c 56 8b 35 68 32 4c 00",
   "description": "push ebx; push ebp; mov ebp, dword ptr [esp + 0xc]; push esi; mov esi, dword ptr [0x4c3268]"
  },
  {
   "address": "0x446799",
-  "bytes": "803d6b344c0001",
+  "bytes": "80 3d 6b 34 4c 00 01",
   "description": "cmp byte ptr [0x4c346b], 1"
  },
  {
   "address": "0x44b4f3",
-  "bytes": "d91d48794a00",
+  "bytes": "d9 1d 48 79 4a 00",
   "description": "fstp dword ptr [0x4a7948]"
  },
  {
-  "address": "0x451ef0",
-  "bytes": "8b 90 04 04 00 00"
- },
- {
   "address": "0x452420",
-  "bytes": "83ec18d905407f4900",
+  "bytes": "83 ec 18 d9 05 40 7f 49 00",
   "description": "sub esp, 0x18; fld dword ptr [0x497f40]"
  },
  {
   "address": "0x4561e0",
-  "bytes": "8b4c240485c9",
+  "bytes": "8b 4c 24 04 85 c9",
   "description": "mov ecx, dword ptr [esp + 4]; test ecx, ecx"
  },
  {
   "address": "0x456cb0",
-  "bytes": "83ec08f70510384c0000800000",
+  "bytes": "83 ec 08 f7 05 10 38 4c 00 00 80 00 00",
   "description": "sub esp, 8; test dword ptr [0x4c3810], 0x8000"
  },
  {
-  "address": "0x456e81",
-  "bytes": "8b 4e 20 8b 46 08 ff d0"
- },
- {
   "address": "0x457080",
-  "bytes": "5733ff3bcf",
+  "bytes": "57 33 ff 3b cf",
   "description": "push edi; xor edi, edi; cmp ecx, edi"
  },
  {
   "address": "0x4576b0",
-  "bytes": "81ec04010000",
+  "bytes": "81 ec 04 01 00 00",
   "description": "sub esp, 0x104"
  },
  {
   "address": "0x45959c",
-  "bytes": "d9430c8bf3d803d91bd94310d84304d95b04d94314d84308d95b08",
+  "bytes": "d9 43 0c 8b f3 d8 03 d9 1b d9 43 10 d8 43 04 d9 5b 04 d9 43 14 d8 43 08 d9 5b 08",
   "description": "fld dword ptr [ebx + 0xc]; mov esi, ebx; fadd dword ptr [ebx]; fstp dword ptr [ebx]; fld dword ptr [ebx + 0x10]; fadd dword ptr [ebx + 4]; fstp dword ptr [ebx + 4]; fld dword ptr [ebx + 0x14]; fadd dword ptr [ebx + 8]; fstp dword ptr [ebx + 8]"
  },
  {
   "address": "0x459b0c",
-  "bytes": "d91d48794a00",
+  "bytes": "d9 1d 48 79 4a 00",
   "description": "fstp dword ptr [0x4a7948]"
+ },
+ {
+  "address": "0x456e81",
+  "bytes": "8b 4e 20 8b 46 08 ff d0",
+  "description": "draw runner dispatch, wrapped for dimming"
+ },
+ {
+  "address": "0x451ef0",
+  "bytes": "8b 90 04 04 00 00",
+  "description": "sprite VM draw, wrapped for dimming"
  }
 ]

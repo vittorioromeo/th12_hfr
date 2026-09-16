@@ -9,7 +9,7 @@ A game in the existing x86/D3D9 engine family is three files and three lines.
 Check architecture, rendering API, callback semantics and timer representation first.
 For an engine outside that family, shared algorithms can still be reused, but a profile
 does not replace the required platform and engine backends. See
-[the New Classic implementation record](TH06NC_DEVNOTES.md#13-experimental-prototype-2026-09-13)
+[the New Classic implementation record](docs/games/TH06NC_DEVNOTES.md#13-experimental-prototype-2026-09-13)
 for a concrete x64/D3D11 example. Its fixed-clock profile/registry and renderer-independent
 history live alongside the x86 family; both builds use the same F11 menu. The rest of
 this guide describes the x86/D3D9 family.
@@ -59,8 +59,10 @@ detection, the crash reporter, and the conflict guard's module check.
 
 Not free, because each needs an address: the scheduler and sub-stepping (the UpdateFunc class
 table), replay extension, sub-tick input, the screenshot stub (`screenshot_fn` /
-`screenshot_call`), the conflict guard's byte check, the internal resolution's
-`sprite_round_sites`, and the dimming's `draw` description (the draw runner's dispatch, the
+`screenshot_call`), the end of the update runner (`runner_ret`, below), the directory the game
+saves replays into if it is not the game's own (`data_dir`, which only TH13 needs), the conflict
+guard's byte check, the internal resolution's `sprite_round_sites`, and the dimming's `draw`
+description (the draw runner's dispatch, the
 sprite batch flush, the sprite VM draw and three of the VM's field offsets, a world priority
 and a short rule table; DEVNOTES_RUNTIME §3b says how a `debug=1` trace yields all of them
 in one stage, and warns which readings of the ANM listings were wrong twice).
@@ -70,9 +72,20 @@ that its screenshots are unsupported and runs; a game with no conflict sites kee
 check. Prefer that to a half-filled field: a wrong address is worse than a missing one, because
 the frozen signatures cannot tell you a *right-looking* address is pointing at the wrong thing.
 
-## Finding the two newest fields
+## Finding the awkward fields
 
-Both were added for TH12 and then found for TH11 by pattern, which is the method to reuse.
+Each of these was worked out for one game and then found for the others by pattern, which is
+the method to reuse.
+
+**The end of the update runner (`runner_ret`).** The replacement runner is entered by a jump
+written over `runner_fn`, so everything from there on belongs to this patch -- including the
+function's last instruction, which is where other mods put a hook that wants to run after an
+update pass. thprac's practice menu is exactly that in all four games. Disassemble forward from
+`runner_fn` to the terminating `ret` (or `ret 4`, where the runner takes its argument on the
+stack, as TH10's does) and record its address. The patch jumps there instead of returning by
+itself; it never writes to it, and it checks the byte before use, so a wrong address degrades to
+the old behaviour with a line in the log rather than jumping into the weeds. Leave it zero and
+the game works, minus anyone else's hook: `docs/MOD_COMPATIBILITY.md` is the whole story.
 
 **The screenshot routine.** Find the string `snapshot/th%.3d.bmp` in the executable, find the
 one place that references it, and disassemble forward: the filename is built there and the

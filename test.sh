@@ -23,6 +23,9 @@ done
 echo "--- documentation links"
 python3 tools/check_docs.py
 
+echo "--- generated files"
+python3 tools/gen_signature_json.py --check
+
 # What the menu's sections offer, with no device and no window: a control that is silently
 # not drawn is invisible to the device test below, which only proves the overlay renders.
 if [ -d third_party/imgui ]; then

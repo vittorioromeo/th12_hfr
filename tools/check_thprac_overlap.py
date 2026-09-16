@@ -8,7 +8,7 @@ This is a source audit, not a C++ parser or a compatibility test. It includes
 optional/disabled patches, ignores preprocessor conditions, and cannot discover
 arbitrary runtime writes, replaced control flow, IAT/vtable chains or ECL edits.
 Recognised declarations that cannot be parsed are reported, not silently counted
-as safe. See MOD_COMPATIBILITY.md for the required semantic audit.
+as safe. See docs/MOD_COMPATIBILITY.md for the required semantic audit.
 """
 
 import argparse

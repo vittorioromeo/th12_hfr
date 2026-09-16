@@ -1,4 +1,4 @@
-> Historical notes for the original per-game build. The current unified runtime and source locations are documented in [ARCHITECTURE.md](ARCHITECTURE.md); installation instructions are in [README.md](README.md). Findings from the current work are in [DEVNOTES_RUNTIME.md](DEVNOTES_RUNTIME.md).
+> Historical notes for the original per-game build. The current unified runtime and source locations are documented in [ARCHITECTURE.md](../../ARCHITECTURE.md); installation instructions are in [README.md](../../README.md). Findings from the current work are in [DEVNOTES_RUNTIME.md](../DEVNOTES_RUNTIME.md).
 
 # TH11 HFR port development notes
 
@@ -44,7 +44,7 @@ All addresses below are absolute addresses for the supported v1.00a image.
 | --- | --- |
 | Game speed | `0x4a7948`, float |
 | Runner pointer | `0x4c3234`; update list `+0x18`, ending flag `+0x48` |
-| Update / draw runner | `0x456cb0` / `0x456e10` |
+| Update / draw runner | `0x456cb0` / `0x456e10`; the update runner's `ret` at `0x456deb` is `runner_ret` (DEVNOTES_RUNTIME §5e) |
 | Remove update node | `0x457080`, ECX=node, EDX=runner |
 | Vsync frame function | `0x446650`, stdcall(context) |
 | Frame call sites | `0x44587e`, `0x44589b`, `0x4458a7` |

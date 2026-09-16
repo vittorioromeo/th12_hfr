@@ -635,6 +635,65 @@ guard and claimed a warning had been shown six times in one session. A log that 
 happened when it did not is worse than no log line at all, because it is the thing you reason
 from later; `show_notice` now reports whether it spoke, and only then is it written down.
 
+### 5d. An import slot belongs to whoever wrote it last
+
+thcrap does not fight for the frame loop; it fights for the import table, and for two releases it
+won without either side noticing. Its injector lets the Windows loader finish and stops the
+game's thread at the executable's entry point — which is *after* this DLL has loaded and
+installed, because the game imports it. It then walks the import table, matches by name,
+overwrites whatever it finds, and chains to `GetProcAddress(dll, func)`: the library's own
+function, not the pointer it replaced. Its own source says as much ("we can override any
+existing patches"). So every import this patch had hooked and thcrap also detoured was *dropped*
+rather than chained to — `d3d9!Direct3DCreate9` among them, which is how the device is obtained,
+so nothing else the patch does could happen either. Both patches reported success.
+
+Two rules came out of it, and they generalise past thcrap:
+
+- **Hook an import by chaining to whatever the slot held**, whoever put it there. Politeness in
+  the other direction — abstaining from a slot somebody else owns — was tried first and is
+  wrong: it makes the order of arrival decide who works.
+- **Re-assert the hooks once, later.** `kernel32!QueryPerformanceCounter` is the trigger: the
+  game calls it before it asks for Direct3D (measured, not assumed), no translation patch has
+  any reason to take it, and it is readable while a DRM wrapper's stub is the only thing that
+  has run — which is why the same entry point identifies a Steam copy. Whoever took the slot
+  ends up nested inside this patch rather than discarded, and the log says when it happened.
+
+The attempt in between is worth recording because it worked and was still wrong: redirecting the
+*exporting library's export table* rather than the import slot. An import slot belongs to the
+game; an export table belongs to the whole process. Handing a foreign address to
+`d3d9!Direct3DCreate9` crashed Steam copies on the first frame, in `ntdll`, because Steam's
+overlay reads that table too. `tools/check_patch_overlap.py` compares thcrap's own game
+definitions against every byte this patch writes and verifies; for all four games the two sets
+are disjoint, so the import table really was the whole conflict.
+
+### 5e. The last instruction of a function you replaced is not yours
+
+The replacement update runner is entered by a five-byte jump written over the game's own, so
+from that jump onwards the whole function belongs to this patch — including its `ret`. In all
+four games that `ret` is exactly where thprac puts its practice-menu hook, and a replacement
+that returns by itself takes it away. The failure is silent in the worst way: thprac's
+`GameGuiProgress` state machine means its draw-side hook renders nothing without a matching
+update, so the menu simply never appears, with no error in either log.
+
+The fix is to stop taking the instruction. The entry thunks are assembly and end by jumping to
+the game's own `ret`, leaving EAX, ESP and the callee-saved registers exactly as the game's
+epilogue does. TH10's runner takes its argument on the stack and ends in `ret 4`; entering with
+the argument still there makes that fall out for free. The address is `addr.runner_ret`, read and
+jumped to but never written, and checked before use — a `ret`, a `ret imm16`, or an `int3`, since
+a breakpoint already sitting there is the very case this exists for.
+
+The general rule, and the reason this is filed beside the wrapper and the import table: when you
+replace a function, the entry is yours and the exit is not. Anything hooked at the end of it —
+by a practice tool, a profiler, a debugger — expects to run. The catch-up pass in `limiter.c`
+deliberately calls `hfr_runner` directly rather than through the thunk, because it is an extra
+update with no frame drawn behind it and a menu should not be told about it.
+
+`tools/test_thprac_stub.c` is how this was verified in a running game: it reproduces thprac's
+hook mechanism exactly (one `0xCC`, a VEH at the front of the chain, a codecave holding the
+original instruction and a jump back) and its progress state machine. Before the fix, on TH12
+under Wine: update hook 0 hits, draw hook 476, every one of them with no frame open. After: the
+two fire in step in all four games, in both installation orders.
+
 ## 6. Multi-game
 
 ### Three states a profile can be in
@@ -663,10 +722,11 @@ Not shared, and not shareable: `install_sites`. It is ~100 lines of hand-written
 encoding that game's specific quirks — item states, laser classes, fixed-point movement carry,
 player shot callbacks. This is the real cost of a new game and there is no shortcut.
 
-### Finding the two newest per-game fields
+### Finding the awkward per-game fields
 
-Both were found for TH11 and TH10 by pattern rather than by full analysis, and the method
-generalises.
+Each was found for one game and then for the others by pattern rather than by full analysis, and
+the method generalises. `addr.runner_ret` is the newest of them and is covered in §5e; it is
+simply the `ret` that ends `runner_fn`.
 
 **The screenshot routine.** Find `snapshot/th%.3d.bmp`, find the one reference, disassemble
 forward: the filename is built there and the routine is called a few dozen bytes later behind a
@@ -699,7 +759,7 @@ sites: identity is settled first from bytes no known patch touches, so a mismatc
 ## 7. TH10, and how its speed model differs
 
 (The complete TH10 record — addresses, layouts, every hook and its reason — is
-[TH10_DEVNOTES.md](TH10_DEVNOTES.md); this section keeps what the runtime learned.)
+[TH10_DEVNOTES.md](games/TH10_DEVNOTES.md); this section keeps what the runtime learned.)
 
 TH10 is supported. It is worth writing down what made it a different job from adding a second
 game that shares TH11's engine, because TH13 and beyond will be one or the other.
@@ -743,7 +803,7 @@ data-load cleanup, not in any of our stubs.
 
 ## 7a. TH13, and what porting TH12's hooks taught
 
-(The complete TH13 record is [TH13_DEVNOTES.md](TH13_DEVNOTES.md), including the object
+(The complete TH13 record is [TH13_DEVNOTES.md](games/TH13_DEVNOTES.md), including the object
 layouts and the porting tools; this section keeps what the runtime learned.)
 
 TH13 is supported. It confirmed the prediction in the old §9: one game-speed float
@@ -874,6 +934,11 @@ code.
 4. **`tools/embed_shaders.py` restates the pass-splitting rule** that `shader_parse.h` owns,
    because the build step is Python and the runtime is C. The checker tool includes the real
    header, so the two implementations that matter cannot disagree.
-5. **TH14 and beyond.** TH13's port (§7a) is the template: the speed-float pattern held, the
+5. **thprac beyond the menu hook** (§5e). Its practice menu now runs, but the rest of
+   `docs/MOD_COMPATIBILITY.md`'s list is open: anything thprac counts in frames runs at the
+   presentation rate, its FPS controls compete with this patch's pacing, its `ReplayClearParam`
+   drops foreign replay chunks rather than preserving them, and its `io.DisplaySize` disagrees
+   with itself after a device reset once `internal_scale > 1`.
+6. **TH14 and beyond.** TH13's port (§7a) is the template: the speed-float pattern held, the
    engine changes were absorbed by profile fields, and the per-object hooks were found by
    meaning rather than by byte shape. Expect the same shape of job.

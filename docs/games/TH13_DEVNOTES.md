@@ -1,8 +1,8 @@
 # TH13 (Ten Desires) port development notes
 
 > Per-game record for the unified runtime. The shared design is in
-> [ARCHITECTURE.md](ARCHITECTURE.md); what the port taught the runtime is condensed in
-> [DEVNOTES_RUNTIME.md](DEVNOTES_RUNTIME.md) §7a and §8. This file holds *TH13 addresses,
+> [ARCHITECTURE.md](../../ARCHITECTURE.md); what the port taught the runtime is condensed in
+> [DEVNOTES_RUNTIME.md](../DEVNOTES_RUNTIME.md) §7a and §8. This file holds *TH13 addresses,
 > layouts, decisions and their reasons*, in enough detail to port the next game of this engine
 > family (TH14 onward is TH13's engine with more changes of the same kind). The source of truth
 > for every number is `src/games/th13.c` and `src/games/th13_signatures.h`; if they disagree
@@ -44,7 +44,7 @@ All addresses are absolute for v1.00c. Fields named as in `GameProfile`.
 | --- | --- |
 | Game speed | `0x4c0a28`, float (16 write sites, §3) |
 | Update runner pointer | `0x4dc658`; next node `+0x50`, ending `+0x54` |
-| Runner function | `0x470af0` (object in EBX); UpdateFunc registration helpers `0x470990` / `0x470ff0` (update) and `0x471050` (draw) |
+| Runner function | `0x470af0` (object in EBX); its `ret` at `0x470c04` is `runner_ret` (DEVNOTES_RUNTIME §5e); UpdateFunc registration helpers `0x470990` / `0x470ff0` (update) and `0x471050` (draw) |
 | Remove update node | `0x470e90`, `(runner, node)` |
 | Critical section / depth / byte gate | `0x4e48a8` / `0x4e49e0` / `0x4e49ed` |
 | Vsync frame function / frame call sites | `0x45d570` / `0x45c5de`, `0x45c5fb`, `0x45c607` |

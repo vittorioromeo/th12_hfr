@@ -1,334 +1,339 @@
 [
-  {
-    "address": "0x401040",
-    "bytes": "9a 28 02 00 00 21 9a 78 03 00 00 33"
-  },
-  {
-    "address": "0x4027ea",
-    "bytes": "c7 05 78 6f 47 00 00 00 80 3f"
-  },
-  {
-    "address": "0x4031d5",
-    "bytes": "c7 84 24 0c 01 00 00 00 00 00 00 c7"
-  },
-  {
-    "address": "0x406584",
-    "bytes": "8b 45 04 85 c0"
-  },
-  {
-    "address": "0x4074ff",
-    "bytes": "06 00 00 d9 01 d8 1d 68 0b 47 00 df"
-  },
-  {
-    "address": "0x409694",
-    "bytes": "e8 f7 45 03 00 a1 f0 76 47 00 8b 35"
-  },
-  {
-    "address": "0x40b829",
-    "bytes": "3d 10 1c 49 00 33 f6 e8 3b c7 03 00"
-  },
-  {
-    "address": "0x40d9be",
-    "bytes": "24 00 00 89 ae 58 24 00 00 8b 86 7c"
-  },
-  {
-    "address": "0x40fb53",
-    "bytes": "30 df e0 f6 c4 41 75 0a dd d8 d9 44"
-  },
-  {
-    "address": "0x411c3d",
-    "bytes": "d9 1d 78 6f 47 00"
-  },
-  {
-    "address": "0x411ce8",
-    "bytes": "0d 00 00 89 44 24 10 db 44 24 10 eb"
-  },
-  {
-    "address": "0x413508",
-    "bytes": "75 5b"
-  },
-  {
-    "address": "0x413e7d",
-    "bytes": "c7 43 20 0f 00 00 00 e8 e7 59 03 00"
-  },
-  {
-    "address": "0x416012",
-    "bytes": "94 8d 88 00 00 00 50 a1 10 1c 49 00"
-  },
-  {
-    "address": "0x4178b1",
-    "bytes": "c7 05 78 6f 47 00 00 00 80 3f"
-  },
-  {
-    "address": "0x417ca9",
-    "bytes": "c7 05 78 6f 47 00 00 00 80 3f"
-  },
-  {
-    "address": "0x41a33c",
-    "bytes": "48 04 8b 50 08 51 8b 48 0c 52 8b 50"
-  },
-  {
-    "address": "0x41b28d",
-    "bytes": "d8 05 38 0c 47 00"
-  },
-  {
-    "address": "0x41b315",
-    "bytes": "d8 05 38 0c 47 00"
-  },
-  {
-    "address": "0x41c4d1",
-    "bytes": "59 c3 e8 58 fe ff ff 5f 59 c3 cc cc"
-  },
-  {
-    "address": "0x41e666",
-    "bytes": "b5 c8 09 00 00 05 03 01 00 00 52 e8"
-  },
-  {
-    "address": "0x4201b7",
-    "bytes": "c7 05 78 6f 47 00 00 00 80 3f"
-  },
-  {
-    "address": "0x4207fb",
-    "bytes": "af c5 8b 7c 24 14 03 ca 03 c7 bf 80"
-  },
-  {
-    "address": "0x422990",
-    "bytes": "8b 0d 68 4c 47 00 8b 15 6c 4c 47 00"
-  },
-  {
-    "address": "0x422c20",
-    "bytes": "c7 05 78 6f 47 00 00 00 80 3f"
-  },
-  {
-    "address": "0x422c73",
-    "bytes": "89 0d 78 6f 47 00"
-  },
-  {
-    "address": "0x42335f",
-    "bytes": "c7 05 78 6f 47 00 00 00 80 3f"
-  },
-  {
-    "address": "0x4234ff",
-    "bytes": "c7 05 78 6f 47 00 00 00 80 3f"
-  },
-  {
-    "address": "0x423563",
-    "bytes": "a3 78 6f 47 00"
-  },
-  {
-    "address": "0x423f16",
-    "bytes": "e8 45 5c 00 00"
-  },
-  {
-    "address": "0x424b25",
-    "bytes": "89 38 8b 7c 24 10 89 78 04 d9 5c 24"
-  },
-  {
-    "address": "0x4251c1",
-    "bytes": "40 89 87 08 43 00 00"
-  },
-  {
-    "address": "0x42540a",
-    "bytes": "e8 1d e7 03 00"
-  },
-  {
-    "address": "0x42541f",
-    "bytes": "e8 08 e7 03 00"
-  },
-  {
-    "address": "0x425520",
-    "bytes": "8b 87 74 44 00 00"
-  },
-  {
-    "address": "0x425aa9",
-    "bytes": "83 bd 78 04 00 00 03"
-  },
-  {
-    "address": "0x425cc4",
-    "bytes": "c7 05 78 6f 47 00 00 00 80 3f"
-  },
-  {
-    "address": "0x425dab",
-    "bytes": "d9 47 18 51 d8 47 14"
-  },
-  {
-    "address": "0x425db5",
-    "bytes": "d9 47 0c d8 47 10"
-  },
-  {
-    "address": "0x425dce",
-    "bytes": "d9 47 e0 d8 03 d9 1b d9 47 e8 d8 47 e4 d9 5f e4"
-  },
-  {
-    "address": "0x426285",
-    "bytes": "a1 98 4c 47 00"
-  },
-  {
-    "address": "0x428243",
-    "bytes": "e8 f8 3c 02 00"
-  },
-  {
-    "address": "0x4283a7",
-    "bytes": "d9 47 18 51 d8 47 14"
-  },
-  {
-    "address": "0x4283b1",
-    "bytes": "d9 47 0c d8 47 10"
-  },
-  {
-    "address": "0x42863e",
-    "bytes": "3b 85 74 04 00 00"
-  },
-  {
-    "address": "0x429257",
-    "bytes": "e8 a4 0f 00 00"
-  },
-  {
-    "address": "0x42948c",
-    "bytes": "e8 6f 0d 00 00"
-  },
-  {
-    "address": "0x429765",
-    "bytes": "e8 96 0a 00 00"
-  },
-  {
-    "address": "0x42afe4",
-    "bytes": "74 0f 50 e8 36 74 02 00 83 c4 04 c7"
-  },
-  {
-    "address": "0x42d179",
-    "bytes": "53 e8 e1 38 00 00 eb 1e 53 e8 69 3e"
-  },
-  {
-    "address": "0x42f30e",
-    "bytes": "17 b9 31 00 00 00 8b 10 66 39 8a 8a"
-  },
-  {
-    "address": "0x4314a3",
-    "bytes": "4c 47 00 8d 1c 43 03 d8 a1 74 4c 47"
-  },
-  {
-    "address": "0x433638",
-    "bytes": "ba 04 00 00 b9 02 00 00 00 8b c5 e8"
-  },
-  {
-    "address": "0x43399d",
-    "bytes": "e8 be 61 ff ff"
-  },
-  {
-    "address": "0x437962",
-    "bytes": "d7 c1 fa 08 02 d0 0f b6 46 01 88 16"
-  },
-  {
-    "address": "0x438d31",
-    "bytes": "e8 5a 06 00 00"
-  },
-  {
-    "address": "0x4392c1",
-    "bytes": "e8 aa 73 fe ff"
-  },
-  {
-    "address": "0x4393b7",
-    "bytes": "0f 85 6a 01 00 00"
-  },
-  {
-    "address": "0x439488",
-    "bytes": "0f 8f 83 00 00 00"
-  },
-  {
-    "address": "0x439af7",
-    "bytes": "c4 04 3b c3 74 0c 8b 08 50 ff 51 08"
-  },
-  {
-    "address": "0x43bc8c",
-    "bytes": "68 00 00 80 3f 56 6a 03 6a 00 6a 00"
-  },
-  {
-    "address": "0x43ee84",
-    "bytes": "c7 05 78 6f 47 00 00 00 80 3f"
-  },
-  {
-    "address": "0x43ffb6",
-    "bytes": "9c 24 b0 00 00 00 eb 0a 8b 53 10 89"
-  },
-  {
-    "address": "0x440e3d",
-    "bytes": "e8 fe b0 00 00"
-  },
-  {
-    "address": "0x4442e0",
-    "bytes": "50 8d 8c 24 84 00 00 00 51 e8 ca de"
-  },
-  {
-    "address": "0x4451c0",
-    "bytes": "8b 90 5c 03 00 00"
-  },
-  {
-    "address": "0x446475",
-    "bytes": "8b 0d 30 1c 49 00 55 6a 50 89 15 8c"
-  },
-  {
-    "address": "0x44860a",
-    "bytes": "03 00 00 5f c3 cc 57 b8 02 00 00 00"
-  },
-  {
-    "address": "0x449c00",
-    "bytes": "83 ec 08 53 8b"
-  },
-  {
-    "address": "0x449da3",
-    "bytes": "8b 4e 20 ff 56 08"
-  },
-  {
-    "address": "0x44a79f",
-    "bytes": "44 24 3c 80 e2 bf d0 e8 0a d0 d0 ea"
-  },
-  {
-    "address": "0x44c2aa",
-    "bytes": "d9 06 d8 46 0c d9 1e d9 46 10 d8 46 04 d9 5e 04 d9 46 14 d8 46 08 d9 5e 08"
-  },
-  {
-    "address": "0x44c30f",
-    "bytes": "d9 06 83 ec 08"
-  },
-  {
-    "address": "0x44eac9",
-    "bytes": "89 94 24 f8 00 00 00 74 13 80 f9 69"
-  },
-  {
-    "address": "0x452df3",
-    "bytes": "4d fc ff e8 09 00 00 00 8b 45 e4 e8"
-  },
-  {
-    "address": "0x454f88",
-    "bytes": "45 d0 89 45 a4 e9 b7 06 00 00 0f be"
-  },
-  {
-    "address": "0x45711d",
-    "bytes": "fd ff ff 83 c4 24 eb 3a 0f b7 05 da"
-  },
-  {
-    "address": "0x4592b2",
-    "bytes": "d2 eb 02 40 42 80 38 5c 74 f9 80 38"
-  },
-  {
-    "address": "0x45b447",
-    "bytes": "ff ff ff 76 50 e8 d1 6f ff ff ff 76"
-  },
-  {
-    "address": "0x45d5dc",
-    "bytes": "96 fe ff ff 83 c4 0c c3 68 10 3c 47"
-  },
-  {
-    "address": "0x45f771",
-    "bytes": "59 59 33 c0 eb 2c ff 46 08 83 4d fc"
-  },
-  {
-    "address": "0x461906",
-    "bytes": "7d d8 00 75 2e 68 ac c9 46 00 eb 0f"
-  },
-  {
-    "address": "0x463a9b",
-    "bytes": "56 ff 15 d8 76 47 00 eb 02 33 c0 5e"
-  }
+ {
+  "address": "0x4392c1",
+  "bytes": "e8 aa 73 fe ff",
+  "description": "the screenshot call, the one site the patch does write"
+ },
+ {
+  "address": "0x413508",
+  "bytes": "75 5b",
+  "description": "FPS watchdog: skip clock reset/fallback at HFR"
+ },
+ {
+  "address": "0x401040",
+  "bytes": "9a 28 02 00 00 21 9a 78 03 00 00 33"
+ },
+ {
+  "address": "0x4031d5",
+  "bytes": "c7 84 24 0c 01 00 00 00 00 00 00 c7"
+ },
+ {
+  "address": "0x4074ff",
+  "bytes": "06 00 00 d9 01 d8 1d 68 0b 47 00 df"
+ },
+ {
+  "address": "0x409694",
+  "bytes": "e8 f7 45 03 00 a1 f0 76 47 00 8b 35"
+ },
+ {
+  "address": "0x40b829",
+  "bytes": "3d 10 1c 49 00 33 f6 e8 3b c7 03 00"
+ },
+ {
+  "address": "0x40d9be",
+  "bytes": "24 00 00 89 ae 58 24 00 00 8b 86 7c"
+ },
+ {
+  "address": "0x40fb53",
+  "bytes": "30 df e0 f6 c4 41 75 0a dd d8 d9 44"
+ },
+ {
+  "address": "0x411ce8",
+  "bytes": "0d 00 00 89 44 24 10 db 44 24 10 eb"
+ },
+ {
+  "address": "0x413e7d",
+  "bytes": "c7 43 20 0f 00 00 00 e8 e7 59 03 00"
+ },
+ {
+  "address": "0x416012",
+  "bytes": "94 8d 88 00 00 00 50 a1 10 1c 49 00"
+ },
+ {
+  "address": "0x41a33c",
+  "bytes": "48 04 8b 50 08 51 8b 48 0c 52 8b 50"
+ },
+ {
+  "address": "0x41c4d1",
+  "bytes": "59 c3 e8 58 fe ff ff 5f 59 c3 cc cc"
+ },
+ {
+  "address": "0x41e666",
+  "bytes": "b5 c8 09 00 00 05 03 01 00 00 52 e8"
+ },
+ {
+  "address": "0x4207fb",
+  "bytes": "af c5 8b 7c 24 14 03 ca 03 c7 bf 80"
+ },
+ {
+  "address": "0x422990",
+  "bytes": "8b 0d 68 4c 47 00 8b 15 6c 4c 47 00"
+ },
+ {
+  "address": "0x424b25",
+  "bytes": "89 38 8b 7c 24 10 89 78 04 d9 5c 24"
+ },
+ {
+  "address": "0x42afe4",
+  "bytes": "74 0f 50 e8 36 74 02 00 83 c4 04 c7"
+ },
+ {
+  "address": "0x42d179",
+  "bytes": "53 e8 e1 38 00 00 eb 1e 53 e8 69 3e"
+ },
+ {
+  "address": "0x42f30e",
+  "bytes": "17 b9 31 00 00 00 8b 10 66 39 8a 8a"
+ },
+ {
+  "address": "0x4314a3",
+  "bytes": "4c 47 00 8d 1c 43 03 d8 a1 74 4c 47"
+ },
+ {
+  "address": "0x433638",
+  "bytes": "ba 04 00 00 b9 02 00 00 00 8b c5 e8"
+ },
+ {
+  "address": "0x437962",
+  "bytes": "d7 c1 fa 08 02 d0 0f b6 46 01 88 16"
+ },
+ {
+  "address": "0x439af7",
+  "bytes": "c4 04 3b c3 74 0c 8b 08 50 ff 51 08"
+ },
+ {
+  "address": "0x43bc8c",
+  "bytes": "68 00 00 80 3f 56 6a 03 6a 00 6a 00"
+ },
+ {
+  "address": "0x43ffb6",
+  "bytes": "9c 24 b0 00 00 00 eb 0a 8b 53 10 89"
+ },
+ {
+  "address": "0x4442e0",
+  "bytes": "50 8d 8c 24 84 00 00 00 51 e8 ca de"
+ },
+ {
+  "address": "0x446475",
+  "bytes": "8b 0d 30 1c 49 00 55 6a 50 89 15 8c"
+ },
+ {
+  "address": "0x44860a",
+  "bytes": "03 00 00 5f c3 cc 57 b8 02 00 00 00"
+ },
+ {
+  "address": "0x44a79f",
+  "bytes": "44 24 3c 80 e2 bf d0 e8 0a d0 d0 ea"
+ },
+ {
+  "address": "0x44eac9",
+  "bytes": "89 94 24 f8 00 00 00 74 13 80 f9 69"
+ },
+ {
+  "address": "0x452df3",
+  "bytes": "4d fc ff e8 09 00 00 00 8b 45 e4 e8"
+ },
+ {
+  "address": "0x454f88",
+  "bytes": "45 d0 89 45 a4 e9 b7 06 00 00 0f be"
+ },
+ {
+  "address": "0x45711d",
+  "bytes": "fd ff ff 83 c4 24 eb 3a 0f b7 05 da"
+ },
+ {
+  "address": "0x4592b2",
+  "bytes": "d2 eb 02 40 42 80 38 5c 74 f9 80 38"
+ },
+ {
+  "address": "0x45b447",
+  "bytes": "ff ff ff 76 50 e8 d1 6f ff ff ff 76"
+ },
+ {
+  "address": "0x45d5dc",
+  "bytes": "96 fe ff ff 83 c4 0c c3 68 10 3c 47"
+ },
+ {
+  "address": "0x45f771",
+  "bytes": "59 59 33 c0 eb 2c ff 46 08 83 4d fc"
+ },
+ {
+  "address": "0x461906",
+  "bytes": "7d d8 00 75 2e 68 ac c9 46 00 eb 0f"
+ },
+ {
+  "address": "0x463a9b",
+  "bytes": "56 ff 15 d8 76 47 00 eb 02 33 c0 5e"
+ },
+ {
+  "address": "0x4027ea",
+  "bytes": "c7 05 78 6f 47 00 00 00 80 3f"
+ },
+ {
+  "address": "0x406584",
+  "bytes": "8b 45 04 85 c0"
+ },
+ {
+  "address": "0x411c3d",
+  "bytes": "d9 1d 78 6f 47 00"
+ },
+ {
+  "address": "0x4178b1",
+  "bytes": "c7 05 78 6f 47 00 00 00 80 3f"
+ },
+ {
+  "address": "0x417ca9",
+  "bytes": "c7 05 78 6f 47 00 00 00 80 3f"
+ },
+ {
+  "address": "0x41b28d",
+  "bytes": "d8 05 38 0c 47 00"
+ },
+ {
+  "address": "0x41b315",
+  "bytes": "d8 05 38 0c 47 00"
+ },
+ {
+  "address": "0x4201b7",
+  "bytes": "c7 05 78 6f 47 00 00 00 80 3f"
+ },
+ {
+  "address": "0x422c20",
+  "bytes": "c7 05 78 6f 47 00 00 00 80 3f"
+ },
+ {
+  "address": "0x422c73",
+  "bytes": "89 0d 78 6f 47 00"
+ },
+ {
+  "address": "0x42335f",
+  "bytes": "c7 05 78 6f 47 00 00 00 80 3f"
+ },
+ {
+  "address": "0x4234ff",
+  "bytes": "c7 05 78 6f 47 00 00 00 80 3f"
+ },
+ {
+  "address": "0x423563",
+  "bytes": "a3 78 6f 47 00"
+ },
+ {
+  "address": "0x423f16",
+  "bytes": "e8 45 5c 00 00"
+ },
+ {
+  "address": "0x4251c1",
+  "bytes": "40 89 87 08 43 00 00"
+ },
+ {
+  "address": "0x42540a",
+  "bytes": "e8 1d e7 03 00"
+ },
+ {
+  "address": "0x42541f",
+  "bytes": "e8 08 e7 03 00"
+ },
+ {
+  "address": "0x425520",
+  "bytes": "8b 87 74 44 00 00"
+ },
+ {
+  "address": "0x425aa9",
+  "bytes": "83 bd 78 04 00 00 03"
+ },
+ {
+  "address": "0x425cc4",
+  "bytes": "c7 05 78 6f 47 00 00 00 80 3f"
+ },
+ {
+  "address": "0x425dab",
+  "bytes": "d9 47 18 51 d8 47 14"
+ },
+ {
+  "address": "0x425db5",
+  "bytes": "d9 47 0c d8 47 10"
+ },
+ {
+  "address": "0x425dce",
+  "bytes": "d9 47 e0 d8 03 d9 1b d9 47 e8 d8 47 e4 d9 5f e4"
+ },
+ {
+  "address": "0x426285",
+  "bytes": "a1 98 4c 47 00"
+ },
+ {
+  "address": "0x428243",
+  "bytes": "e8 f8 3c 02 00"
+ },
+ {
+  "address": "0x42863e",
+  "bytes": "3b 85 74 04 00 00",
+  "description": "enemy hit test: the player-timer guard"
+ },
+ {
+  "address": "0x4283a7",
+  "bytes": "d9 47 18 51 d8 47 14"
+ },
+ {
+  "address": "0x4283b1",
+  "bytes": "d9 47 0c d8 47 10"
+ },
+ {
+  "address": "0x429257",
+  "bytes": "e8 a4 0f 00 00"
+ },
+ {
+  "address": "0x42948c",
+  "bytes": "e8 6f 0d 00 00"
+ },
+ {
+  "address": "0x429765",
+  "bytes": "e8 96 0a 00 00"
+ },
+ {
+  "address": "0x43399d",
+  "bytes": "e8 be 61 ff ff"
+ },
+ {
+  "address": "0x438d31",
+  "bytes": "e8 5a 06 00 00"
+ },
+ {
+  "address": "0x4393b7",
+  "bytes": "0f 85 6a 01 00 00"
+ },
+ {
+  "address": "0x439488",
+  "bytes": "0f 8f 83 00 00 00"
+ },
+ {
+  "address": "0x43ee84",
+  "bytes": "c7 05 78 6f 47 00 00 00 80 3f"
+ },
+ {
+  "address": "0x440e3d",
+  "bytes": "e8 fe b0 00 00"
+ },
+ {
+  "address": "0x449c00",
+  "bytes": "83 ec 08 53 8b"
+ },
+ {
+  "address": "0x44c2aa",
+  "bytes": "d9 06 d8 46 0c d9 1e d9 46 10 d8 46 04 d9 5e 04 d9 46 14 d8 46 08 d9 5e 08"
+ },
+ {
+  "address": "0x44c30f",
+  "bytes": "d9 06 83 ec 08"
+ },
+ {
+  "address": "0x449da3",
+  "bytes": "8b 4e 20 ff 56 08",
+  "description": "draw runner dispatch, wrapped for dimming"
+ },
+ {
+  "address": "0x4451c0",
+  "bytes": "8b 90 5c 03 00 00",
+  "description": "sprite VM draw, wrapped for dimming"
+ }
 ]

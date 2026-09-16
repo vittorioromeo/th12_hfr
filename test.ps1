@@ -16,6 +16,10 @@ try {
     if($LASTEXITCODE){throw 'Native harness build failed'}
     & $pythonPath tools/fill_pe_gaps.py build/tests/test_hfr.exe
     if($LASTEXITCODE){throw 'Harness fixture reservation failed'}
+    & $pythonPath tools/gen_signature_json.py --check
+    if($LASTEXITCODE){throw 'tools/th*_signatures.json no longer matches src/games/th*_signatures.h'}
+    & $pythonPath tools/check_docs.py
+    if($LASTEXITCODE){throw 'Documentation links failed'}
     for($i=0;$i -lt $fixtures.Count;++$i) {
         $prefix="build/tests/fixture$i"
         & ./build/tests/test_hfr.exe $fixtures[$i] $prefix
