@@ -396,6 +396,11 @@ static int window_pump(IDirect3DDevice9* dev) {
     g_resize_pending = 0;
     LOG("window: client %dx%d, rebuilding the presentation chain from %dx%d", cw, ch, g_out_w, g_out_h);
     if (g_own_present) return !scaler_set_output(dev, g_wnd, cw, ch);
+    /* Resetting the game's own chain means reusing the game's own present parameters, which a
+       profile that has not been told where they live cannot do. It only matters with scaling
+       off, and the honest answer is to leave the chain alone rather than reset from a
+       fabricated description. */
+    if (!g_game->addr.pp) { LOG("window: this game's present parameters are not described; the chain is left as it is"); return 0; }
     D3DPRESENT_PARAMETERS pp = *G_PP;
     HRESULT hr = dev->lpVtbl->Reset(dev, &pp);
     if (FAILED(hr)) LOG("window: reset for resize failed (0x%08lx)", (long)hr);

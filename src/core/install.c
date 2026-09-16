@@ -89,6 +89,29 @@ static int install(void) {
        can still have all of that while the high frame rate waits. Each part below installs
        only if the profile has the addresses for it, and says so when it does not. */
     int sim = g_game->addr.runner_fn && g_game->addr.frame_calls[0];
+    /* What each part of the run path dereferences without asking. Two crashes in TH14's first
+       two builds were an address this list would have named -- found by starting the game,
+       reading a fault address and disassembling our own DLL, which is an expensive way to
+       learn that a struct field is zero. So the profile is audited here, once, by name, and
+       what cannot be supported is switched off rather than left to fault later.
+       Everything in `sim` above is required; the rest each disable one thing. */
+    if (sim) {
+        static const struct { size_t off; const char* name; const char* needed_for; } wants[] = {
+            {offsetof(struct GameProfile,addr.update_runner), "update_runner", "the update pass"},
+            {offsetof(struct GameProfile,addr.frame_fn),      "frame_fn",      "the frame hook"},
+            {offsetof(struct GameProfile,addr.remove_node),   "remove_node",   "removing a finished node"},
+            {offsetof(struct GameProfile,addr.crit),          "crit",          "the runner's lock"},
+            {offsetof(struct GameProfile,addr.speed),         "speed",         "scaling the simulation"},
+            {offsetof(struct GameProfile,addr.frame_context_ptr), "frame_context_ptr", "the catch-up tick"},
+            {offsetof(struct GameProfile,addr.cleanup_fn),    "cleanup_fn",    "the catch-up tick"},
+            {offsetof(struct GameProfile,addr.poll_input),    "poll_input",    "sub-tick input"},
+            {offsetof(struct GameProfile,addr.pp),            "pp",            "resetting the game's own swap chain"},
+            {offsetof(struct GameProfile,addr.player),        "player",        "the player's state timer"},
+        };
+        for (size_t i=0;i<sizeof wants/sizeof *wants;++i)
+            if (!*(const uintptr_t*)((const uint8_t*)g_game + wants[i].off))
+                LOG("profile: %s is not described; %s is unavailable", wants[i].name, wants[i].needed_for);
+    }
     if (sim) {
         install_speed_sites();
         if (g_game->install_sites) g_game->install_sites();

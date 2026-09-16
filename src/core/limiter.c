@@ -147,8 +147,18 @@ static void call_with_esi(uintptr_t fn, uintptr_t esi) {
     uintptr_t s = esi;
     __asm__ volatile ("call *%1" : "+S"(s) : "r"(fn) : "eax", "ecx", "edx", "memory", "cc");
 }
+/* Whether the catch-up tick can be made at all. It sets up the game's frame context by hand
+   and may have to run the game's own end-of-pass cleanup, so it needs five addresses that a
+   profile describing only the scheduler has not got yet. Without them the frame hook still
+   runs -- one tick per frame, which is the whole feature -- and a hitch simply is not caught
+   up, which at a 60 Hz logic rate costs a frame nobody sees. */
+static int catchup_available(void) {
+    return g_game->addr.frame_context_ptr && g_game->addr.frame_flag &&
+           g_game->addr.frame_context_value && g_game->addr.cleanup_fn && g_game->addr.cleanup_this;
+}
 /* an update pass without drawing/presenting (used to catch up after a missed vblank) */
 static int update_only_tick(void) {
+    if (!catchup_available()) return 0;
     G_FRAME_FLAG34 = g_game->addr.frame_context_value;
     G_FRAME_FLAG38 = 1;
     int r = hfr_runner(G_UPDATE_RUNNER);

@@ -93,10 +93,24 @@ static void test_runner_undescribed(void) {
     g_major=1;test_bare_calls=0;assert(hfr_runner(runner)==2 && test_bare_calls==2);
     /* And a minor tick runs none of them, and must reach the end rather than a null write. */
     g_major=0;test_bare_calls=0;assert(hfr_runner(runner)==2 && test_bare_calls==0);
+    /* The catch-up tick is the other thing the frame hook calls on its own initiative, and
+       the second TH14 crash: it sets up the game's frame context by hand through three
+       addresses and may call the game's cleanup through two more. It has to decline, not
+       fault, and the frame hook has to stop asking for extra ticks once it does. */
+    game.addr.frame_context_ptr=0;game.addr.frame_flag=0;game.addr.frame_context_value=0;
+    game.addr.cleanup_fn=0;game.addr.cleanup_this=0;
+    assert(!catchup_available());
+    g_major=1;test_bare_calls=0;
+    assert(update_only_tick()==0 && test_bare_calls==0);
     DeleteCriticalSection((LPCRITICAL_SECTION)game.addr.crit);
     memset((void*)game.addr.crit,0,sizeof(CRITICAL_SECTION));
     G_UPDATE_RUNNER=NULL;g_game=real;g_major=1;g_dt=1;g_stop_node=NULL;
-    puts("PASS: a profile that describes only the scheduler survives a pass and writes through none of the addresses it lacks");
+    /* ... and the answer for the real profile is whatever that profile actually says, which
+       is the point: TH10-13 describe these and TH14 does not, and both are legitimate. */
+    assert(catchup_available() == (real->addr.frame_context_ptr && real->addr.frame_flag &&
+                                   real->addr.frame_context_value && real->addr.cleanup_fn &&
+                                   real->addr.cleanup_this ? 1 : 0));
+    puts("PASS: a profile that describes only the scheduler survives a pass and a catch-up tick, writing through none of the addresses it lacks");
 }
 
 /* ---------------------------------------------------------------- the runner's ending

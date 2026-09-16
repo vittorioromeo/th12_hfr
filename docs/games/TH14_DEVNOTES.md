@@ -107,9 +107,36 @@ What the guards do now:
   could be sub-stepped, which is a claim the patch should not make about itself.
 
 The general rule ADDING_A_GAME.md already states -- "anything a profile leaves out degrades
-rather than breaks" -- was true of the install path and not of the run path. It is now.
+rather than breaks" -- was true of the install path and not of the run path.
 
-## 6. What a trace still has to supply
+## 6. The second run: the catch-up tick
+
+It then started, ran, and faulted a moment later on `mov [edx],ecx` in `hfr_frame`, with EDX
+and ECX loaded from the profile at `+0x78` and `+0x80` -- `frame_context_ptr` and
+`frame_context_value`. That is `update_only_tick`, the extra update the frame hook makes to
+catch up after a hitch, and the log shows the hitch that triggered it: 293 ms between presents.
+It sets up the game's frame context by hand through three addresses and may call the game's own
+end-of-pass cleanup through two more, none of which this profile has.
+
+Fixing one address at a time was clearly not working -- two builds, two faults, both found by
+reading a fault address out of a log and disassembling our own DLL. So the pattern is fixed
+rather than the instance:
+
+- `update_only_tick` declines when its five addresses are not all there, and the frame hook
+  stops asking for more than one tick a frame once it does. A hitch then simply is not caught
+  up, which at a 60 Hz logic rate costs a frame nobody sees.
+- `window_pump` leaves the swap chain alone rather than resetting it from `pp` it does not
+  have. That path only runs with scaling off, which is why it had not been hit yet.
+- **`install()` now audits the profile by name.** One table of "this address, this feature",
+  walked once at startup, logging each gap. For TH14 today it prints six lines -- `speed`,
+  `frame_context_ptr`, `cleanup_fn`, `poll_input`, `pp`, `player` -- which is the list that
+  would have replaced both of these debugging sessions with a glance at the log.
+
+The test goes with it: `test_runner_undescribed` now also calls the catch-up tick with those
+five zeroed and asserts it declines, and asserts that a described game still has it. Removing
+the guard page-faults the harness, which was checked both times rather than assumed.
+
+## 7. What a trace still has to supply
 
 The UpdateFunc class table and the dimming rules cannot be read out of the executable. Both
 come from the patch's own log while a stage is running: the registered update list names every

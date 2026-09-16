@@ -40,8 +40,13 @@ static int __stdcall hfr_frame(void* ctx) {
     }
     limiter_stats(now);
     int n = ticks_for_slot();
+    /* Never ask for more than one tick a frame when the catch-up tick cannot be made: the
+       loop below would call it, it would decline, and the schedule would think it had caught
+       up when it had not. */
+    if (!catchup_available() && n > 1) n = 1;
     if (deficit > 6) { n += 1; g_stat_catchup++; }         /* presentation is slower than the display rate: catch up (6 = hysteresis for the DWM present queue) */
     else if (deficit < -6 && n > 0) { n -= 1; g_stat_skipped++; } /* presentation is faster: hold a tick back */
+    if (!catchup_available() && n > 1) n = 1;
     for (int i = 0; i + 1 < n; i++) { advance_tick(); int r = update_only_tick(); if (r) return r; }
     if (n >= 1) { advance_tick(); g_skip_update = 0; } else g_skip_update = 1;
     g_ticks_run += n;
