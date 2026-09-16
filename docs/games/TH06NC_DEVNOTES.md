@@ -1942,10 +1942,15 @@ the reported issue resolved. If startup gets further but fails, the candidate lo
 next stage so another blind diagnostic rebuild should not be necessary.
 ## 25. Bullet animations ran at the tick rate (2026-09-16)
 
+> **This section fixes a real bug but does not explain the report that prompted it.** The
+> reported symptom survived this fix; its cause is in [section 26](#26-the-states-that-move-themselves-2026-09-16).
+> What follows is still correct -- the script step really did run six times a frame -- so it
+> is kept, with its conclusion narrowed to what it actually establishes.
+
 The owner reported that effect particles spread more widely at 360 Hz than at 60 Hz, with a
-side-by-side frame of a bullet cancel as evidence, and asked whether their motion needed
-scaling by the simulation rate. It did not. Nothing about that motion is wrong. What is six
-times too fast is the *script* that draws it.
+side-by-side frame as evidence, and asked whether their motion needed scaling by the
+simulation rate. While looking for that, the per-bullet script step turned out to be running
+on every sub-step pass. That is a bug on its own terms, and this is it.
 
 ### The wrong answer first
 
@@ -2028,3 +2033,93 @@ a boundary, and a boundary is wrong at its edges.** Both bugs so far in the sub-
 been one call outside a range that was checked -- the item update just before the bullet loop,
 the sprite step just after it. When gating a loop body, read to the branch, not to the last
 instruction that looked relevant.
+
+And the lesson this section did *not* learn, which §26 had to: a fix that is right is not
+therefore the fix that was asked for. The report should have been reproduced, and the fix
+checked against it, before either was written up.
+
+## 26. The states that move themselves (2026-09-16)
+
+The particles are bullets, they are the bullet's own spawn-in animation, and sub-stepping was
+giving them a whole extra frame of full-speed travel every frame. The owner's third
+description is the one that located it: *"the radial spread of the particles that are created
+at bullet spawn"* -- **at spawn**, not at cancel.
+
+### What the state switch actually does
+
+`0x10982` dispatches on the bullet's state word at `+0x44`. The arms are not peers:
+
+| state | VM | what the arm does | where it goes |
+|---|---|---|---|
+| 0 | -- | empty slot (caught at `0x10970`, before the switch) | `0x1156d`, next bullet |
+| 1 | `+0x50` | acceleration, turning, the scripted patterns | **falls through to `0x11021`** |
+| 2 | `+0x170` | spawn-in: `pos += vel * 1/2`, step the VM | `0x11562`, the age |
+| 3 | `+0x290` | spawn-in: `pos += vel * 1/2.5`, step the VM | `0x11562` |
+| 4 | `+0x3b0` | spawn-in: `pos += vel * 1/3`, step the VM | `0x11562` |
+| 5 | `+0x4d0` | the cancel animation: its own scaled step, step the VM | `0x11562`, or `0x112b5` when the script ends |
+| other | -- | -- | `0x11562` |
+
+Only state 1 reaches the generic motion at `0x1102c`, the off-screen cull, and the player
+collision. States 2 to 5 **move the bullet themselves, at a fraction of its velocity**, and
+then leave the loop body early. That is how a Touhou bullet eases into existence: it drifts
+outward at a half, a fifth-of-two, a third of its speed while the spawn sprite plays, and only
+then starts travelling properly.
+
+### The bug
+
+§16 gated the switch by jumping the whole thing on a sub-step pass -- unconditionally, to
+`0x11021`. For state 1 that is exactly right and is the entire point. For every other state it
+is wrong twice:
+
+- **The motion.** A state-2 bullet moved `vel/2` on the native pass, as always, and then the
+  six minor passes added `vel * dt` summing to a further `vel`. It travelled at **three times**
+  the intended speed during its spawn animation (state 3: 3.5x; state 4: 4x; state 5 likewise).
+  Since every bullet of a spread spawns at the same instant and fans outward, the ring they
+  form is the thing that grows -- which is exactly "the radial spread is larger", and exactly
+  why it looks like the particles are moving faster. They are.
+- **The collision.** Those states also skip the player collision and the graze test in the
+  unmodified game. Sub-stepping ran both. A bullet could graze, and could kill, during its
+  spawn animation -- which the game never does at 60 Hz. That is not cosmetic.
+
+The rate dependence follows: at 120 Hz it is `vel/2 + vel`, the same overshoot, reached in two
+passes instead of six. The *speed* error does not grow with the rate; only the smoothness does.
+Which is why turning the rate down never made it obviously go away.
+
+### The fix
+
+The gate stops being unconditional. The relocated bytes are `movzx edx,[rbx+0x44]; mov ecx,edx;
+sub ecx,r12d` -- they read the state and leave `state == 1` in ZF, and they only read, so the
+minor branch can simply run them too and then choose:
+
+```text
+minor:  movzx edx,[rbx+0x44]     ; the switch's own three instructions,
+        mov   ecx,edx            ; re-run purely for the flags
+        sub   ecx,r12d
+        je    0x11021            ; state 1: motion, cull, collision, graze
+        jmp   0x11562            ; everything else: the age update, itself gated
+```
+
+`0x11562` is the per-bullet age, which is already a gate and already jumps to `0x1156d` on a
+minor pass, so states 2 to 5 now reach the end of the loop body having done nothing at all --
+which is precisely what the 60 Hz pass has already done for them. They are left where the
+native tick put them, and the sprite hook interpolates their pose like anything else, so they
+are still drawn smoothly.
+
+This is a new shape for a gate, so it is a new field rather than a special case: a gate may
+carry an `other` target, and when it does, its minor branch re-runs the relocated bytes and
+picks between `skip` and `other`. The four gates that have no such choice are unchanged, and
+the emitted bytes for them are identical.
+
+### What this leaves
+
+- **State 1 is still fully sub-stepped**, with motion, culling, collision and graze -- §16's
+  actual subject, unaffected.
+- **Lasers are unaffected.** Their loop has no equivalent switch.
+- **§25's fix still stands.** The script step at `0x1154e` runs for every state including
+  state 1, so gating it was right regardless; it simply was not this.
+
+The lesson: **gating a switch is not gating a block.** A block has one exit and skipping it
+means skipping its effect. A switch has an arm per case, the arms do not agree on where they
+leave, and "skip the switch" silently means "take the path of whichever case happens to fall
+through" -- here, the one case out of six that does. Before relocating a dispatch, enumerate
+the arms and write down where each one goes.

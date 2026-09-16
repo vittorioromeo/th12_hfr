@@ -114,7 +114,8 @@ static const struct FixedGame th06nc_game = {
        a single patch carries at most 32 bytes and nothing branches into the remainder,
        which is therefore unreachable. Both halves are frozen so it is still verified. */
     .proj_motion = 0x1102c, .proj_motion_resume = 0x11060, .proj_motion_size = 5,
-    .proj_states = 0x10982, .proj_states_resume = 0x1098b, .proj_states_skip = 0x11021, .proj_states_size = 9,
+    .proj_states = 0x10982, .proj_states_resume = 0x1098b, .proj_states_skip = 0x11021,
+    .proj_states_other = 0x11562, .proj_states_size = 9,
     .proj_offscreen = 0x11298, .proj_offscreen_resume = 0x1129f, .proj_offscreen_size = 7,
     .proj_timer = 0x11562, .proj_timer_resume = 0x1156d, .proj_timer_size = 11,
     /* Lasers extend from a fixed origin: the head at [rbx] grows by the speed at [rbx+0x258]

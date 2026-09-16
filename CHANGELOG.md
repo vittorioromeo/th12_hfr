@@ -6,6 +6,13 @@ Full release notes for each version are on the
 
 ## Unreleased
 
+- **New Classic: bullets no longer fly too far while they are appearing.** With `[fixed60]
+  substep=1`, a bullet's spawn-in animation -- the brief drift outward before it starts
+  travelling properly -- was given a full extra frame of full-speed motion every frame, so it
+  moved three to four times too fast and the ring a spread makes as it appears was visibly
+  wider than in the unmodified game. Those states are also meant to be immune to the player
+  while they play, and sub-stepping was collidable and grazeable during them; both are now
+  what the 60 Hz game does. Ordinary bullet flight is unchanged and still sub-stepped.
 - **New Classic: bullet animations no longer run at the tick rate.** With `[fixed60]
   substep=1`, every sub-step pass advanced each bullet's animation script a whole frame, so at
   360 Hz a script ran six times per game frame. Scripts that only pick a sprite were unaffected;

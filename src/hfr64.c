@@ -531,17 +531,18 @@ static int prepare_patches(void) {
     /* Sub-stepped projectiles. Each gate has the same shape: test the pass flag, then either
        run the relocated bytes and resume, or jump past the block. The flag is tested before
        the relocated instructions so the flags they set are the ones that survive -- the state
-       switch's `sub ecx,r12d` is read by the `je` at its resume. */
+       switch's `sub ecx,r12d` is read by the `je` at its resume, and by this gate's own `je`
+       when it has an `other` target to choose between. */
     if (game->projectile) {
         proj_minor=data_page+8; *proj_minor=0;
         proj_dt=(float*)(data_page+12); *proj_dt=1.0f;
         proj_ran=data_page+16; *proj_ran=0;
-        struct Gate { uint32_t site, resume, skip; unsigned size; int mark; } gates[] = {
-            {game->proj_states, game->proj_states_resume, game->proj_states_skip, game->proj_states_size, 0},
-            {game->proj_offscreen, game->proj_offscreen_resume, game->proj_offscreen_resume, game->proj_offscreen_size, 0},
-            {game->proj_timer, game->proj_timer_resume, game->proj_timer_resume, game->proj_timer_size, 0},
-            {game->proj_laser_timer, game->proj_laser_timer_resume, game->proj_laser_timer_skip, game->proj_laser_timer_size, 0},
-            {game->proj_epoch, game->proj_epoch_resume, game->proj_epoch_resume, game->proj_epoch_size, 1},
+        struct Gate { uint32_t site, resume, skip, other; unsigned size; int mark; } gates[] = {
+            {game->proj_states, game->proj_states_resume, game->proj_states_skip, game->proj_states_other, game->proj_states_size, 0},
+            {game->proj_offscreen, game->proj_offscreen_resume, game->proj_offscreen_resume, 0, game->proj_offscreen_size, 0},
+            {game->proj_timer, game->proj_timer_resume, game->proj_timer_resume, 0, game->proj_timer_size, 0},
+            {game->proj_laser_timer, game->proj_laser_timer_resume, game->proj_laser_timer_skip, 0, game->proj_laser_timer_size, 0},
+            {game->proj_epoch, game->proj_epoch_resume, game->proj_epoch_resume, 0, game->proj_epoch_size, 1},
         };
         for (size_t i=0;i<sizeof gates/sizeof *gates;++i) {
             const struct Gate* g=&gates[i];
@@ -561,9 +562,24 @@ static int prepare_patches(void) {
             if (!rel32(q+k+1,(uintptr_t)(q+k+5),base+g->resume)) return 0;
             k+=5;
             q[branch+1]=(unsigned char)(k-(branch+2));      /* jne lands on the skip jump */
-            q[k]=0xe9;                                      /* skip: jump past the block */
-            if (!rel32(q+k+1,(uintptr_t)(q+k+5),base+g->skip)) return 0;
-            k+=5;
+            if (g->other) {
+                /* A gate that has to know what it is skipping: the relocated bytes run on
+                   this side too, purely for the comparison they leave in the flags, and the
+                   pass continues at one of two places according to the answer. Re-running
+                   them is safe because they only read -- the state word and two registers
+                   the switch itself was about to consume. */
+                memcpy(q+k,(const void*)(base+g->site),g->size);k+=g->size;
+                q[k]=0x0f;q[k+1]=0x84;                      /* je skip */
+                if (!rel32(q+k+2,(uintptr_t)(q+k+6),base+g->skip)) return 0;
+                k+=6;
+                q[k]=0xe9;                                  /* jmp other */
+                if (!rel32(q+k+1,(uintptr_t)(q+k+5),base+g->other)) return 0;
+                k+=5;
+            } else {
+                q[k]=0xe9;                                  /* skip: jump past the block */
+                if (!rel32(q+k+1,(uintptr_t)(q+k+5),base+g->skip)) return 0;
+                k+=5;
+            }
             memset(b,0x90,g->size);b[0]=0xe9;
             if (!rel32(b+1,base+g->site+5,(uintptr_t)q) ||
                 !patch_bytes(base+g->site,b,g->size,NULL)) return 0;

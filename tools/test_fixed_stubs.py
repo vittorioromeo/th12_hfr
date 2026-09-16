@@ -153,20 +153,29 @@ for px, vx in ((16777216.0, 1.0), (0.1, 0.2), (-3.4e18, 5.6e18), (1e-40, 1e-40))
                                            + struct.unpack("<f", struct.pack("<f", vx))[0]))[0]
     assert got == want, (px, vx, got, want)
 
-# --- the state switch: skipped on a sub-step pass, and its flags preserved otherwise -------
+# --- the state switch: a full pass runs it; a sub-step pass chooses by state --------------
+# State 1 is the ordinary moving bullet and is the only one that falls through the switch
+# into the generic motion. Every other live state moves the bullet itself, at a fraction of
+# its velocity, and leaves the loop body early -- so on a sub-step pass those must reach the
+# age update (0x11562) and not the motion (0x11021), or they get a whole extra frame of
+# full-speed travel every frame. That is the section 26 bug, and this is the test for it.
 for minor in (0, 1):
-    uc, _ = projectile_machine(minor)
-    uc.mem_write(BULLET + STATE, struct.pack("<H", 1))
-    uc.reg_write(UC_X86_REG_R12, 1)
-    target = base + (0x11021 if minor else 0x1098b)
-    uc.emu_start(base + 0x10982, target, count=30)
-    assert uc.reg_read(UC_X86_REG_RIP) == target
-    if not minor:
-        # the `je` at the resume reads ZF from `sub ecx,r12d`: state 1 minus 1 is zero
-        assert uc.reg_read(UC_X86_REG_RDX) == 1
-        assert uc.reg_read(UC_X86_REG_RCX) == 0
-        assert uc.reg_read(UC_X86_REG_EFLAGS) & 0x40, "ZF must survive to the switch"
-    assert uc.reg_read(UC_X86_REG_RSP) == 0x100800
+    for state in (1, 2, 3, 4, 5, 9):
+        uc, _ = projectile_machine(minor)
+        uc.mem_write(BULLET + STATE, struct.pack("<H", state))
+        uc.reg_write(UC_X86_REG_R12, 1)
+        if not minor:
+            target = base + 0x1098b
+        else:
+            target = base + (0x11021 if state == 1 else 0x11562)
+        uc.emu_start(base + 0x10982, target, count=30)
+        assert uc.reg_read(UC_X86_REG_RIP) == target, (minor, state, hex(uc.reg_read(UC_X86_REG_RIP)))
+        if not minor:
+            # the `je` at the resume reads ZF from `sub ecx,r12d`: state 1 minus 1 is zero
+            assert uc.reg_read(UC_X86_REG_RDX) == state
+            assert uc.reg_read(UC_X86_REG_RCX) == state - 1
+            assert bool(uc.reg_read(UC_X86_REG_EFLAGS) & 0x40) == (state == 1), "ZF must survive to the switch"
+        assert uc.reg_read(UC_X86_REG_RSP) == 0x100800
 
 # --- the off-screen counter, the per-bullet timer and the manager's frame counter ----------
 for minor in (0, 1):

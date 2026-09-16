@@ -61,7 +61,18 @@ struct FixedGame {
        site has a resume (where the relocated bytes continue) and the gated ones a skip. */
     uint32_t projectile, projectile_arg;
     uint32_t proj_motion, proj_motion_resume; unsigned proj_motion_size;
-    uint32_t proj_states, proj_states_resume, proj_states_skip; unsigned proj_states_size;
+    /* The state switch is not simply skipped on a sub-step pass. Only state 1 -- the
+       ordinary moving bullet -- falls through the switch into the generic motion. Every
+       other live state (the three spawn-in animations and the cancel animation) advances
+       the bullet by a fraction of its velocity inside its own arm and then leaves the loop
+       body early, bypassing the motion, the cull and the collision. Skipping the switch
+       wholesale therefore gave those states a full extra frame of full-speed motion per
+       frame, on top of their own (section 26). So the minor branch re-reads the state:
+       `proj_states_skip` is where it continues when the state is the ordinary one, and
+       `proj_states_other` where it continues for all the rest -- the age update, which is
+       itself gated, so they are left exactly where the 60 Hz pass put them. */
+    uint32_t proj_states, proj_states_resume, proj_states_skip, proj_states_other;
+    unsigned proj_states_size;
     uint32_t proj_offscreen, proj_offscreen_resume; unsigned proj_offscreen_size;
     uint32_t proj_timer, proj_timer_resume; unsigned proj_timer_size;
     uint32_t proj_laser_growth, proj_laser_growth_resume; unsigned proj_laser_growth_size;
