@@ -1762,3 +1762,111 @@ settings queried is the set of controls offered. It asserts every dimming contro
 with *and* without a video backend, that the scaler's appear only with one, and that a game
 with no dimming rules still gets the sliders (disabled, saying why) rather than nothing.
 Reinstating the early-out makes it fail with ten named lines.
+
+## 23. Proton autoload investigation (2026-09-16)
+
+**Status: the reported failure is not reproduced; a diagnostic proxy is ready for one
+targeted run. No Proton compatibility fix has been established.** The game runs normally
+but HFR has no visible effect and F11 does nothing. The screenshot shows `dxgi.dll`,
+`touhou_hfr64.dll` and `touhou_hfr.ini` beside `th06nc.exe`, with Steam launch options
+`WINEDLLOVERRIDES="dxgi=n,b" %command%`.
+
+### What the supplied log proves
+
+The supplied `steam-4659620.log` reports Proton
+`experimental-11.0-20260910b-x86_64` and DXVK `v3.1-12-g8759acd15dc79c8`.
+Follow the game's thread `013c`; other processes such as `xalia.exe` have their own
+module lists and must not be combined with it.
+
+- Line 415 loads the game-folder `dxgi.dll` as native at `0x6ffff9ed0000`.
+- Lines 416-417 load System32's native D3D11 and DXGI. The latter is at
+  `0x6ffffc930000`, a **different module** from the proxy.
+- DXVK subsequently creates the game's D3D11 device and swapchain successfully.
+- There is no load record for `touhou_hfr64.dll`, no HFR initialization message, and
+  no proxy self-load warning. The proxy is unloaded during shutdown.
+
+This rules out a missing DXGI override and contradicts the initial hypothesis that this
+run's system-DXGI load simply returns the proxy itself. It does **not** prove that a
+factory wrapper was called. The normal proxy silently returns on several runtime-load
+failures, and the runtime's own log only begins inside `hfr_start`.
+
+The remaining distinction is between bypassing the factory wrappers and failing before
+or during the runtime load. The log does not contain enough information to choose one.
+Changing Proton versions or asking the user to install dependencies without this evidence
+would be speculative.
+
+### Game loading order and local reproduction
+
+Read-only disassembly of the supported game confirms these DxLib paths (RVAs):
+
+| RVA | Operation |
+| --- | --- |
+| `0x270e00` | Load `d3d11.dll` by bare name; save the handle at `0x9b1c98`. |
+| `0x270bc0` | Load `dxgi.dll` by bare name; save the handle at `0x9b1ca0`. |
+| `0x2707b0` | Resolve `CreateDXGIFactory2` from the saved DXGI handle, then call it; fall back to Factory1/Factory. |
+
+`tools/test_dxgi_proxy_start.c` now tests the actual `dxgi.dll` basename with a tiny
+stand-in runtime in an isolated directory. Each of the three factories is tested as the
+first call in a separate process; initialization must happen exactly once. Its optional
+`--game-order` argument loads D3D11 first, then requests DXGI by bare name, to exercise
+DXVK's import ordering. Never ship the stand-in `touhou_hfr64.dll` from this test.
+
+Local validation:
+
+- On Windows, both the ordinary and diagnostic proxies pass the forwarding test and all
+  three startup cases. The D3D11-first startup case also passes.
+- In an isolated WSL prefix, [Wine 11.0 WoW64](https://github.com/Kron4ek/Wine-Builds/releases/tag/11.0)
+  with native [DXVK 3.1.1](https://github.com/doitsujin/dxvk/releases/tag/v3.1.1) loads two
+  distinct DXGI modules. The D3D11-first test still resolves the factory through our proxy
+  and calls the stand-in runtime. This does not reproduce the reported failure.
+- A separate single-factory probe on that same Wine setup also loads the **real HFR
+  runtime** through the diagnostic proxy and enters `hfr_start`. HFR creates its log and
+  correctly rejects the probe's executable fingerprint without patching it. This verifies
+  the runtime dependency load and entry path, not installation into the game.
+- The WSL environment has no usable Vulkan/display stack. DXVK cannot create the graphics
+  factory, and repeating factory creation after that failure crashes this local DXVK
+  setup. Therefore the multi-call Linux test is **not a passing graphics test**, and none
+  of these probes validates gameplay or the user's exact Proton build.
+- Loading the real runtime from WSL's Windows-mounted `/mnt/c` initially faulted in Wine's
+  TLS loader. Copying the same files to Linux's own filesystem made the probe succeed.
+  This local filesystem-dependent failure is not established as the user's cause.
+
+The forwarding test previously compared two calls to
+`DXGIDeclareAdapterRemovalSupport`. That changes process state: unequal results can be a
+false failure even when forwarding is correct. It now compares `DXGIGetDebugInterface1`
+with the same arguments instead. Forwarding under a renamed DLL still cannot substitute
+for the separate startup test.
+
+### Prepared diagnostic and next decision
+
+Run `tools/build_dxgi_diagnostic.ps1` to build an x64 proxy with
+`HFR_PROXY_DIAGNOSTICS` enabled. The dated ZIP contains only `dxgi.dll` and instructions;
+the user keeps their existing runtime and INI. This is logging instrumentation, not a
+claimed fix, and normal builds contain no additional tracing or file I/O.
+
+The diagnostic writes `touhou_hfr_proxy.log` beside itself and duplicates messages through
+`OutputDebugStringA`, preserving `GetLastError`. It records:
+
+1. Process/thread, proxy attachment, system DXGI path and handle, and resolved factories.
+2. Entry into each factory wrapper and the exact runtime path selected.
+3. Runtime `LoadLibrary` errors, a missing `hfr_start` export, or its return value.
+
+The missing-runtime case was exercised locally and reports error 126. To collect the
+missing evidence, back up the installed proxy, replace **only** `dxgi.dll`, retain these
+Steam options, reach the title screen, try F11, and quit:
+
+```text
+PROTON_LOG=1 WINEDEBUG=+loaddll,+debugstr WINEDLLOVERRIDES="dxgi=n,b" %command%
+```
+
+Collect the proxy log, `touhou_hfr.log` if created, and the new Proton log, then restore
+the original proxy. A missing file log is itself useful because debug messages also go
+to Proton's log. Interpret the last completed stage before changing the loading strategy:
+
+- **Attached and hooks ready, but no intercepted factory:** inspect which DXGI handle
+  and function address the game actually uses in that Proton environment.
+- **Runtime load attempted but failed:** use the exact path and Win32 error to investigate
+  the file or its dependencies; do not assume the proxy hook was bypassed.
+- **Runtime started:** follow the runtime log's fingerprint/signature/hook result.
+- **No diagnostic attachment anywhere:** verify the replacement DLL is the one Steam
+  launched with before investigating HFR internals.
