@@ -105,6 +105,7 @@ static int install(void) {
             {offsetof(struct GameProfile,addr.frame_context_ptr), "frame_context_ptr", "the catch-up tick"},
             {offsetof(struct GameProfile,addr.cleanup_fn),    "cleanup_fn",    "the catch-up tick"},
             {offsetof(struct GameProfile,addr.poll_input),    "poll_input",    "sub-tick input"},
+            {offsetof(struct GameProfile,addr.game_input),    "game_input",    "the input word in the debug log and sub-tick input"},
             {offsetof(struct GameProfile,addr.pp),            "pp",            "resetting the game's own swap chain"},
             {offsetof(struct GameProfile,addr.player),        "player",        "the player's state timer"},
         };

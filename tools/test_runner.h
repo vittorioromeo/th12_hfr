@@ -102,6 +102,18 @@ static void test_runner_undescribed(void) {
     assert(!catchup_available());
     g_major=1;test_bare_calls=0;
     assert(update_only_tick()==0 && test_bare_calls==0);
+    /* And the debug stats line, which is where the third crash lived: it prints the game's
+       input word, and had been reading it through a null addr.game_input. Only reachable with
+       debug on, which is exactly when a new game is being worked out. Drive it across a window
+       boundary so the once-a-second block actually runs. */
+    cfg.debug=1;
+    /* The line is only printed when the game has a replay manager, so the fixture needs one --
+       without it the crash this covers is simply not reached, which is how a first attempt at
+       this test passed with the guard removed. */
+    uint8_t fake_rm[0x40]={0};G_REPLAY_MANAGER=fake_rm;
+    g_stat_last=0;g_rate_win_start=0;limiter_stats(6.0);   /* the block runs every five seconds */
+    limiter_stats(12.0);                                    /* ... and this one prints the stats line too */
+    cfg.debug=0;G_REPLAY_MANAGER=NULL;
     DeleteCriticalSection((LPCRITICAL_SECTION)game.addr.crit);
     memset((void*)game.addr.crit,0,sizeof(CRITICAL_SECTION));
     G_UPDATE_RUNNER=NULL;g_game=real;g_major=1;g_dt=1;g_stop_node=NULL;

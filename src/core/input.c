@@ -9,10 +9,16 @@
  */
 #define G_INPUT_RAW       ((uint8_t*)g_game->addr.raw_input)
 #define G_INPUT_RAW_SIZE  0x130
+/* Every input word the runtime reads or writes comes through these two, and a profile that has
+   not described one passes zero. Answering "no bits held" and dropping the write is the right
+   degradation and it is the only place it has to be written: the game input word, the pressed
+   and released edges and the autofocus counter all go through here. */
 static uint32_t input_read(uintptr_t addr) {
+    if (!addr) return 0;
     return g_game->layout.input_width == 2 ? *(uint16_t*)addr : *(uint32_t*)addr;
 }
 static void input_write(uintptr_t addr, uint32_t v) {
+    if (!addr) return;
     if (g_game->layout.input_width == 2) *(uint16_t*)addr = (uint16_t)v;
     else *(uint32_t*)addr = v;
 }
@@ -76,7 +82,7 @@ static uint32_t poll_input_raw(void) {
 static uint32_t merge_subtick_bits(uint32_t frame_val, uint32_t polled, int live) {
     uint32_t v = (frame_val & ~(uint32_t)(IN_MOVE | IN_FOCUS)) | (polled & IN_MOVE);
     uint32_t focus = polled & IN_FOCUS;
-    if (live && (G_OPTION_FLAGS & 0x200) && G_AUTOFOCUS_CTR >= 8) focus = IN_FOCUS;   /* "hold shot to focus" option: synthesized by the replay node */
+    if (live && g_game->addr.option_flags && (G_OPTION_FLAGS & 0x200) && G_AUTOFOCUS_CTR >= 8) focus = IN_FOCUS;   /* "hold shot to focus" option: synthesized by the replay node */
     return v | focus;
 }
 static inline uint8_t bits_encode(uint32_t v) { return (uint8_t)(((v & IN_MOVE) >> 3) | !!(v & IN_FOCUS)); }

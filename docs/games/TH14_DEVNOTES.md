@@ -162,7 +162,63 @@ The lesson, and it is the same one three times in a row: **a half-described prof
 the features it cannot support unavailable, not merely switched off.** Anything reachable from
 the menu is reachable.
 
-## 8. What a trace still has to supply
+## 8. The fourth run: the debug line itself
+
+With `debug=1` the fourth build reached a stage and then faulted in `hfr_frame` on
+`mov (%edx),%edx` with EDX from the profile at `+0x3c` -- `game_input`. That is the stats
+line's `input=%08x`, which only prints with debug on and only when the game has a replay
+manager, which is why the first three runs never reached it.
+
+This one is fixed at the bottom rather than at the use. Every input word the runtime touches
+goes through `input_read` / `input_write`, so those answer "no bits held" and drop the write
+when the address is zero; that covers the game input word, the pressed and released edges and
+the autofocus counter in one place. `option_flags` is guarded at its one use, and `game_input`
+joins the install-time audit.
+
+The test that goes with it cost two attempts, both instructive. The first called
+`limiter_stats` with the fixture's replay manager left NULL, so the line was never reached and
+the test passed with the guard removed. The second used a one-second window when the block runs
+every five. A test that does not fail without the fix is not a test, and checking that it does
+is not optional -- it caught both.
+
+## 9. The update list
+
+The callback census (`debug=1`) on a first stage. Priority is the registration priority; the
+call counts are cumulative over the sample, so the ones that appear late are the ones a stage
+creates.
+
+| priority | callback | seen |
+|---|---|---|
+| 1 | `0x444890` | always |
+| 3 | `0x4447b0` | always |
+| 4 | `0x40b8e0` | always |
+| 6 | `0x459f30` | always |
+| 8 | `0x47e7f0` | always |
+| 27 | `0x41ee80` | always |
+| 29 | `0x47e7c0` | always |
+| 9 | `0x448bd0` | in a stage |
+| 11 | `0x436d70` | in a stage |
+| 12 | `0x455e40` | in a stage |
+| 13 | `0x40eb70` | in a stage |
+| 17 | `0x457ee0` | in a stage |
+| 18 | `0x44ec60` | in a stage |
+| 20 | `0x411eb0` | in a stage |
+| 21 | `0x422a60` | in a stage |
+| 22 | `0x43a6a0` | in a stage |
+| 23 | `0x417610` | in a stage |
+| 24 | `0x439750` | in a stage |
+| 26 | `0x41cb50` | in a stage |
+| 28 | `0x431a40` | in a stage |
+| 30 | `0x455e60` | in a stage |
+
+`0x47e7c0` and `0x47e7f0` are an adjacent pair registered from adjacent sites (`0x47aa5b`,
+`0x47aac8`), which is the shape of TH13's two ANM managers (`0x46f330`, `0x46f360`). That is a
+resemblance and not yet a reading; nothing is classified on it. Every one of these is
+`MODE_FRAME` until it has been identified from its own code, because a callback put in the
+wrong class is §7 of the runtime notes -- a system stepped six times a frame with its own
+timers still counting in whole ones -- and that failure is silent.
+
+## 10. What a trace still has to supply
 
 The UpdateFunc class table and the dimming rules cannot be read out of the executable. Both
 come from the patch's own log while a stage is running: the registered update list names every
