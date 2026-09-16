@@ -18,8 +18,8 @@ if($IncludeExperimental64) {
     }
 }
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'shaders') -Destination $package -Recurse
-Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'TH06NC_DEVNOTES.md','TH06NC_VS_TH10_13.md') -Destination $package
-foreach($file in @('README.md','ARCHITECTURE.md','DEVNOTES.md','DEVNOTES_RUNTIME.md','TH10_DEVNOTES.md','TH11_DEVNOTES.md','TH13_DEVNOTES.md','ADDING_A_GAME.md','TH11_README.md','TH12_README.md','install.ps1')){Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination $package}
+# One name per Join-Path: Windows PowerShell 5.1 will not take an array as -ChildPath.
+foreach($file in @('README.md','ARCHITECTURE.md','DEVNOTES.md','DEVNOTES_RUNTIME.md','MOD_COMPATIBILITY.md','RESOLUTION.md','TH10_DEVNOTES.md','TH11_DEVNOTES.md','TH13_DEVNOTES.md','ADDING_A_GAME.md','TH11_README.md','TH12_README.md','TH06NC_DEVNOTES.md','TH06NC_VS_TH10_13.md','install.ps1')){Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination $package}
 foreach($dir in @('src','tools','third_party','shaders')) {
     $base=Join-Path $PSScriptRoot $dir
     foreach($file in Get-ChildItem -LiteralPath $base -Recurse -File) {
@@ -30,7 +30,7 @@ foreach($dir in @('src','tools','third_party','shaders')) {
         Copy-Item -LiteralPath $file.FullName -Destination $dest
     }
 }
-foreach($file in @('build.ps1','build.sh','package.ps1','package.sh','test.ps1','test_th11.ps1','install.ps1','README.md','ARCHITECTURE.md','DEVNOTES.md','DEVNOTES_RUNTIME.md','TH10_DEVNOTES.md','TH11_DEVNOTES.md','TH13_DEVNOTES.md','ADDING_A_GAME.md','TH11_README.md','TH12_README.md','touhou_hfr.ini')) {
+foreach($file in @('build.ps1','build.sh','package.ps1','package.sh','test.ps1','test_th11.ps1','install.ps1','README.md','ARCHITECTURE.md','DEVNOTES.md','DEVNOTES_RUNTIME.md','MOD_COMPATIBILITY.md','RESOLUTION.md','TH10_DEVNOTES.md','TH11_DEVNOTES.md','TH13_DEVNOTES.md','ADDING_A_GAME.md','TH11_README.md','TH12_README.md','touhou_hfr.ini')) {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination $source
 }
 foreach($file in @('build64.ps1','test64.ps1','build64.sh','test64.sh','TH06NC_DEVNOTES.md','TH06NC_VS_TH10_13.md')) {
