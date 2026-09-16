@@ -3,7 +3,7 @@
 Touhou HFR supports two quite different games under one launcher. TH10, TH11, TH12 and TH13
 are 32-bit Direct3D 9 games running one engine family; **Touhou Koumakyou: New Classic** is a
 64-bit Direct3D 11 remaster on DxLib with an unrelated engine. This is the honest accounting
-of what the patch does for each, written against the source as of v0.5.2-test.
+of what the patch does for each, written against the source as of v0.5.3-test.
 
 The per-game records are [TH10_DEVNOTES.md](TH10_DEVNOTES.md),
 [TH11_DEVNOTES.md](TH11_DEVNOTES.md), [DEVNOTES.md](DEVNOTES.md) (TH12),

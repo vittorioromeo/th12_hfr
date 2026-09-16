@@ -1,4 +1,4 @@
-param([string]$Version='0.5.2-test',[string]$Compiler='C:\msys64\mingw32\bin\gcc.exe',
+param([string]$Version='0.5.3-test',[string]$Compiler='C:\msys64\mingw32\bin\gcc.exe',
     [switch]$IncludeExperimental64,[string]$Compiler64='C:\msys64\mingw64\bin\gcc.exe')
 $ErrorActionPreference='Stop'
 if($Version -notmatch '^[A-Za-z0-9.-]+$'){throw 'Invalid version'}

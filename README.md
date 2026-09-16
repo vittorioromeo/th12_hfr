@@ -22,7 +22,7 @@ add four files to the game's folder and remove it by deleting them again.
 
 ## Supported games
 
-**Current build: v0.5.2-test.**
+**Current build: v0.5.3-test.**
 
 | Game | Version | Executables | State |
 | --- | --- | --- | --- |
@@ -232,8 +232,8 @@ compared the results frame by frame. Until that exists, treat "the simulation is
 
 **Other patches.** vpatch and Direct3D 9 wrappers want the same parts of the game as this one.
 The patch detects the ones it knows and tells you; it cannot detect everything. If something
-looks wrong, try the game with only this patch installed. Translation patches are a separate
-case — see below.
+looks wrong, try the game with only this patch installed. Rotation wrappers, practice tools and
+translation patches are separate cases — see below.
 
 ### Rotation and layout wrappers (THRotator)
 
@@ -264,6 +264,46 @@ after every device reset, which is what THRotator does each time it turns the pi
 
 Confirmed on TH12 with THRotator 2.1.0 at 360 Hz. If the menu ever does not appear, the log
 says which of the two paths it took, and the INI is read normally either way.
+
+### Practice tools (thprac)
+
+**thprac and this patch work together** on TH10–13. They want different parts of the game:
+thprac owns the practice menu, the stage and section jumps and the replay tools, and this patch
+owns the frame loop underneath them. Their patch sites do not touch anywhere —
+`tools/check_thprac_overlap.py` compares thprac's own hook declarations against every byte this
+patch writes and every byte it verifies, and for all four games the two sets are disjoint.
+
+Install both as each normally wants and launch from thprac's launcher, or attach thprac to a
+running game. `dinput8.dll` loads this patch either way.
+
+**One thing to change in thprac's launcher: untick "Use VsyncPatch (if avaliable)" and "Use
+OpenInputLagPatch (if avaliable)".** Both are on by default, and thprac will load either one it
+finds sitting in the game's folder — an old `vpatch_th12.dll` you have not thought about in
+years is enough. Those patches replace the game's frame limiter, which is the one job this patch
+cannot share, so it refuses to install beside them. If that happens you get a message box naming
+those two options; untick them, or delete the file from the game's folder.
+
+**This needs v0.5.3-test or newer.** Before that, thprac's menu never appeared with this patch
+installed — no error, nothing in either log. This patch replaces the game's update runner, and
+thprac's menu hook sits on that function's very last instruction, so replacing it took the hook
+away. The replacement now finishes on the game's own instruction instead of one of its own, and
+anything hooked there runs as it always did. Nothing in this patch knows thprac exists; the
+instruction simply stopped being taken.
+
+Two smaller things:
+
+- **The menu updates at the display rate**, not at 60 Hz, which is what keeps it in step with
+  the drawing. Hotkeys are unaffected — they trigger on the press — but anything in thprac you
+  hold down to repeat will repeat proportionally faster.
+- **Leave `internal_scale` at 1 while using thprac** if you can. thprac sizes its interface from
+  the back buffer at startup, where it agrees with this patch, but takes it from the
+  presentation parameters again after a device reset, where it does not once the internal
+  resolution is higher. The first launch looks right; the first window resize or Alt-Tab after
+  that can leave its menu the wrong size.
+
+Confirmed on TH12 with thprac 2.3.1.1 at 360 Hz, and on TH10, TH11 and TH13 against a stand-in
+reproducing thprac's hook mechanism. Running thprac and THRotator together with this patch has
+not been tried.
 
 ### Translation patches (thcrap)
 
@@ -433,7 +473,7 @@ For New Classic, also install **64-bit MinGW-w64 GCC/G++** (default
 ```powershell
 .\build64.ps1
 .\test64.ps1 -GameExe 'C:\Program Files (x86)\Steam\steamapps\common\th06nc\'
-.\package.ps1 -Version '0.5.2-test' -IncludeExperimental64
+.\package.ps1 -Version '0.5.3-test' -IncludeExperimental64
 ```
 
 Run `build.ps1` before `test64.ps1`, which checks both launcher architectures. `build64.ps1`
