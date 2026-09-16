@@ -51,6 +51,12 @@ struct GameProfile {
         uintptr_t replay_save;
         uintptr_t replay_load;
         uintptr_t frame_calls[3], replay_saves[4], replay_load_call, runner_fn, latency_cmp;
+        /* The instruction that ends `runner_fn` -- its `ret`, or `ret 4` where the runner takes
+           its argument on the stack. The replacement runner finishes by jumping to it rather
+           than returning on its own, so that the last instruction of the function still belongs
+           to the game and anything hooked there still runs (update_runner.c says why this
+           matters). Never written, only jumped to; 0 means the replacement returns by itself. */
+        uintptr_t runner_ret;
         uintptr_t screenshot_fn, screenshot_call;   /* 0 when not known for this game */
         uintptr_t data_dir;          /* NUL-terminated directory the game saves into, or 0 for the game directory */
     } addr;

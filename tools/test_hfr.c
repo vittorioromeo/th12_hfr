@@ -251,6 +251,18 @@ int main(int argc,char**argv) {
         assert(identify_image(base,nt->OptionalHeader.SizeOfImage)==id);
         *p=saved;
     }
+    /* thprac's launcher stamps four bytes into the DOS header padding before the PE header,
+       which is how this patch knows who started the game. A game as it ships has zeroes
+       there, so a clean image must not be mistaken for one thprac launched. */
+    {
+        uint32_t lfanew=*(uint32_t*)(base+0x3c);
+        uint8_t saved[4];memcpy(saved,base+lfanew-4,4);
+        assert(!thprac_present());
+        memcpy(base+lfanew-4,"PRAC",4);assert(thprac_present());
+        memcpy(base+lfanew-4,"PRAX",4);assert(!thprac_present());
+        memcpy(base+lfanew-4,saved,4);assert(!thprac_present());
+        puts("PASS: thprac's launcher marker is recognised; a clean executable does not carry it");
+    }
     /* A game with no conflict sites recorded yet must pass, not fail. */
     for (size_t g=0;g<GAME_COUNT;++g)
         if (!game_identities[g].conflicts)
@@ -262,7 +274,7 @@ int main(int argc,char**argv) {
        say which were skipped -- the same split install() makes. */
     int sim = g_game->addr.runner_fn && g_game->addr.frame_calls[0];
     test_schedule();test_replay_parser();test_scale_rect();test_snap_client();test_menu_key();
-    if (sim) { test_replay_roundtrip();test_runner(); }
+    if (sim) { test_replay_roundtrip();test_runner();test_runner_tail(); }
     else puts("SKIP: replay round-trip and the shared runner (this game's simulation is not described)");
     /* A failed patch transaction must leave all game code unchanged. */
     patch_begin();uint8_t changed[6]={0};

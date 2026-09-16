@@ -296,7 +296,7 @@ static const struct GameProfile th13_profile = {
         .replay_save = 0x4484d0,
         .frame_calls = {0x45c5de, 0x45c5fb, 0x45c607},
         .replay_saves = {0x43f26b, 0x440280, 0x4412e0, 0x454e15},
-        .runner_fn = 0x470af0,
+        .runner_fn = 0x470af0, .runner_ret = 0x470c04,
         .latency_cmp = 0x45d69e,
         .screenshot_fn = 0x43a950, .screenshot_call = 0x45d856,
         .data_dir = 0x4dd0d1,            /* "%APPDATA%\\ShanghaiAlice\\th13\\", built at startup */

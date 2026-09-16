@@ -41,6 +41,26 @@ static int conflict_module(char* out, size_t n) {
     return found;
 }
 
+/* thprac (the practice tool) starts the game itself, and its launcher stamps a four-byte
+   marker into the DOS header padding immediately before the PE header: 'CARP' written as a
+   DWORD, which is the bytes "PRAC" in memory. Those four bytes are zero in every executable
+   these games shipped with, so the marker says plainly who launched this process -- and it
+   is there before the game's first instruction runs, earlier than thprac's own module exists
+   to be found by name.
+
+   thprac is not a conflict. It and this patch share a game quite happily: their patch sites
+   are disjoint in all four games, and the replacement update runner leaves the instruction
+   its menu hook needs (update_runner.c). Its launcher is what needs saying something about,
+   and only when it has been asked to bring vpatch or openinputlagpatch along. */
+static int thprac_present(void) {
+    const uint8_t* base = (const uint8_t*)0x400000;
+    if (memcmp(base, "MZ", 2) != 0) return 0;
+    uint32_t lfanew = *(const uint32_t*)(base + 0x3c);
+    if (lfanew < 8 || lfanew > 0x1000) return 0;
+    if (memcmp(base + lfanew, "PE\0\0", 4) != 0) return 0;
+    return memcmp(base + lfanew - 4, "PRAC", 4) == 0;
+}
+
 /* Said from a thread of its own. A message box called from DllMain would hold the loader
    lock while it waited for the user; the thread cannot start until that lock is released,
    which is exactly when showing one becomes safe. Shared with the wrapper warning in the
@@ -81,7 +101,21 @@ static int conflict_found(int installed) {
     if (has_module) snprintf(who, sizeof who, ": %s", module);
 
     char text[900];
-    if (!installed)
+    /* thprac's launcher pulled it in: say so, because "start the game through touhou_hfr.exe
+       rather than the other patch's launcher" is useless advice to someone who wants thprac's
+       launcher -- and they can keep it, they just have to untick one box. */
+    if (has_module && thprac_present())
+        snprintf(text, sizeof text,
+            "thprac started this game and brought another patch in with it%s.\n\n"
+            "thprac's launcher loads any vpatch*.dll or openinputlagpatch.dll it finds beside "
+            "the game. That is its \"Use VsyncPatch (if avaliable)\" and \"Use OpenInputLagPatch "
+            "(if avaliable)\" options, both on by default. That patch and Touhou HFR each replace "
+            "the game's frame limiter and each decide when frames are presented, so together they "
+            "leave the game running at the other one's frame rate.\n\n"
+            "%sUntick those options in thprac's launcher, or delete that file from the game's "
+            "folder. thprac itself runs alongside Touhou HFR and needs no change.", who,
+            installed ? "" : "Touhou HFR has not installed. The game will run without it.\n\n");
+    else if (!installed)
         snprintf(text, sizeof text,
             "Another patch has already modified this game%s.\n\n"
             "It and Touhou HFR both replace the game's frame limiter and both decide when "
@@ -139,5 +173,6 @@ static void conflict_check_late(void) {
     done = 1;
     g_frame_seen = 1;
     log_modules();
+    if (thprac_present()) LOG("thprac launched this game (its marker is in the executable header)");
     conflict_found(1);
 }

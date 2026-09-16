@@ -397,7 +397,7 @@ static const struct GameProfile th12_profile = {
         .frame_calls = {0x44f881,0x44f89e,0x44f8aa},
         .replay_saves = {0x433444,0x434459,0x43519b,0x448e4f},
         .replay_load_call = 0x43b1d2,
-        .runner_fn = 0x4624c0,
+        .runner_fn = 0x4624c0, .runner_ret = 0x4625fb,
         .latency_cmp = 0x450729,
         .screenshot_fn = 0x42fca0, .screenshot_call = 0x450891,
     },

@@ -137,7 +137,7 @@ static const struct GameProfile th10_profile = {
         .player_callback=0x426500,.player=0x477834,
         .frame_context_ptr=0x491fac,.frame_flag=0x491fb0,.frame_context_value=0x491e94,
         .cleanup_fn=0x44c150,.cleanup_this=0x492254,
-        .frame_calls={0x438d31},.runner_fn=0x449c00,
+        .frame_calls={0x438d31},.runner_fn=0x449c00,.runner_ret=0x449d0e,
         .screenshot_fn=0x420670,.screenshot_call=0x4392c1,
     },
     .layout={

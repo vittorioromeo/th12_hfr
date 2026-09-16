@@ -124,6 +124,7 @@ static int install(void) {
             uint8_t latency[7]; memcpy(latency,site_expected(g_game->addr.latency_cmp,7),7);latency[6]=0x7f;
             patch_bytes(g_game->addr.latency_cmp,latency,7,site_expected(g_game->addr.latency_cmp,7));
         }
+        runner_tail_select();   /* where the replacement runner ends (update_runner.c) */
         patch_jmp(g_game->addr.runner_fn,g_game->runner_stack_arg ? (void*)hfr_runner_stack_entry : (void*)hfr_runner_entry,site_expected(g_game->addr.runner_fn,5));
         for (int i=0;i<3;++i) if (g_game->addr.frame_calls[i]) site_call(g_game->addr.frame_calls[i],hfr_frame);
         g_frame_hook_installed = 1;

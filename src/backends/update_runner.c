@@ -105,10 +105,65 @@ done:
     if (is_update) { subtick_input_end(); enemy_interp(g_phase); }
     return count;
 }
+/* The replacement runner is entered by a five-byte jump written over the game's runner, so
+ * from the jump onwards the whole function is ours -- including its last instruction, which
+ * is where anything that wants to run after an update pass puts its hook. thprac's menu is
+ * exactly that: in TH10..TH13 its update callback sits on the `ret` that ends this function,
+ * and a replacement that returns on its own quietly hides it (its ImGui frame never opens,
+ * so its draw-side hook renders nothing and the menu simply never appears).
+ *
+ * So the replacement does not return by itself. It leaves the stack and EAX exactly as the
+ * game's own epilogue does -- return value in EAX, ESP on the caller's return address, the
+ * callee-saved registers already restored by the C ABI -- and jumps to the game's `ret`.
+ * That instruction still belongs to the game, and whoever hooked it still gets it. Nothing
+ * here knows or cares who that is; the point is simply not to take an instruction that was
+ * never ours to take.
+ *
+ * `g_runner_tail` is that address (install.c picks it), or one of the two labels below when
+ * the profile does not record one, so the jump is always to a real `ret`. The catch-up pass
+ * in limiter.c deliberately calls hfr_runner directly and not through here: it is an extra
+ * update with no frame drawn behind it, and a menu should not be told about it. */
+void* g_runner_tail;   /* external linkage: the thunks below reach it by name */
+extern void hfr_runner_entry(void);        /* the runner is in EBX */
+extern void hfr_runner_stack_entry(void);  /* ... or on the stack (TH10) */
+extern void hfr_runner_tail_ret(void);     /* fallbacks: our own ending, matching each one */
+extern void hfr_runner_tail_ret4(void);
 __asm__(
-    ".intel_syntax noprefix\n.globl _hfr_runner_entry\n_hfr_runner_entry:\n"
-    "  push ebx\n  call _hfr_runner\n  add esp, 4\n  ret\n"
+    ".intel_syntax noprefix\n"
+    ".globl _hfr_runner_entry\n_hfr_runner_entry:\n"
+    "  push ebx\n  call _hfr_runner\n  add esp, 4\n"
+    "  jmp dword ptr [_g_runner_tail]\n"
+    ".globl _hfr_runner_tail_ret\n_hfr_runner_tail_ret:\n"
+    "  ret\n"
+    ".globl _hfr_runner_stack_entry\n_hfr_runner_stack_entry:\n"
+    "  mov eax, [esp+4]\n  push eax\n  call _hfr_runner\n  add esp, 4\n"
+    "  jmp dword ptr [_g_runner_tail]\n"
+    ".globl _hfr_runner_tail_ret4\n_hfr_runner_tail_ret4:\n"
+    "  ret 4\n"
     ".att_syntax\n"
 );
-extern void hfr_runner_entry(void);
-static int __stdcall hfr_runner_stack_entry(uint8_t* runner) { return hfr_runner(runner); }
+/* A game's runner ends in `ret` (or `ret 4` where it takes its argument on the stack). Accept
+   an int3 too: a debugger or another patch may already own that instruction, which is the
+   whole reason for jumping to it, and it restores the byte itself when it runs. Anything else
+   means the profile is pointing somewhere it should not, and we end the pass ourselves. */
+static int runner_tail_usable(uintptr_t addr, int stack_arg) {
+    if (!addr) return 0;
+    uint8_t b = *(volatile uint8_t*)addr;
+    return b == 0xcc || b == (stack_arg ? 0xc2 : 0xc3);
+}
+static void runner_tail_select(void) {
+    int stack_arg = g_game->runner_stack_arg;
+    void* own = stack_arg ? (void*)hfr_runner_tail_ret4 : (void*)hfr_runner_tail_ret;
+    if (runner_tail_usable(g_game->addr.runner_ret, stack_arg)) {
+        g_runner_tail = (void*)g_game->addr.runner_ret;
+        LOG("update runner: the pass ends on the game's own instruction at 0x%06x, so a hook there still runs",
+            (unsigned)g_game->addr.runner_ret);
+    } else {
+        g_runner_tail = own;
+        if (g_game->addr.runner_ret)
+            LOG("update runner: 0x%06x is not the ending this profile describes; the pass ends by itself",
+                (unsigned)g_game->addr.runner_ret);
+        else
+            LOG("update runner: this profile does not record where the game's runner ends; the pass ends by itself");
+    }
+}

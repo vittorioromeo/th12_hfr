@@ -13,7 +13,7 @@ the easy part; agreeing on rendering, timing and input is the actual work.
 | Combination | Finding | Recommended direction |
 | --- | --- | --- |
 | HFR + THRotator, TH10–13 | Different proxy filenames already allow both to load. Their graphics pipelines need coordination. | Prototype an explicit external-renderer mode, then decide whether to integrate filtering and menus further. |
-| HFR + thprac, TH10–13 | No intersections in the scanned patch ranges, but HFR bypasses thprac's UI update hooks. Timing and replay editing also need work. | Preserve thprac's practice implementation; bridge its callbacks to HFR's scheduler. |
+| HFR + thprac, TH10–13 | No intersections in the scanned patch ranges. HFR bypassed thprac's UI update hooks; **fixed**, see [Implementation status](#implementation-status-thpracs-update-hook-2026-09-16). Timing and replay editing still need work. | Preserve thprac's practice implementation; bridge its callbacks to HFR's scheduler. |
 | HFR + both | Inherits both sets of issues; thprac UI may also be rotated/cropped as game content. | Validate each pair first, then test all three together. |
 | Either mod + TH06 New Classic | Existing implementations target different engines/APIs from New Classic. | Separate porting work; a DLL loader cannot supply support. |
 
@@ -374,6 +374,80 @@ exactly like a compatibility failure.
 
 Not run yet: THRotator on Steam copies, and THRotator with thcrap also loaded.
 
+## Implementation status: thprac's update hook, 2026-09-16
+
+Step 2 of the order below is implemented and verified in all four games. The finding above is
+confirmed exactly, with the mechanism nailed down: across TH10-TH13 the *only* thprac site
+inside anything HFR takes control-flow away from is the update runner's own return
+instruction. One instruction per game, and nothing else.
+
+**What was done.** The replacement runner no longer returns by itself. `hfr_runner_entry` and
+`hfr_runner_stack_entry` (now both assembly, so the stack is exact) leave EAX, ESP and the
+callee-saved registers as the game's own epilogue does and `jmp` to the game's `ret` — a new
+per-game profile address, `addr.runner_ret`, which the patch reads and jumps to but never
+writes. Nothing in the patch knows thprac exists; the instruction simply stops being taken.
+This is the research's "minimal HFR-side prototype", with one simplification: jumping to the
+instruction rather than calling the site means TH10's `ret 4` needs no special handling beyond
+entering with the argument still on the stack, and the return value needs no saving.
+
+The address is sanity-checked before use: it must hold `ret` (or `ret 4` where the runner takes
+its argument on the stack), or `int3`, since a breakpoint already sitting there is the very
+case this exists for. Anything else and the pass ends on the patch's own `ret`, as before, with
+a line in the log. The catch-up pass in `limiter.c` deliberately keeps calling `hfr_runner`
+directly: it is an extra update with no frame drawn behind it, and a menu should not be told
+about it.
+
+**On frequency.** The hook now fires once per presented frame rather than once per game frame,
+which is what keeps it paired 1:1 with the draw-side hook that `GameGuiRender` needs. thprac's
+hotkeys are edge-triggered (`GetChordPressed` is `duration == 1`), so they are unaffected;
+hold-to-repeat durations, which are counted in calls, run proportionally faster. Gating the
+update side to major frames was considered and rejected: it would leave the menu rendering on
+one frame in six.
+
+**How it was verified.** `tools/test_thprac_stub.c` is a stand-in for thprac, reproducing its
+hook mechanism exactly (one `0xCC`, a VEH at the front of the chain, a codecave holding the
+original instruction and a jump back) and its `GameGuiProgress` state machine, which is what
+makes the failure visible: the update callback opens a frame, the draw callback renders only
+when one is open. With the previous build on TH12 under Wine: **update hook 0 hits, draw hook
+476 hits, every one of them "rendered with no frame open"** — an absent menu with no error
+anywhere, exactly as predicted. With this build:
+
+| Game | update hits | draw hits | frames opened | rendered | rendered with no frame open |
+| --- | --- | --- | --- | --- | --- |
+| TH10 (`ret 4`) | 2520 | 2520 | 2520 | 2520 | 0 |
+| TH11 | 257 | 253 | 257 | 253 | 0 |
+| TH12 | 457 | 453 | 457 | 453 | 0 |
+| TH13 | 303 | 299 | 303 | 299 | 0 |
+
+(The small update/draw differences are the two counters being read at different instants.)
+Both installation orders were tried on TH12: the stand-in hooking after the patch installs,
+and before it, where the patch reads `0xCC` at the tail and accepts it. Neither crashes, and
+the patch logs which instruction it ends on either way. The harness additionally asserts, for
+each game, that `runner_ret` is the matching return instruction in the shipped image, that the
+fallback is taken when it is not, and that the thunk lands on the tail with the return value
+intact and the stack exactly as the calling convention promises.
+
+**thprac detection, and the vpatch trap.** thprac's launcher stamps `'CARP'` into the DOS
+header padding immediately before the PE header, which reads as the bytes `PRAC` in memory.
+Those four bytes are zero in all four shipped executables, so it is an unambiguous marker, and
+it is written before the process's first instruction runs. The patch logs it.
+
+It matters because thprac's launcher also loads any `vpatch*.dll` or `openinputlagpatch.dll` it
+finds beside the game — the "Use VsyncPatch (if avaliable)" and "Use OpenInputLagPatch (if
+avaliable)" boxes, both on by default. Those are the two patches HFR's frame-loop guard already
+refuses to run beside, and an old `vpatch_th12.dll` left in a game folder is the most likely
+first thing a thprac user hits. When both are seen, the notice now names thprac's launcher
+options instead of the generic "start the game through touhou_hfr.exe", which is useless advice
+to someone who wants thprac's launcher and only has to untick one box.
+
+**Still open.** The rest of the section above: callback frequency for anything thprac counts in
+frames, its FPS controls competing with HFR's pacing, the `ReplayClearParam` chunk-editing bug,
+and one found while reading: `io.DisplaySize` is taken from `GetBackBuffer`'s descriptor at
+init (which HFR answers with its internal render target, so it agrees) but re-taken from the
+present parameters in thprac's `Reset` hook (which do not, once `internal_scale > 1`). First
+launch is fine; the first device reset after that would misplace thprac's UI at internal
+scales above 1. Not yet reproduced against real thprac.
+
 ## Suggested implementation and validation order
 
 1. **THRotator + TH12 proof:** add the explicit external-renderer mode, retain HFR
@@ -384,6 +458,9 @@ Not run yet: THRotator on Steam copies, and THRotator with thcrap also loaded.
    validate its frequency and drawing persistence. Initially exclude competing timing
    options. Verify real stage practice, restarts and replay playback. Use the result to
    choose an unmodified-binary shim versus an explicit upstream ABI.
+   *Done for the callback itself, in all four games, against a stand-in reproducing thprac's
+   hook mechanism; see [Implementation status](#implementation-status-thpracs-update-hook-2026-09-16).
+   Real stage practice, restarts and replay playback against thprac itself are still to do.*
 3. **Complete compatibility:** separate UI and simulation callbacks, delegate speed
    controls, preserve foreign replay chunks during editing, and coordinate input/reset
    hooks. Test startup injection and late attachment, clean retail and Steam launches,
