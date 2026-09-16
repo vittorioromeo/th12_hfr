@@ -213,8 +213,12 @@ int main(int argc,char**argv) {
         memcpy(sec[count].Name,".zzz\0\0\0",8);
         assert(wrapped_executable(base,bnt->OptionalHeader.SizeOfImage));
 
-        /* An image smaller than the build we know is never that build. */
-        bnt->OptionalHeader.SizeOfImage=plain_size-0x1000;
+        /* An image smaller than the build we know is never that build. The floor is the
+           profile's own image size, not this file's: an English or Steam build carries extra
+           sections of its own, so shrinking it by a fixed amount can still leave it above the
+           floor and identifying correctly -- which is how this test used to pass everywhere
+           except on th13e.exe, the one executable that has a section the JP build does not. */
+        bnt->OptionalHeader.SizeOfImage=id->image_size-1;
         assert(!identify_image(base,plain_size));
 
         bnt->FileHeader.NumberOfSections=count;
