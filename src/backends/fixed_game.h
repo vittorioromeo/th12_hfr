@@ -73,6 +73,15 @@ struct FixedGame {
        the collection tests read the stepped position -- so a sub-step pass must not make it,
        or items fall at the tick rate instead of at 60 Hz (section 22). */
     uint32_t item_call, item_update;
+    /* Every bullet carries a sprite VM at +0x50, and the callback steps it one frame at the
+       tail of the per-bullet loop -- four instructions before the age it does gate. A script
+       step is a whole frame: it is what plays the cancel bursts, and a script that offsets
+       its sprite moves it once per step, so on a sub-step pass the step has to be held back
+       or those animations run at the tick rate (section 25). The laser loop's identical step
+       is already inside `proj_laser_timer`'s skip. This one cannot be relocated -- the block
+       it sits in reads the manager through a RIP-relative operand -- so the call is
+       redirected instead: `proj_sprite_call` is that call and `proj_sprite_step` its target. */
+    uint32_t proj_sprite_call, proj_sprite_step;
     const struct GuardRange* guards;
     size_t guard_count;
 };

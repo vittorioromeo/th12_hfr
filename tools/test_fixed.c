@@ -83,7 +83,12 @@ static void test_patches(const char* output) {
     assert(!memcmp((void*)(base+game->update_calls[0]),site_expected(base+game->update_calls[0],5),5));
     bad[0]^=1;
     VirtualFree(relay_page,0,MEM_RELEASE);relay_page=NULL;relay_used=0;
-    assert(prepare_patches());assert(g_patch_count==16);
+    /* The count is written down so that adding a hook is a deliberate act: a new patch site
+       has to be added here too, and whoever does it has to say which one it is. 17 = the four
+       queued calls (two updates, draw, present), the wait site, the post-update, the player's
+       two, the seven projectile gates, the item call, the bullet sprite VM call and the draw
+       dispatch. */
+    assert(prepare_patches());assert(g_patch_count==17);
     for (size_t i=0;i<g_patch_count;++i) assert(!memcmp((void*)g_patches[i].addr,g_patches[i].before,g_patches[i].size));
     assert(patch_commit());
     for (size_t i=0;i<g_patch_count;++i) assert(!memcmp((void*)g_patches[i].addr,g_patches[i].after,g_patches[i].size));
@@ -101,6 +106,29 @@ static void test_patches(const char* output) {
     *player_factor=0.0f;*player_ran=1;      /* what update_first and the relay do */
     assert(*player_factor==0.0f && *player_ran==1);
     *player_factor=1.0f;*player_ran=0;
+    /* The two calls that are redirected rather than gated -- the item pool's update and the
+       per-bullet sprite VM step -- each have to land on their own C function, and each has to
+       stand aside on a sub-step pass. Twice now a call reached on a minor pass has been the
+       bug (sections 22 and 24), so the wiring is checked rather than assumed. The redirected
+       site is `call rel32`; the relay it reaches is `jmp [rip+0]` with the target behind it. */
+    const struct {uint32_t site;void* fn;} redirected[]={
+        {game->item_call,item_update},{game->proj_sprite_call,sprite_vm_step},
+    };
+    for (size_t i=0;i<sizeof redirected/sizeof *redirected;++i) {
+        const unsigned char* at=(const void*)(base+redirected[i].site);
+        assert(at[0]==0xe8);
+        const unsigned char* to=at+5+*(const int32_t*)(at+1);
+        assert(to[0]==0xff && to[1]==0x25 && !*(const int32_t*)(to+2));
+        assert(*(void* const*)(to+6)==redirected[i].fn);
+    }
+    unsigned char minor=1;unsigned char* real_minor=proj_minor;proj_minor=&minor;
+    uint64_t held=items_skipped, stepped=sprite_steps_held;
+    assert(item_update(NULL)==0 && items_skipped==held+1);
+    assert(sprite_vm_step(NULL,NULL)==1 && sprite_steps_held==stepped+1);
+    /* A major pass calls through, which the fixture cannot host: it holds signature bytes on
+       a page that is not executable. The emitted call site is checked instead, above. Put the
+       runtime's own flag back -- the plan written below records where it lives. */
+    proj_minor=real_minor;
     FILE* f=fopen(output,"w");assert(f);
     fprintf(f,"{\"base\":%llu,\"relay\":%llu,\"factor\":%llu,\"ran\":%llu,"
               "\"proj_minor\":%llu,\"proj_dt\":%llu,\"proj_ran\":%llu,\"draw_node\":%llu,\"relay_hex\":\"",

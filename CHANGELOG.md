@@ -4,6 +4,16 @@ Newest first. Versions are the release archive names; `-test` means what it says
 Full release notes for each version are on the
 [releases page](https://github.com/vittorioromeo/th12_hfr/releases).
 
+## Unreleased
+
+- **New Classic: bullet animations no longer run at the tick rate.** With `[fixed60]
+  substep=1`, every sub-step pass advanced each bullet's animation script a whole frame, so at
+  360 Hz a script ran six times per game frame. Scripts that only pick a sprite were unaffected;
+  scripts that move one were not, which is why cancel bursts scattered much further than in the
+  unmodified game. The step is now made once per 60 Hz tick, like the bullet's age beside it and
+  like the laser loop's equivalent. Bullet motion and collision are unchanged, and the bursts
+  are still drawn smoothly between ticks.
+
 ## v0.5.3-test
 
 Works alongside **THRotator** and **thprac** on TH10–13.

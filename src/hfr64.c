@@ -63,13 +63,14 @@ static void census_add(void) {
         ++census[i].count; return;
     }
 }
-static struct SubtickPlayer proj_slice; static uint64_t proj_passes, items_skipped;
+static struct SubtickPlayer proj_slice; static uint64_t proj_passes, items_skipped, sprite_steps_held;
 static struct SubtickPlayer subtick_player;
 static uint64_t subtick_moves, subtick_polls; static double subtick_poll_max;
 typedef uintptr_t (*UpdateFn)(void*);
 typedef uint32_t (*PollFn)(uintptr_t);
 typedef uintptr_t (*ProjFn)(uintptr_t);
 typedef uintptr_t (*ItemFn)(void*);
+typedef uintptr_t (*VmStepFn)(void*,void*);
 typedef void (*DrawFn)(void);
 typedef uintptr_t (*SpriteFn)(void*,void*,uintptr_t);
 static SpriteFn sprite_original, rotated_original, menu_sprite_original;
@@ -164,6 +165,17 @@ static void projectiles_slice(double tau) {
 static uintptr_t item_update(void* pool) {
     if (proj_minor && *proj_minor) {++items_skipped;return 0;}
     return ((ItemFn)(base+game->item_update))(pool);
+}
+/* And the same for the sprite VM every bullet carries. The callback steps it once at the
+   tail of the per-bullet loop, and a step is a whole frame of the bullet's ANM script: the
+   scripts that fade, spin and scatter a cancelled bullet move the sprite themselves, so
+   stepping one six times a frame scatters it six times as far. Held back on a sub-step pass,
+   like the timer four instructions later and like the laser loop's identical step. What is
+   lost is smoothness within the tick, and the sprite hook already interpolates that.
+   The caller discards the result; 1 is what the stepper answers for a VM with no script. */
+static uintptr_t sprite_vm_step(void* manager, void* vm) {
+    if (proj_minor && *proj_minor) {++sprite_steps_held;return 1;}
+    return ((VmStepFn)(base+game->proj_sprite_step))(manager,vm);
 }
 /* Scheduling uses elapsed time: a blocked Present must not slow the simulation just
    because the requested presentation rate exceeds the actual display rate. At most
@@ -443,10 +455,10 @@ static int wait_frame(void) {
                 (unsigned)game->replay_suspect,
                 game->replay_suspect?*(const unsigned char*)(base+game->replay_suspect):0);
         if (proj_passes) LOG("substep %s: %llu projectile passes (%.2f/s, %.2f per frame), "
-            "%llu item updates held back",
+            "%llu item updates and %llu bullet animation steps held back",
             substep_active()?"on":"standing by",(unsigned long long)proj_passes,
             (proj_passes-qt)/seconds,(double)(proj_passes-qt)/(double)(ticks-ut?ticks-ut:1),
-            (unsigned long long)items_skipped);
+            (unsigned long long)items_skipped,(unsigned long long)sprite_steps_held);
         if (subtick_polls) LOG("subtick %s: %llu input polls (%.2f/s), longest %.2f ms, %llu player moves",
             subtick_active()?"on":"standing by",(unsigned long long)subtick_polls,(subtick_polls-pt)/seconds,
             subtick_poll_max*1000.0,(unsigned long long)subtick_moves);
@@ -599,6 +611,9 @@ static int prepare_patches(void) {
         /* The items the callback updates before any bullet: a whole call redirected rather
            than a block relocated, because nothing of it is wanted on a sub-step pass. */
         if (game->item_call && !queue_call(game->item_call,item_update)) return 0;
+        /* The bullet sprite VM step at the tail of the loop, redirected the same way and for
+           the same reason: nothing of it belongs on a sub-step pass. */
+        if (game->proj_sprite_call && !queue_call(game->proj_sprite_call,sprite_vm_step)) return 0;
     }
     /* The draw runner's per-node dispatch: record the node, run the callback, forget it. A
        leaf that pushes nothing, so the callback sees the stack it always saw; and `mov` sets

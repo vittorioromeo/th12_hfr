@@ -1158,9 +1158,11 @@ Three properties made this far safer than it first looked:
 
 - **Graze is once per bullet** (`+0x618`), so testing it six times a frame cannot inflate
   the counter, the score or the effect spawns.
-- **No animation advances on the ordinary path.** The VM work at `0x11434`-`0x11543` is the
-  cancel effect, reached only when the hit test fires and the bullet's state changes, so it
-  cannot repeat.
+- **No animation advances on the ordinary path.** *This one was wrong -- see §25.* What it
+  checked is real: the VM work at `0x11434`-`0x11543` is the cancel effect, reached only when
+  the hit test fires and the bullet's state changes, so it cannot repeat. What it did not
+  check is the instruction immediately after that range. `0x1154e` steps every live bullet's
+  own sprite VM, on every pass, and did so for as long as sub-stepping has existed.
 - **Nothing branches into any of the six patched ranges.** That was checked by decoding
   every branch in `.text` before a single byte was written, and is what makes relocating
   them legitimate.
@@ -1938,3 +1940,91 @@ older logging-only ZIP is distinct. The user keeps their runtime DLL and INI. A 
 F11/gameplay check in the affected Proton installation is still required before calling
 the reported issue resolved. If startup gets further but fails, the candidate logs the
 next stage so another blind diagnostic rebuild should not be necessary.
+## 25. Bullet animations ran at the tick rate (2026-09-16)
+
+The owner reported that effect particles spread more widely at 360 Hz than at 60 Hz, with a
+side-by-side frame of a bullet cancel as evidence, and asked whether their motion needed
+scaling by the simulation rate. It did not. Nothing about that motion is wrong. What is six
+times too fast is the *script* that draws it.
+
+### The wrong answer first
+
+The first pass at this went after the effect pool, and then after `fixed_pose`, and produced a
+change that stopped predicting decoration sprites. That change was withdrawn before it was ever
+applied. It was wrong twice over, and both mistakes are worth keeping:
+
+- **It answered the wrong question.** The reproduction is the F11 menu's *sub-stepped
+  projectiles*. Prediction is switched by *sub-tick movement*. Two different options; the
+  investigation never checked which one the report was about, and the owner had to say so.
+- **Its reasoning was also wrong on its own terms.** Prediction does not draw a sprite further
+  out than it belongs. It draws it where it will be at the instant the frame is shown, which is
+  the entire point: the simulation stands at tick N and the display is a fraction of a tick past
+  it. Interpolation is the one that is behind by half a frame on average. So "stop predicting
+  decoration" removed no bias; it added one, and only to decoration, leaving a burst drawn a
+  frame behind the bullet it came from.
+
+### The reading
+
+Every bullet carries its own ANM VM at `+0x50` (§9's layout table). At the tail of the
+per-bullet loop in `0x10870`:
+
+```text
+0x11543  mov   rcx,[rip+0xa5d466]   ; the ANM manager
+0x1154a  lea   rdx,[rbx+0x50]       ; this bullet's embedded VM
+0x1154e  call  0x69b0               ; step it one frame      <- not gated
+0x11553  movss xmm6,[rip+...]
+0x11562  mov   eax,[rbx+0x2c]       ; previous/current age   <- gated (proj_timer)
+0x11578  add   rbx,0x620            ; next bullet
+```
+
+The age four instructions later is gated. The script step is not, so on every sub-step pass
+every live bullet's script advances a whole frame: six per game frame at 360 Hz. An ANM script
+that merely selects a sprite looks unchanged, because it finishes in the first pass and idles.
+An ANM script that *moves* its sprite -- which is exactly what a cancel burst is, petals given
+a velocity and a fade by the script rather than by the bullet -- travels six times as far and
+fades six times as fast. That is the picture in the report, and it is why the wider the burst
+the worse it looked.
+
+The laser loop has the identical pair and gets it right: `proj_laser_timer` relocates the timer
+at `0x11714` and skips to `0x1172f`, and the `call 0x69b0` at `0x1172a` falls inside that skip.
+The bullet gate starts at `0x11562`, four instructions too late. It is one gate boundary, drawn
+in the right place once and the wrong place once, in the same function.
+
+### The fix
+
+`0x1154e` cannot be gated the way the other seven sites are: the block it belongs to reads the
+manager through a RIP-relative `mov`, and the gate mechanism copies site bytes verbatim with no
+relocation. So it takes §22's shape instead -- redirect the call, not the block:
+
+```c
+static uintptr_t sprite_vm_step(void* manager, void* vm) {
+    if (proj_minor && *proj_minor) {++sprite_steps_held;return 1;}
+    return ((VmStepFn)(base+game->proj_sprite_step))(manager,vm);
+}
+```
+
+wired with `queue_call(game->proj_sprite_call, sprite_vm_step)` beside the item one, with
+`0x1154e` and `0x69b0` both frozen as signatures. The caller discards the result; `1` is what
+the stepper itself answers for a VM with no script. Nothing is scaled by `dt`, because a script
+step is not a quantity -- an ANM instruction is scheduled in whole frames and there is no such
+thing as running one a sixth of the way. Smoothness within the tick is not lost: the sprite hook
+interpolates the VM's pose like every other, which is the same answer §22 gave for items.
+
+`g_patch_count` in the harness goes 16 -> 17, and the test now checks both redirected calls
+land on their own C function and both stand aside when the minor flag is set. Two of these have
+now been found the same way; the third should be found by a test rather than by a video.
+
+### What this leaves
+
+- **The graze spawn at `0x1152d` is not touched.** It is a different `call 0x69b0`: the *start*
+  of a newly spawned entity's script, behind the `+0x618` graze flag, so it fires once per
+  bullet regardless of the pass. Only the loop-tail step is redirected.
+- **Lasers were already correct**, by the accident of where their gate was drawn.
+- **§16's third safety property is amended above.** It was a true statement about the range it
+  read, ending four bytes short of the instruction that mattered.
+
+The lesson to keep, alongside §22's *a callback is not the thing it is named after*: **a gate is
+a boundary, and a boundary is wrong at its edges.** Both bugs so far in the sub-step work have
+been one call outside a range that was checked -- the item update just before the bullet loop,
+the sprite step just after it. When gating a loop body, read to the branch, not to the last
+instruction that looked relevant.
