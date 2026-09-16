@@ -49,6 +49,7 @@ restart:
         struct UpdateFunc* uf = n->entry;
         n = n->next; next_store(runner, n);
         if (!uf->func) continue;
+        node_seen((uint32_t)uf->func, uf->priority);
         if (!(uf->flags & 2)) { count++; continue; }
     call_again:
         if (g_game->layout.runner_ending && *(int*)(runner + g_game->layout.runner_ending) != 0) {

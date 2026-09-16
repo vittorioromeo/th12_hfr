@@ -217,6 +217,7 @@ static void limiter_stats(double now) {
         g_stat_last = now; g_stat_ticks = 0; g_stat_sub_calls = g_stat_frame_calls = g_stat_long = g_stat_vlong = g_stat_catchup = g_stat_skipped = 0; g_stat_ticks_run_last = g_ticks_run;
         g_stat_subtick_polls = g_stat_subtick_applied = 0; g_stat_repeat_frames = 0;
         if (cfg.debug) {
+            node_census_report();
             uint8_t* rm=G_REPLAY_MANAGER;
             if (rm) LOG("state: stage=%d replay_frame=%d replay_mode=%d input=%08x",
                 *(int*)(rm+g_game->layout.replay_stage),*(int*)(rm+g_game->layout.replay_frame),*(int*)(rm+0x10),(unsigned)G_GAME_INPUT);
