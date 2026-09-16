@@ -25,7 +25,7 @@ Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'shaders') -Destination $package
 # anyone remembering to add it here, and to package.sh, and to both source lists.
 # One name per Join-Path: Windows PowerShell 5.1 will not take an array as -ChildPath.
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'docs') -Destination $package -Recurse
-foreach($file in @('README.md','ARCHITECTURE.md','ADDING_A_GAME.md','install.ps1')){
+foreach($file in @('README.md','CHANGELOG.md','ARCHITECTURE.md','ADDING_A_GAME.md','install.ps1')){
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination $package
 }
 
@@ -43,7 +43,7 @@ foreach($dir in @('src','tools','third_party','shaders')) {
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'docs') -Destination $source -Recurse
 foreach($file in @('build.ps1','build.sh','build64.ps1','build64.sh','test.ps1','test.sh',
                    'test64.ps1','test64.sh','package.ps1','package.sh','install.ps1',
-                   'touhou_hfr.ini','README.md','ARCHITECTURE.md','ADDING_A_GAME.md')) {
+                   'touhou_hfr.ini','README.md','CHANGELOG.md','ARCHITECTURE.md','ADDING_A_GAME.md')) {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination $source
 }
 

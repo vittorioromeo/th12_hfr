@@ -12,7 +12,7 @@ on **F11** that applies changes as you make them.
 Nothing is installed and no game file is modified: you add four files to the game's folder, and
 you remove the patch by deleting them again.
 
-**[Download the latest release](https://github.com/vittorioromeo/th12_hfr/releases)**
+**[Download the latest release](https://github.com/vittorioromeo/th12_hfr/releases)** — [what changed](CHANGELOG.md)
 
 | [![Touhou HFR — v0.4 showcase](https://img.youtube.com/vi/EmfJLZxlHZI/hqdefault.jpg)](https://www.youtube.com/watch?v=EmfJLZxlHZI) | [![Touhou HFR — High Framerate and Refresh Rate Patch](https://img.youtube.com/vi/H7FcMXPgPFQ/hqdefault.jpg)](https://www.youtube.com/watch?v=H7FcMXPgPFQ) |
 | :---: | :---: |
