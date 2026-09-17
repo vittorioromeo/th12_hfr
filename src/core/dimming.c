@@ -193,17 +193,37 @@ static int dim_glob(const char* pat, const char* name) {   /* "pl*.anm": one '*'
    can be on screen constantly and still never appear in one. This sees every VM of every frame
    instead, which is what it takes to answer "and what draws the items?". Debug only, reported
    once and again whenever something new shows up, like the update-node census. */
-enum { DIM_CENSUS = 96 };
-static struct { int prio, layer, cls; const char* anm; unsigned long long n; } g_dim_census[DIM_CENSUS];
+enum { DIM_CENSUS = 128, DIM_CENSUS_NAME = 24 };
+/* The name is copied, not pointed at. The first version of this kept the `const char*` the VM
+   gave it and compared pointers: an ANM record is freed and its memory reused, so by the time
+   the line printed the name was whatever had been written there since, every reallocation of
+   the same file became another row, and the table filled with rubbish before the thing being
+   looked for ever reached it. Which is how it managed to hide the very answer it was added to
+   find. */
+static struct { int prio, layer, cls; char anm[DIM_CENSUS_NAME]; unsigned long long n; } g_dim_census[DIM_CENSUS];
 static int g_dim_census_n, g_dim_census_reported;
+/* A name is only worth recording if it still looks like one when it is read. */
+static void dim_census_name(char* out, const char* anm) {
+    int i = 0;
+    if (anm) for (; i < DIM_CENSUS_NAME - 1; ++i) {
+        char c = anm[i];
+        if (!c) break;
+        if (c < 32 || c > 126) { i = 0; break; }
+        out[i] = c;
+    }
+    if (!i) { out[0] = '?'; i = 1; }
+    out[i] = 0;
+}
 static void dim_census(int prio, const char* anm, int layer, int cls) {
     if (!cfg.debug) return;
+    char name[DIM_CENSUS_NAME]; dim_census_name(name, anm);
     for (int i = 0; i < g_dim_census_n; ++i)
         if (g_dim_census[i].prio == prio && g_dim_census[i].layer == layer &&
-            g_dim_census[i].anm == anm) { ++g_dim_census[i].n; return; }
+            !strcmp(g_dim_census[i].anm, name)) { ++g_dim_census[i].n; return; }
     if (g_dim_census_n >= DIM_CENSUS) return;
     g_dim_census[g_dim_census_n].prio = prio; g_dim_census[g_dim_census_n].layer = layer;
-    g_dim_census[g_dim_census_n].anm = anm; g_dim_census[g_dim_census_n].cls = cls;
+    memcpy(g_dim_census[g_dim_census_n].anm, name, sizeof name);
+    g_dim_census[g_dim_census_n].cls = cls;
     g_dim_census[g_dim_census_n].n = 1;
     ++g_dim_census_n; g_dim_census_reported = 0;
 }
@@ -213,7 +233,7 @@ static void dim_census_report(void) {
     for (int i = 0; i < g_dim_census_n; ++i) {
         int c = g_dim_census[i].cls;
         LOG("draw census: priority %d, %s layer %d, %llu draws -- %s", g_dim_census[i].prio,
-            g_dim_census[i].anm ? g_dim_census[i].anm : "(no VM)", g_dim_census[i].layer,
+            g_dim_census[i].anm, g_dim_census[i].layer,
             g_dim_census[i].n, c >= 0 && c < DIM_COUNT ? DIM_NAMES[c] : "not faded");
     }
 }

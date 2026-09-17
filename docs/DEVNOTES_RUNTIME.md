@@ -244,6 +244,13 @@ because the crash coincided with a key press. `git diff` on the file, not the lo
 >
 > That is the table the rules are written from, and it makes "what draws the items?" a question
 > the log answers rather than one the trace has to be lucky enough to catch.
+>
+> **The name is copied, not pointed at.** The first version kept the `const char*` the VM handed
+> it and compared pointers. An ANM record is freed and its memory reused, so by the time the
+> line printed, the name was whatever had been written there since; every reallocation of the
+> same file became another row; and the fixed table filled with rubbish before the short-lived
+> thing being looked for ever reached it. A census that hides the answer it was added to find is
+> worse than no census, because it looks like evidence.
 
 The request was simple — fade the stage towards black and the P/point items towards
 transparent so bullets stand out — and the first two attempts were wrong in instructive ways.
