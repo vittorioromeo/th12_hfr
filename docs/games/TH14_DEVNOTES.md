@@ -422,10 +422,17 @@ player's update -- which the shape matcher had put first at a thoroughly unconvi
 fades as effects under the world (TH13 has the same rule at its priority 8), the rest of
 `effect.anm` fades, and the whole of `pl00.anm` does not.
 
-Two things are deliberately unclaimed. Items, because none were on screen in the traced frames
-and TH14 has no `item.anm`, so which ANM and layer they use is still unread. And which of
-`pl00.anm`'s layers is the hitbox as against the shots -- so the whole file is left unfaded,
-which is the conservative half of TH13's split.
+**The player's shots**, last of the five classes, separated by draw rate rather than by name --
+every one of these streams is `pl00.anm` so a name settles nothing. Against roughly 5054 frames
+of play: her own callback at priority 28 drew 5054 times, about once a frame, while layer 13 at
+priority 27 drew 77658 times and layer 15 at priority 30 drew 65172, fifteen and thirteen times
+a frame. A screenful of shots looks like that; a character does not. So layer 14 is her, 13 and
+15 are what she fires, and anything else of hers is left alone -- which is TH13's three-rule
+shape with TH14's layers in it.
+
+One thing is deliberately unclaimed. `DIM_SPECIAL`: TH13 has one because of its
+divine spirits, and nothing in TH14 has been found to compete with bullets for attention the
+way those do, so the profile names no special class and the menu does not offer one.
 
 ### Items: four rounds, and what actually found them
 

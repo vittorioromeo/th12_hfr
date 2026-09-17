@@ -61,7 +61,15 @@ static const struct DimRule th14_dim_rules[] = {
        being wrong that way is an effect near the player that does not fade, against a hitbox
        that disappears when you need it. */
     { 27, 30, "effect.anm",  13, 15, -1, -1, DIM_NONE },       /* the focus ring and the hitbox */
-    { -1, -1, "pl*.anm",     -1, -1, -1, -1, DIM_NONE },       /* the player and its shots */
+    /* The player's own layers, in TH13's shape: carve out what is her, fade what she fires,
+       and leave anything else of hers alone. The census separates them by how often they draw
+       against the number of frames -- her body's own callback at priority 28 draws about once
+       a frame (5054 draws), while layer 13 at priority 27 and layer 15 at priority 30 draw
+       fifteen and thirteen times a frame, which is a screenful of shots and not a character.
+       Layer 14 is the once-a-frame one and stays unfaded, with the focus ring above. */
+    { -1, -1, "pl*.anm",     14, 14, -1, -1, DIM_NONE },       /* the player herself */
+    { -1, -1, "pl*.anm",     13, 15, -1, -1, DIM_PLAYER_SHOTS },
+    { -1, -1, "pl*.anm",     -1, -1, -1, -1, DIM_NONE },       /* anything else of hers */
     { -1, -1, "effect.anm",  -1, -1, -1, -1, DIM_EFFECTS },
 };
 
