@@ -35,7 +35,14 @@
    hitbox as against the shots -- so the whole of pl00.anm is left unfaded, which is the
    conservative half of TH13's split. */
 static const struct DimRule th14_dim_rules[] = {
-    { 31, 35, "bullet.anm",  -1, -1, -1, -1, DIM_NONE },       /* bullets are what the rest is faded for */
+    /* Items. The manager's update (census priority 24, body at 0x438550) accumulates +0.2 a
+       frame into a per-entity field and scales the rest by the game speed at 0x4d8f58 -- which
+       is TH13's item fall model instruction for instruction -- and its draw at priority 31 is
+       a separate bullet.anm stream from the bullet manager's at 35. TH14's items are drawn
+       from the bullet texture, which is why three stages of looking for an item ANM found
+       nothing. Matched on priority with no ANM, exactly as TH13's item rule is. */
+    { 31, 31, NULL,          -1, -1, -1, -1, DIM_ITEMS },
+    { 35, 35, "bullet.anm",  -1, -1, -1, -1, DIM_NONE },       /* bullets are what the rest is faded for */
     /* There was a rule here calling bullet.anm on layers 20 and 21 the items. The experiment
        it was: dim_items faded nothing, and a stage played with items everywhere produced no
        such row at all, so those draws are something else that happened to be on screen the

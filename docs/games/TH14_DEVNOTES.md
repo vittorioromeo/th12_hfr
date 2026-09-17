@@ -427,13 +427,40 @@ and TH14 has no `item.anm`, so which ANM and layer they use is still unread. And
 `pl00.anm`'s layers is the hitbox as against the shots -- so the whole file is left unfaded,
 which is the conservative half of TH13's split.
 
-**Items do not go through the sprite VM draw.** Three stages were played with items all over
-the screen and the VM census never showed them, because they are not VM draws at all -- the item
-manager builds its own quads, exactly as TH13's does, which is why TH13's item rule matches on
-priority with a NULL ANM. One rule was written on the guess that `bullet.anm` on layers 20 and
-21 was them; `dim_items` faded nothing and the next stage produced no such row, so it was
-removed rather than reassigned to whatever else it might be. The callback census
-(DEVNOTES_RUNTIME 3b) is what will name the priority.
+### Items: four rounds, and what actually found them
+
+TH14's items are drawn from **`bullet.anm`**, by their own manager, at draw priority **31** --
+which is why three stages of looking for an item ANM found nothing. The update is the census's
+priority 24 (`0x439750`, body at `0x438550`) and the draw is `0x439780`.
+
+What settled it was reading the update's body rather than counting anything:
+
+```text
+438716  movss xmm0,[0x4d8f58]      ; the game speed
+43871e  mulss xmm0,[0x4c1918]      ; 0.03
+...
+43892f  addss xmm0,[0x4c1968]      ; += 0.2 into [edi+0xbfc], once a frame
+438937  movss [edi+0xbfc],xmm0
+```
+
+`+= 0.2` a frame into a per-entity fall speed is TH13's item model instruction for instruction.
+
+The three rounds before that are the lesson. **Prim counts said "enemies"** (270 prims of one
+texture at priority 31) -- wrong, the enemies are at 19 on `enemy.anm`. **ANM names said "the
+laser or cancel path"** -- closer, but still wrong, because a name identifies a texture and not
+a system when two systems share one. **A constants scan said `0x438530`** -- which turned out to
+be a four-line destructor: the scan walked a fixed 0x800 window from a call-target start and had
+run straight past the end of the function into `0x438550`, where the constants really were. The
+window found the right constants and attributed them to the wrong function, and every step after
+that inherited the error.
+
+Each method was sound and each was defeated by the same thing: a signal that is one remove from
+the question. The count is a remove from the system, the texture is a remove from the system,
+and a scan window is a remove from a function. Reading the instructions that do the work is not.
+
+One rule was written along the way on the guess that `bullet.anm` on layers 20 and 21 was the
+items; `dim_items` faded nothing, and the next stage produced no such row at all, so it was
+removed rather than reassigned.
 
 **A fifth rule, after the first report.** Fading the effects also faded the focus ring and the
 hitbox, because those are drawn from `effect.anm` rather than from `pl00.anm` -- layer 14 at
