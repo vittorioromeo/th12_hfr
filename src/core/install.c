@@ -112,6 +112,14 @@ static int install(void) {
         for (size_t i=0;i<sizeof wants/sizeof *wants;++i)
             if (!*(const uintptr_t*)((const uint8_t*)g_game + wants[i].off))
                 LOG("profile: %s is not described; %s is unavailable", wants[i].name, wants[i].needed_for);
+        /* Some of these are not independent. The game speed is one: the runtime writes it every
+           tick, and the game writes it too -- for its own slow-motion, for a pause, for the ECL
+           speed instruction -- so the two only compose because every one of the game's writes is
+           a described speed site that folds our factor in. A profile with `speed` and no sites
+           would have the runtime overwrite the game's own speed once a tick and hold it at 1.0,
+           which is not a crash and not a message, just a game that never slows down. */
+        if (g_game->addr.speed && !g_game->speed_site_count)
+            LOG("profile: speed is described but none of its write sites are; the game's own speed changes would be overwritten. Describe the sites or leave speed out.");
     }
     if (sim) {
         install_speed_sites();

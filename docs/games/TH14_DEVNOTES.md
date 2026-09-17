@@ -218,7 +218,70 @@ resemblance and not yet a reading; nothing is classified on it. Every one of the
 wrong class is §7 of the runtime notes -- a system stepped six times a frame with its own
 timers still counting in whole ones -- and that failure is silent.
 
-## 10. What a trace still has to supply
+## 10. Identifying the systems: method, and where it stops being safe
+
+The class table is the remaining feature work, so it got a real attempt. Three independent
+lines of evidence, and they are worth writing down because the next game will want them.
+
+**The registering constructor's ANM files.** Each system's constructor loads its sprites by
+name and registers its update callback, so the string references in the function that contains
+the `mov [esi+8], <callback>` store name the system. `tools/`-style scan of the census:
+
+| priority | callback | registered in | strings there |
+|---|---|---|---|
+| 4 | `0x40b8e0` | `0x40b530` | `ascii.anm`, `ascii_960.anm`, `ascii_1280.anm` |
+| 6 | `0x459f30` | `0x459620` | `title.anm`, `title_v.anm` |
+| 22 | `0x43a6a0` | `0x43a350` | `bullet.anm` |
+| 23 | `0x417610` | `0x416110` | `bullet.anm` |
+| 27 | `0x41ee80` | `0x41eb80` | `bullet.anm`, `effect.anm` |
+| 28 | `0x431a40` | `0x42ea30` | `front.anm` |
+| 8, 29 | `0x47e7f0`, `0x47e7c0` | both `0x47a780` | -- |
+
+**Normalised code shape against TH13's named callbacks.** Same source, different compiler, so
+immediates and absolute displacements are masked and the mnemonic/operand sequence compared.
+One trap: these callbacks are thin thunks that end in a `jmp` to the real body, and a shape
+that stops at the first `jmp` compares wrappers with wrappers -- three different TH14
+callbacks scored 1.00 against TH13's Stage before the matcher followed the tail jump.
+
+**Registration priority.** Useful for ordering, not for identity: TH13's BulletManager is
+priority 23 and TH14's bullet-ish callback is 27, so the numbers shifted.
+
+Where that leaves it:
+
+- `0x417610` (priority 23) is **BulletManager** -- 0.91 shape match against TH13's, and its
+  constructor loads `bullet.anm`. Two independent signals.
+- `0x47e7f0` and `0x47e7c0` are the two **ANM managers**, registered from one function as in
+  TH13, world and UI respectively (0.62 on the world one).
+- `0x43a6a0` is probably **LaserManager** -- 0.52, and lasers draw from `bullet.anm` too.
+- Everything else is a guess, and a guess here is not worth having.
+
+### Why nothing is classified yet, even the certain ones
+
+Two reasons, and the second is the one that matters.
+
+`BulletManager` as `MODE_SUB` is not "sub-stepped bullets"; it is sub-stepped bullets *plus*
+the per-frame hooks that keep everything the callback touches once a frame counting in whole
+frames. TH13 needed three hundred lines of those (§ its own notes: the shot array's two rates,
+the countdown whose integer drives the hit cadence, the death particles, the option counter,
+the bullet wait counters, item gravity). Without the equivalent for TH14, classifying the
+bullet manager would step it six times a frame with its own timers still counting in ones,
+which is §7 of the runtime notes and is silent.
+
+And classifying anything at all makes `class_count` non-zero, which makes sub-stepping
+available again in the menu -- the state the third build crashed in. So the table stays empty
+until the systems it names have the hooks that make them safe to step.
+
+### One more dependency, now checked
+
+The same reasoning caught a second trap before it was written. `addr.speed` is
+**`0x4d8f58`** -- identified from the save/override/restore pattern at `0x424780`, which is
+TH13's `SPEED_ONE_TEMP` shape exactly, and it has twelve write sites. It is *not* in the
+profile, because the runtime writes the game speed every tick and the game writes it too, and
+those two only compose because every one of the game's writes is a described speed site that
+folds the runtime's factor in. A profile with `speed` and no sites would hold the game at 1.0
+and quietly disable its own slow-motion and pause. `install()` now says so if anyone tries.
+
+## 11. What a trace still has to supply
 
 The UpdateFunc class table and the dimming rules cannot be read out of the executable. Both
 come from the patch's own log while a stage is running: the registered update list names every
