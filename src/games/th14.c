@@ -75,6 +75,15 @@ static const struct GameProfile th14_profile = {
        per-VM rules stay inert; dimming.c already treats both as optional. */
     .draw = { .dispatch = 0x40141a, .dispatch_len = 8, .node_reg = R_EDI, .prio_off = 0,
               .flush_fn = 0x475eb0, .flush_reg = R_ECX, .flush_this = 0x4f56cc,
-              .world_prio = 0, .rules = NULL, .rule_count = 0 },
+              .world_prio = 0, .rules = NULL, .rule_count = 0,
+              /* The per-VM draw, so the trace can say which ANM and layer each sprite came
+                 from. The VM is this function's first stack argument here, where TH10-13
+                 pass it in a register -- the fifth convention this rebuild changed.
+                 The three field offsets are deliberately zero: the debug trace scans the VM's
+                 words for a pointer to a loaded ANM record and prints the offset it finds, so
+                 they get read off a running game rather than guessed. Until they are set, no
+                 VM is classified and no rule can match the wrong thing. */
+              .vm_draw = 0x478f60, .vm_draw_len = 9, .vm_stack_arg = 1,
+              .vm_anm_off = 0, .vm_layer_off = 0, .vm_script_off = 0 },
     .d3dx = "d3dx9_43.dll",
 };

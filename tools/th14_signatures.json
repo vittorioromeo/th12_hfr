@@ -28,6 +28,10 @@
   "bytes": "8b 4f 24 8b 47 08 ff d0"
  },
  {
+  "address": "0x478f60",
+  "bytes": "55 8b ec 83 e4 f8 83 ec 18"
+ },
+ {
   "address": "0x401382",
   "bytes": "5f 8b c6 5e 5b 8b e5 5d c3"
  },

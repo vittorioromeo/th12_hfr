@@ -365,15 +365,28 @@ TH14 0x478f60:  push ebp; mov ebp,esp; and esp,-8; sub esp,0x18; push esi
 ```
 
 So the VM is a stack argument here, where every game so far has passed it in a register, and
-`draw.vm_reg` has no way to say that. That is the fifth thing this rebuild moved, and it needs
-a `vm_stack_arg` in the same family as `runner_arg`, `frame_ctx_ecx`, `cleanup_this_ecx` and
-`screenshot_stack_arg`. The VM struct also grew -- `+0x594` became `+0x5bc` -- so the three
-field offsets are their own derivation and not a copy of TH13's.
+`draw.vm_reg` had no way to say that. That is the fifth thing this rebuild moved, and it is now
+`draw.vm_stack_arg`, in the same family as `runner_arg`, `frame_ctx_ecx`, `cleanup_this_ecx`
+and `screenshot_stack_arg`. The wrap borrows EAX to read `[esp+8]` and gives it straight back;
+`mov` sets no flags, which is the one thing that stub may not disturb.
 
-Nothing is guessed here: `vm_draw` stays out of the profile until the stack form exists, for
-the same reason `speed` does. A wrong `vm_anm_off` would make the trace print plausible ANM
-names that are not the ones being drawn, and the dim rules and the class table would both then
-be written against fiction.
+### The three field offsets read themselves
+
+The VM struct grew -- `+0x594` became `+0x5bc` -- so TH13's `vm_anm_off`, `vm_layer_off` and
+`vm_script_off` are not transferable. They are left at **zero**, and that is not a gap: with
+them zero no VM is classified, so no rule can match the wrong thing, and `dim_vm_trace` scans
+each VM's first three hundred words for a pointer to a loaded ANM record -- validated by the
+name ending in `.anm` -- and logs the offset it finds:
+
+```text
+draw      vm anm pointer at +0x30: slot 3 bullet.anm
+```
+
+Which is the whole trick. The offsets get read off a running game instead of guessed, the same
+way the class table and `world_prio` will be. Guessing `vm_anm_off` would have printed
+*plausible* ANM names that were not the ones being drawn, and both the dim rules and the class
+table would then have been written against fiction -- the one failure here that nothing
+downstream could catch.
 
 ## 14. What a trace still has to supply
 

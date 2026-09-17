@@ -19,6 +19,8 @@ static const struct GameSignature th14_signatures[] = {
     {0x46abf6, 5, {0xe8,0x05,0xa4,0xfd,0xff}},
     /* the draw runner's dispatch, wrapped so every draw call belongs to one callback */
     {0x40141a, 8, {0x8b,0x4f,0x24,0x8b,0x47,0x08,0xff,0xd0}},
+    /* the per-VM sprite draw; the VM is its first stack argument */
+    {0x478f60, 9, {0x55,0x8b,0xec,0x83,0xe4,0xf8,0x83,0xec,0x18}},
 
     /* read, never written: the runner's epilogue. runner_ret is its last byte, 0x40138a,
        which is where thprac puts its update hook -- freezing the whole epilogue is what

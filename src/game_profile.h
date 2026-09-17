@@ -138,6 +138,9 @@ struct GameProfile {
         uintptr_t dispatch; unsigned char dispatch_len, node_reg; uint32_t prio_off;
         uintptr_t flush_fn; unsigned char flush_reg; uintptr_t flush_this;
         uintptr_t vm_draw; unsigned char vm_draw_len, vm_reg; uint32_t vm_anm_off, vm_layer_off, vm_script_off;
+        /* TH14 on: the VM is the draw's first stack argument rather than arriving in a
+           register, so `vm_reg` says nothing and the wrap reads it off the stack instead. */
+        int vm_stack_arg;
         int world_prio;
         const struct DimRule* rules; size_t rule_count;
         const char* special_name;     /* what DIM_SPECIAL fades in this game, for the menu; NULL = nothing */

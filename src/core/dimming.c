@@ -105,7 +105,8 @@ static void dim_install(void) {
        VM's quads as their own draw call and gives back the caller's address. Everything but the
        flags is preserved for the function and its caller. */
     const uintptr_t vd = g_game->draw.vm_draw; const size_t vn = g_game->draw.vm_draw_len; const uint8_t vreg = g_game->draw.vm_reg;
-    if (vd && vn >= 5 && vn <= 16 && vreg != 4 && site_expected(vd, vn)) {
+    const int vstack = g_game->draw.vm_stack_arg;
+    if (vd && vn >= 5 && vn <= 16 && (vstack || vreg != 4) && site_expected(vd, vn)) {
         uint8_t* exit = g_p;
         E(0x50, 0x51, 0x52);                                                                     /* push eax; push ecx; push edx */
         ECALL((uintptr_t)dim_vm_exit);                                                           /* eax = the caller's address */
@@ -113,7 +114,17 @@ static void dim_install(void) {
         E(0x5A, 0x59, 0x58);                                                                     /* pop edx; pop ecx; pop eax */
         E(0xFF, 0x25); E32((uint32_t)(uintptr_t)&g_vm_return);                                   /* jmp [g_vm_return] */
         STUB_BEGIN();
-        E(0x89, 0x05 | (vreg << 3)); E32((uint32_t)(uintptr_t)&g_vm);                           /* mov [g_vm],reg */
+        if (vstack) {
+            /* The VM is the first stack argument, so it is at [esp+4] on entry. EAX is the only
+               scratch here and the function is about to want it, so it is borrowed and given
+               back; `mov` sets no flags, which is the one thing this stub may not disturb. */
+            E(0x50);                                                                             /* push eax */
+            E(0x8B, 0x44, 0x24, 0x08);                                                           /* mov eax,[esp+8] */
+            E(0xA3); E32((uint32_t)(uintptr_t)&g_vm);                                            /* mov [g_vm],eax */
+            E(0x58);                                                                             /* pop eax */
+        } else {
+            E(0x89, 0x05 | (vreg << 3)); E32((uint32_t)(uintptr_t)&g_vm);                       /* mov [g_vm],reg */
+        }
         E(0x50, 0x51, 0x52);                                                                     /* push eax; push ecx; push edx */
         E(0xFF, 0x74, 0x24, 0x0C);                                                               /* push [esp+12]: the caller's address */
         ECALL((uintptr_t)dim_vm_enter); E(0x83, 0xC4, 0x04);                                     /* call; add esp,4 */
