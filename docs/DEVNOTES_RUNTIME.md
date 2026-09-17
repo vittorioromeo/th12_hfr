@@ -245,6 +245,18 @@ because the crash coincided with a key press. `git diff` on the file, not the lo
 > That is the table the rules are written from, and it makes "what draws the items?" a question
 > the log answers rather than one the trace has to be lucky enough to catch.
 >
+> **And a callback that draws no VMs at all still draws.** The VM census answers "what sprite
+> was that?", and is blind to a manager that builds its own quads -- which is what TH13's items
+> do, and the reason its item rule matches on priority with a NULL ANM. So a second row type
+> counts, per draw callback, how many draw calls it made and whether any VM was behind them:
+>
+> ```text
+> draw census: priority 65, (no VM: its own quads) layer -1, 8100 draws -- not faded
+> ```
+>
+> Without that, "what draws the items?" has no answer in the log however long the game is
+> played, which two stages' worth of looking established the hard way.
+>
 > **The name is copied, not pointed at.** The first version kept the `const char*` the VM handed
 > it and compared pointers. An ANM record is freed and its memory reused, so by the time the
 > line printed, the name was whatever had been written there since; every reallocation of the

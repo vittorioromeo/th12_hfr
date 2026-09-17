@@ -214,6 +214,21 @@ static void dim_census_name(char* out, const char* anm) {
     if (!i) { out[0] = '?'; i = 1; }
     out[i] = 0;
 }
+/* A callback that draws without any VM going through the sprite draw is drawing its quads
+   itself -- which is what TH13's items do, and the reason its item rule matches on priority
+   with a NULL ANM. The VM census cannot see those at all, so they are counted here: how many
+   draw calls a callback made, and whether any VM was behind them. Without this, "what draws
+   the items?" has no answer in the log however long the game is played, which is exactly what
+   two stages' worth of looking established. */
+static unsigned g_cb_draws_at_entry, g_cb_vms_at_entry; static int g_cb_prio = -1;
+static void dim_census(int prio, const char* anm, int layer, int cls);
+static void dim_census_callback_end(void) {
+    if (!cfg.debug || g_cb_prio < 0) return;
+    /* The per-frame counters are reset between frames, so a callback whose end is only noticed
+       after that reset would compare against a larger number and look like it drew. */
+    if (g_frame_draws > g_cb_draws_at_entry && g_frame_vms == g_cb_vms_at_entry)
+        dim_census(g_cb_prio, "(no VM: its own quads)", -1, dim_classify(NULL, -1, -1));
+}
 static void dim_census(int prio, const char* anm, int layer, int cls) {
     if (!cfg.debug) return;
     char name[DIM_CENSUS_NAME]; dim_census_name(name, anm);
@@ -283,6 +298,8 @@ static uint32_t __cdecl __attribute__((force_align_arg_pointer)) dim_vm_exit(voi
 static void __cdecl __attribute__((force_align_arg_pointer)) dim_at_callback(void) {
     if (g_dim_trace_frames > 0 && cfg.debug && g_draw_node)
         LOG("draw      callback prio %d fn %08x", g_draw_prio, (unsigned)*(const uint32_t*)((const uint8_t*)g_draw_node + 8));
+    dim_census_callback_end();
+    g_cb_prio = g_draw_prio; g_cb_draws_at_entry = g_frame_draws; g_cb_vms_at_entry = g_frame_vms;
     g_batch_class = g_draw_prio >= 0 ? dim_classify(NULL, -1, -1) : DIM_NONE;   /* the batch was just flushed */
     if (cfg.dim[DIM_BACKGROUND] <= 0 || !g_dim_available || g_dim_frame_done || !g_dev) return;
     if (g_draw_prio < g_game->draw.world_prio || !dim_in_game()) return;

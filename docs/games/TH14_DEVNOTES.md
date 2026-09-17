@@ -427,6 +427,14 @@ and TH14 has no `item.anm`, so which ANM and layer they use is still unread. And
 `pl00.anm`'s layers is the hitbox as against the shots -- so the whole file is left unfaded,
 which is the conservative half of TH13's split.
 
+**Items do not go through the sprite VM draw.** Three stages were played with items all over
+the screen and the VM census never showed them, because they are not VM draws at all -- the item
+manager builds its own quads, exactly as TH13's does, which is why TH13's item rule matches on
+priority with a NULL ANM. One rule was written on the guess that `bullet.anm` on layers 20 and
+21 was them; `dim_items` faded nothing and the next stage produced no such row, so it was
+removed rather than reassigned to whatever else it might be. The callback census
+(DEVNOTES_RUNTIME 3b) is what will name the priority.
+
 **A fifth rule, after the first report.** Fading the effects also faded the focus ring and the
 hitbox, because those are drawn from `effect.anm` rather than from `pl00.anm` -- layer 14 at
 priority 29, between `pl00.anm`'s layers 13 and 15 -- and the general `effect.anm` rule caught
