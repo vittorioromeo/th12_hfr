@@ -4,7 +4,17 @@
 enum { MODE_FRAME = 0, MODE_SUB = 1, MAX_NODE_CLASSES = 32 };
 struct node_class { uint32_t func; int mode; const char* name; };
 enum SpeedOp { SPEED_ONE_PERM, SPEED_ONE_TEMP, SPEED_PAUSE_SET, SPEED_PAUSE_RESTORE, SPEED_ECL };
-struct SpeedSite { uintptr_t addr; unsigned char size, op, pop_float; };
+/* Where the stub finds the value the overwritten instruction was about to store. The games
+   built with the older compiler store from the FPU stack (`fstp dword [speed]`, 6 bytes) and
+   the value has to be popped off it whether the operation wants it or not; TH14's compiler
+   uses SSE, so a site either stores an immediate (nothing to capture) or an XMM register.
+   SPEED_SRC_FPU is 1 so that the profiles written before this enum existed still say what
+   they said. */
+enum SpeedSrc { SPEED_SRC_NONE = 0, SPEED_SRC_FPU = 1,
+                SPEED_SRC_XMM0 = 2, SPEED_SRC_XMM1, SPEED_SRC_XMM2, SPEED_SRC_XMM3,
+                SPEED_SRC_XMM4, SPEED_SRC_XMM5, SPEED_SRC_XMM6, SPEED_SRC_XMM7,
+                SPEED_SRC_COUNT };
+struct SpeedSite { uintptr_t addr; unsigned char size, op, src; };
 /* One dimming classification rule (game_profile.h `draw`): draws under callbacks with priority in
    [prio_lo, prio_hi], from VMs of the named ANM on the given layers running the given scripts,
    belong to `category`. The script range is for layers a game shares between things of

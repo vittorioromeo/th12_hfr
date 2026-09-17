@@ -255,7 +255,7 @@ Where that leaves it:
 - `0x43a6a0` is probably **LaserManager** -- 0.52, and lasers draw from `bullet.anm` too.
 - Everything else is a guess, and a guess here is not worth having.
 
-### Why nothing is classified yet, even the certain ones
+### Why nothing was classified at first, even the certain ones
 
 Two reasons, and the second is the one that matters.
 
@@ -484,12 +484,13 @@ game whose rules are still being written. It now reports the classes the profile
 actually mention, so the menu offers background and effects for TH14 and does not offer sliders
 that would do nothing.
 
-## 15. The game speed, and why sub-stepping waits on it
+## 15. The game speed, and the twenty-five writes to it
 
 Sub-stepping *is* the game speed. `set_factor` writes `g_logical * dt` into the game's own speed
 multiplier and then runs the update, so nothing can be `MODE_SUB` until that variable is
 described -- and it cannot be described without every one of the game's own writes to it being
-described too, or the runtime and the game overwrite each other once a tick.
+described too, or the runtime and the game overwrite each other once a tick. This section was
+written while that was still outstanding; §15b is where it stops being.
 
 `addr.speed` is `0x4d8f58`, settled three ways: the save/override/restore idiom at `0x424780`,
 the sixty-one `mulss` reads of it across the gameplay code, and the item manager multiplying
@@ -525,24 +526,96 @@ Which is why a uniform rule does not exist, and why a heuristic does not either 
 the speed just before?" labels the *set* of a save/set/restore triple as self-composing, because
 the save is the read it sees. Each of the twenty-five has to be read.
 
-### And the backend needs two more shapes
+### And the backend needed two more shapes
 
-`install_speed_sites` patches a 6-byte `fstp [speed]` and, where the op needs the stored value,
-captures it off the x87 stack. TH14 stores from an XMM register or from an immediate, so the
-capture becomes `movss [g_fpu_tmp], xmmN` with N per site, and `SpeedSite` needs somewhere to say
-which register -- or that the value is an immediate in the instruction. The 8- and 10-byte sites
-are both wide enough for the 5-byte call the patch writes.
+`install_speed_sites` patched a 6-byte `fstp [speed]` and, where the operation needs the stored
+value, captured it off the x87 stack. TH14 stores from an XMM register or from an immediate, so
+`SpeedSite`'s `pop_float` became `src` (`enum SpeedSrc`), and the capture is `fstp [g_fpu_tmp]`,
+`movss [g_fpu_tmp],xmmN` with N from the profile, or nothing at all. `SPEED_SRC_FPU` is 1 so
+that the four profiles written before the enum existed still say what they said.
 
-None of this is in the profile. `install()` already refuses a profile with `speed` and no sites,
-which is the guard that keeps this honest while it is being worked out.
+The stub also grew the eight XMM registers. It stands in for one instruction, not for a call,
+so the game's next instruction expects every register it had; `pushad`/`pushfd` covered the
+general ones, and on TH10-13 that was enough because the code around an `fstp` is x87. On TH14
+the patched instruction sits in SSE code, and the operation behind the stub is C compiled
+`-mfpmath=sse`. `tools/test_speed.h` is what says so: it loads all eight with sentinels, calls a
+real patched site through the real installer, and checks every one came back --
+
+    FAIL: the permanent store's stub clobbered xmm0 lane 1 (1.500000 -> 0.000000)
+
+which is what it reports with the save removed. Getting that failure needed a fix to `test.sh`
+as well: the harness was building the runtime without `-msse2 -mfpmath=sse`, so the operation
+compiled to x87 there and the test could not have seen the clobber. A harness that builds the
+code under test with different code-generation flags is not testing the code that ships.
+
+### Which sites are patched, and which are correct untouched
+
+Twelve of the twenty-five are described in `th14_speed_sites`; the other thirteen are left
+alone, each for a reason that holds on its own.
+
+| site | treatment | why |
+|---|---|---|
+| `0x40747a` `0x435b44` `0x436100` `0x444a00` `0x44df30` | `SPEED_ONE_PERM` | the new logical speed really is 1.0 |
+| `0x40da9a` `0x448eb6` `0x448ff8` `0x449eff` `0x44a0b5` `0x46fe8a` | `SPEED_ONE_TEMP` | 1.0 for the duration of something the game restores after |
+| `0x429796` | `SPEED_ECL`, value in xmm0 | the script instruction that sets the speed |
+| `0x40dac5` `0x449097` `0x44a165` `0x44af39` `0x44b0e5` `0x4247fa` `0x472d4c` | none | writes back the raw global the game saved, which is already the scaled value |
+| `0x43a6dd` `0x46ff09` | none | stores 0, and 0 x factor is 0 |
+| `0x43a6f1` | none | the restore half of the freeze at `0x43a6dd` |
+| `0x4247a6` | none | `speed*(1-k)` clamped to [0, 1]; multiplicative, and the clamps cannot bind while the factor is at most 1 |
+| `0x46feff` | none | `saved*(1-k)` from the value `0x46fe50` read at entry |
+| `0x411780` | none | unreachable: a one-instruction `movss [speed],xmm1; ret` with no call, no jump and no data reference anywhere in the image |
+
+`SPEED_ONE_TEMP` rather than `SPEED_PAUSE_SET` for the six is the point worth keeping. The pause
+pair exists for games whose restore writes a value the runtime has to reconstruct; TH14's
+restores write back the raw global, so patching the set alone is both necessary and sufficient,
+and patching the restore too would fold the factor in twice.
+
+## 15b. The class table: the two sprite passes, and nothing else
+
+`0x47e7f0` (priority 8) is `jmp 0x47e6c0`; `0x47e7c0` (priority 29) is a flag test on the
+supervisor at `0x4db558` that either returns 1 or falls into `jmp 0x47e5e0`. The two bodies are
+the same walk over two different lists of the *same* manager object -- `[this+0xfe8210]` and
+`[this+0xfe8208]` -- calling `0x46fe50` per VM and re-bucketing the survivors by layer. Both are
+`MODE_SUB`.
+
+What makes that safe without a single per-frame hook is that a sprite VM's motion is in units of
+the game speed and nothing else in it counts frames on the side. `0x473139`, `0x47318e`,
+`0x4731e0`, `0x473238` and `0x47325c` are `mulss xmm0,[0x4d8f58]` in the interpolator, and
+`0x474e7b`, `0x474f1b`, `0x474fbb`, `0x475054`, `0x475166`, `0x475276`, `0x47fdc9`, `0x47fe22`
+store the speed's *address* into interpolator fields. Six passes at a sixth of the speed is the
+same motion at six times the resolution.
+
+Systems that step their own VMs by calling `0x46fe50` themselves -- about a hundred and ninety
+call sites -- are reached from `MODE_FRAME` callbacks and still advance once a frame. So the
+world's sprites move in 60 Hz steps while the menu, the HUD and anything animating out of a
+script does not, which is exactly the claim the install log now makes:
+
+    sub-stepping: 2 of 21 identified systems step with the display (AnmSpritesEarly, AnmSpritesLate).
+      everything else steps once per 60 Hz frame, so what it draws moves in 60 Hz steps however high the frame rate is.
+
+**The names are labels.** TH13 calls its pair world and UI. Which of TH14's two is which is not
+established: the late one is behind a gate that skips it on a supervisor flag, which is the
+shape of the pass that stops when the game does, but that is a signal and not a reading. They
+get the same treatment either way, so they are named for when they run rather than for what
+they might be.
+
+The menu's "Sub-stepped subsystems" list now shows only `MODE_SUB` classes. A class table names
+every callback the census identified so that there is something to report against, and most are
+`MODE_FRAME`; a checkbox against one of those cannot do anything, and an inert checkbox in a
+panel meant for narrowing down a problem is worse than no checkbox, because it makes a system
+look ruled out when it was never stepped. That change also applies to TH10-13, whose lists lose
+the entries that were never sub-stepped.
 
 ## 16. What a trace still has to supply
 
-The UpdateFunc class table and the dimming rules cannot be read out of the executable. Both
-come from the patch's own log while a stage is running: the registered update list names every
-callback, and the per-callback sprite census is what the dim rules are written against
-(DEVNOTES_RUNTIME §3b). Guessing either is how a bullet manager ends up stepping at 360 Hz
-with its own timers still counting in frames — §7 of the runtime notes is what that costs.
+The dimming rules and the class table came out of the patch's own log while a stage was
+running, not out of the executable: the registered update list names every callback, and the
+per-callback sprite census is what the dim rules are written against (DEVNOTES_RUNTIME §3b).
+Both are now in the profile, the class table with two of its twenty-one entries `MODE_SUB`
+(§15b). The remaining nineteen stay `MODE_FRAME` until each one's own counters have been found
+and hooked; guessing is how a bullet manager ends up stepping at 360 Hz with its own timers
+still counting in frames — §7 of the runtime notes is what that costs. TH13 needed about three
+hundred lines of per-frame hooks for that, and TH14's are not written.
 
 Also outstanding: the English and Steam builds (only `th14.exe` is recognised so far),
 `vpatch_th14.dll`'s conflict sites, `sprite_round_sites` for internal resolution, the replay

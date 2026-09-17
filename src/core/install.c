@@ -48,20 +48,42 @@ static LONG CALLBACK hfr_exception_report(EXCEPTION_POINTERS* ep) {
     }
     return EXCEPTION_CONTINUE_SEARCH;
 }
-/* Every engine uses the same speed operations; only the overwritten instruction differs. */
+/* Every engine uses the same speed operations; only the overwritten instruction differs, so
+   the stub is (capture the value the instruction was going to store) + (call the operation),
+   and one stub is shared by every site with the same operation and the same source.
+
+   The stub stands in for a single instruction, not for a call, so nothing about it may be
+   caller-saved: the game continues into the next instruction expecting every register it had.
+   `pushad`/`popfd` cover the general registers and the flags. The eight XMM registers are
+   saved too, because on TH14 the patched instruction sits in the middle of SSE code and the
+   operation is C -- whatever the compiler decides to do with a float multiply is not something
+   this file gets to assume. The x87 stack needs no saving: the only thing done to it is the
+   `fstp` that pops the value the instruction was about to store. */
 static void install_speed_sites(void) {
     void* ops[] = {speed_set_one_perm, speed_set_one_temp, speed_pause_set_c,
                    speed_pause_restore_c, speed_set_ecl_c};
-    void* stubs[5][2] = {{0}};
+    void* stubs[5][SPEED_SRC_COUNT] = {{0}};
     g_p = stub_begin();
     for (size_t i = 0; i < g_game->speed_site_count; ++i) {
         const struct SpeedSite* s = &g_game->speed_sites[i];
-        if (s->op >= 5 || s->pop_float > 1 || s->size < 5) { g_patch_failed = 1; break; }
-        void** stub = &stubs[s->op][s->pop_float];
+        if (s->op >= 5 || s->src >= SPEED_SRC_COUNT || s->size < 5) { g_patch_failed = 1; break; }
+        void** stub = &stubs[s->op][s->src];
         if (!*stub) {
             *stub = g_p;
-            if (s->pop_float) { E(0xd9,0x1d); E32((uint32_t)(uintptr_t)&g_fpu_tmp); }
-            E(0x9c,0x60); ECALL((uintptr_t)ops[s->op]); E(0x61,0x9d,0xc3);
+            if (s->src == SPEED_SRC_FPU) {                       /* fstp dword [g_fpu_tmp] */
+                E(0xd9,0x1d); E32((uint32_t)(uintptr_t)&g_fpu_tmp);
+            } else if (s->src != SPEED_SRC_NONE) {               /* movss [g_fpu_tmp],xmmN */
+                unsigned n = s->src - SPEED_SRC_XMM0;
+                E(0xf3,0x0f,0x11,(uint8_t)(0x05 | (n << 3))); E32((uint32_t)(uintptr_t)&g_fpu_tmp);
+            }
+            E(0x81,0xec,0x80,0x00,0x00,0x00);                    /* sub esp,0x80 */
+            for (unsigned n = 0; n < 8; ++n)                     /* movups [esp+n*16],xmmN */
+                E(0x0f,0x11,(uint8_t)(0x44 | (n << 3)),0x24,(uint8_t)(n * 16));
+            E(0x9c,0x60); ECALL((uintptr_t)ops[s->op]); E(0x61,0x9d);
+            for (unsigned n = 0; n < 8; ++n)                     /* movups xmmN,[esp+n*16] */
+                E(0x0f,0x10,(uint8_t)(0x44 | (n << 3)),0x24,(uint8_t)(n * 16));
+            E(0x81,0xc4,0x80,0x00,0x00,0x00);                    /* add esp,0x80 */
+            E(0xc3);
         }
         patch_call_n(s->addr,*stub,s->size,site_expected(s->addr,s->size));
     }
@@ -141,6 +163,21 @@ static int install(void) {
                frame rate is raised" reads like a promise that it will not look that way. */
             LOG("this game's systems are not classified yet: nothing moves between 60 Hz ticks, so motion still looks exactly like the unmodified game.");
             LOG("  the window, scaling, filters, dimming and the menu are all active; the frame rate is not yet worth anything on its own.");
+        } else {
+            /* Which systems actually move between 60 Hz frames, by name. A game part way
+               through classification -- TH14 has its two sprite managers and nothing else --
+               looks smooth in the menus and the HUD and stays at 60 Hz in play, and the
+               difference between that and "high frame rate" is a question this line answers
+               before it is asked. */
+            char names[256]; int n = 0, subs = 0;
+            for (size_t i = 0; i < g_class_count; ++i) if (g_classes[i].mode == MODE_SUB) {
+                ++subs;
+                if (n < (int)sizeof names - 1)
+                    n += snprintf(names + n, sizeof names - (size_t)n, "%s%s", n ? ", " : "", g_classes[i].name);
+            }
+            LOG("sub-stepping: %d of %u identified systems step with the display (%s).",
+                subs, (unsigned)g_class_count, subs ? names : "none");
+            LOG("  everything else steps once per 60 Hz frame, so what it draws moves in 60 Hz steps however high the frame rate is.");
         }
         if (!g_game->addr.poll_input || !g_game->addr.game_input) {
             if (cfg.subtick_input) LOG("this game's input path is not described: sub-tick input is off.");

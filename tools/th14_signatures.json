@@ -32,6 +32,66 @@
   "bytes": "55 8b ec 83 e4 f8 83 ec 18"
  },
  {
+  "address": "0x40747a",
+  "bytes": "c7 05 58 8f 4d 00 00 00 80 3f",
+  "description": "the speed object's initialiser"
+ },
+ {
+  "address": "0x435b44",
+  "bytes": "c7 05 58 8f 4d 00 00 00 80 3f",
+  "description": "game state change"
+ },
+ {
+  "address": "0x436100",
+  "bytes": "c7 05 58 8f 4d 00 00 00 80 3f",
+  "description": "supervisor reset"
+ },
+ {
+  "address": "0x444a00",
+  "bytes": "c7 05 58 8f 4d 00 00 00 80 3f",
+  "description": "player reset"
+ },
+ {
+  "address": "0x44df30",
+  "bytes": "c7 05 58 8f 4d 00 00 00 80 3f",
+  "description": "end-of-stage sequence"
+ },
+ {
+  "address": "0x40da9a",
+  "bytes": "c7 05 58 8f 4d 00 00 00 80 3f",
+  "description": "1.0 around three slow-motion updates"
+ },
+ {
+  "address": "0x448eb6",
+  "bytes": "c7 05 58 8f 4d 00 00 00 80 3f",
+  "description": "1.0 while the pause menu is up"
+ },
+ {
+  "address": "0x448ff8",
+  "bytes": "c7 05 58 8f 4d 00 00 00 80 3f",
+  "description": "1.0 while the pause menu is up"
+ },
+ {
+  "address": "0x449eff",
+  "bytes": "c7 05 58 8f 4d 00 00 00 80 3f",
+  "description": "1.0 while the pause menu is up"
+ },
+ {
+  "address": "0x44a0b5",
+  "bytes": "c7 05 58 8f 4d 00 00 00 80 3f",
+  "description": "1.0 while the pause menu is up"
+ },
+ {
+  "address": "0x46fe8a",
+  "bytes": "c7 05 58 8f 4d 00 00 00 80 3f",
+  "description": "1.0 for a sprite \"unaffected by slow-motion\""
+ },
+ {
+  "address": "0x429796",
+  "bytes": "f3 0f 11 05 58 8f 4d 00",
+  "description": "the script instruction that sets the speed"
+ },
+ {
   "address": "0x401382",
   "bytes": "5f 8b c6 5e 5b 8b e5 5d c3"
  },

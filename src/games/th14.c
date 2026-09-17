@@ -34,6 +34,36 @@
    so which ANM and layer they use is still unread), and which of pl00.anm's layers is the
    hitbox as against the shots -- so the whole of pl00.anm is left unfaded, which is the
    conservative half of TH13's split. */
+/* The game's own writes to the game speed (`addr.speed`). Sub-stepping *is* the game speed --
+   the runtime stores `logical * factor` there -- so every one of the game's stores has to say
+   what it meant in game-frame units, or the next store puts the game back to one frame per
+   tick and the sub-steps become six frames of motion. There are twenty-five stores. Twelve are
+   described here; the other thirteen are correct untouched, and § of the dev notes says why
+   each one is. The short version: a store of a value *derived from the current speed* composes
+   with the factor by itself, and so does a store of zero.
+
+   The save/set-1.0/restore triples are `SPEED_ONE_TEMP` on the set only. The restore writes
+   back the raw global the game saved, which is the scaled value, so patching it would be
+   wrong -- `SPEED_PAUSE_SET`/`_RESTORE` are for the games that restore from a value the
+   runtime has to reconstruct. */
+static const struct SpeedSite th14_speed_sites[] = {
+    /* stores 1.0 for good: the new logical speed really is 1.0 */
+    {0x40747a, 10, SPEED_ONE_PERM, SPEED_SRC_NONE},   /* the speed object's initialiser */
+    {0x435b44, 10, SPEED_ONE_PERM, SPEED_SRC_NONE},   /* game state change */
+    {0x436100, 10, SPEED_ONE_PERM, SPEED_SRC_NONE},   /* supervisor reset */
+    {0x444a00, 10, SPEED_ONE_PERM, SPEED_SRC_NONE},   /* player reset */
+    {0x44df30, 10, SPEED_ONE_PERM, SPEED_SRC_NONE},   /* end-of-stage sequence */
+    /* stores 1.0 for the duration of something, and the game restores the raw value after */
+    {0x40da9a, 10, SPEED_ONE_TEMP, SPEED_SRC_NONE},   /* around three slow-motion updates; restored 0x40dac5 */
+    {0x448eb6, 10, SPEED_ONE_TEMP, SPEED_SRC_NONE},   /* pause menu opens; restored 0x449097 */
+    {0x448ff8, 10, SPEED_ONE_TEMP, SPEED_SRC_NONE},   /* pause menu opens; restored 0x44a165 */
+    {0x449eff, 10, SPEED_ONE_TEMP, SPEED_SRC_NONE},   /* pause menu opens; restored 0x44af39 */
+    {0x44a0b5, 10, SPEED_ONE_TEMP, SPEED_SRC_NONE},   /* pause menu opens; restored 0x44b0e5 */
+    {0x46fe8a, 10, SPEED_ONE_TEMP, SPEED_SRC_NONE},   /* a sprite flagged "unaffected by slow-motion" */
+    /* the script instruction that sets the game speed; the value is in xmm0 */
+    {0x429796,  8, SPEED_ECL,      SPEED_SRC_XMM0},
+};
+
 static const struct DimRule th14_dim_rules[] = {
     /* Items. The manager's update (census priority 24, body at 0x438550) accumulates +0.2 a
        frame into a per-entity field and scales the rest by the game speed at 0x4d8f58 -- which
@@ -73,9 +103,65 @@ static const struct DimRule th14_dim_rules[] = {
     { -1, -1, "effect.anm",  -1, -1, -1, -1, DIM_EFFECTS },
 };
 
+/* Which of the update list's callbacks may run more than once a frame.
+
+   Only the two sprite-manager passes do, and that is a deliberate stopping point rather than a
+   first instalment. A sprite VM interpolates its own position, scale, colour and rotation
+   between the keyframes its script sets, in units of the game speed -- `0x473139` onwards is a
+   run of `mulss xmm0,[0x4d8f58]`, and half a dozen sites store the speed's *address* into an
+   interpolator field -- so running a pass six times with the speed at a sixth gives the
+   interpolation six times the resolution and changes nothing else: no entity moved, no timer
+   advanced, no script instruction ran early. That is the menu, the HUD, the title screen, the
+   dialogue portraits and the spell-card plate at the display's rate.
+
+   Everything else stays MODE_FRAME. A gameplay system sub-stepped without the per-frame hooks
+   that keep its own counters in whole frames is DEVNOTES_RUNTIME § 7: it looks smoother and is
+   quietly wrong, and the wrongness is in hit detection. The identification below is good
+   enough to name BulletManager, and naming it is not the same as being ready to step it.
+
+   The two passes are the pair registered from one function at 0x47a780 (`0x47aa5b` priority
+   29, `0x47aac8` priority 8), and they are two walks over two lists of one manager object --
+   the same `this`, the same body, the same `call 0x46fe50` per VM, over `[this+0xfe8208]` and
+   `[this+0xfe8210]`. TH13 calls its pair world and UI; which of these two is which is not
+   established here, so they are named for when they run. The late one is reached through a
+   gate (`0x47e7c0`) that skips it on a flag in the supervisor, which is the shape of the pass
+   that stops when the game does -- a signal, not a reading. Both are MODE_SUB either way, so
+   the labels are labels.
+
+   Systems that step their own VMs by calling 0x46fe50 directly from a MODE_FRAME callback are
+   unaffected and still advance once a frame, which is what keeps this consistent. */
+static const struct node_class th14_classes[] = {
+    { 0x47e7f0, MODE_SUB,   "AnmSpritesEarly" },   /* priority 8  -> 0x47e6c0 */
+    { 0x47e7c0, MODE_SUB,   "AnmSpritesLate"  },   /* priority 29 -> 0x47e5e0, behind a gate */
+    /* The rest, named where the dev notes could name them, so that the census has somewhere to
+       report against and a later change is an edit to one line rather than a new table. */
+    { 0x417610, MODE_FRAME, "BulletManager"   },
+    { 0x43a6a0, MODE_FRAME, "LaserManager?"   },
+    { 0x40b8e0, MODE_FRAME, "Ascii"           },
+    { 0x459f30, MODE_FRAME, "Title"           },
+    { 0x431a40, MODE_FRAME, "Front"           },
+    { 0x41ee80, MODE_FRAME, "Effects?"        },
+    { 0x444890, MODE_FRAME, "Update01"        },
+    { 0x4447b0, MODE_FRAME, "Update03"        },
+    { 0x448bd0, MODE_FRAME, "Update09"        },
+    { 0x436d70, MODE_FRAME, "Update11"        },
+    { 0x455e40, MODE_FRAME, "ReplayRecord"    },
+    { 0x40eb70, MODE_FRAME, "Update13"        },
+    { 0x457ee0, MODE_FRAME, "Update17"        },
+    { 0x44ec60, MODE_FRAME, "Player"          },
+    { 0x411eb0, MODE_FRAME, "Update20"        },
+    { 0x422a60, MODE_FRAME, "Update21"        },
+    { 0x439750, MODE_FRAME, "ItemManager"     },
+    { 0x41cb50, MODE_FRAME, "Update26"        },
+    { 0x455e60, MODE_FRAME, "ReplayPlayback"  },
+};
+
 static const struct GameProfile th14_profile = {
     .identity = &game_identities[GI_TH14],
     .addr = {
+        /* The game speed, which is also the sub-step factor: `th14_speed_sites` below is the
+           other half of describing it, and the two are only correct together. */
+        .speed = 0x4d8f58,
         .device = 0x4d8f68,
         .window_flags = 0x4f7a54,
         .misc_flags = 0x4f5815,          /* a byte: whether the runner locks */
@@ -128,6 +214,8 @@ static const struct GameProfile th14_profile = {
        still wrapped, which is what makes the debug draw trace run, which is what will supply
        the priority and the rules. The sprite VM draw is not described yet either, so the
        per-VM rules stay inert; dimming.c already treats both as optional. */
+    .speed_sites = th14_speed_sites, .speed_site_count = sizeof th14_speed_sites / sizeof *th14_speed_sites,
+    .classes = th14_classes, .class_count = sizeof th14_classes / sizeof *th14_classes,
     .draw = { .dispatch = 0x40141a, .dispatch_len = 8, .node_reg = R_EDI, .prio_off = 0,
               .flush_fn = 0x475eb0, .flush_reg = R_ECX, .flush_this = 0x4f56cc,
               .world_prio = 19, .rules = th14_dim_rules,

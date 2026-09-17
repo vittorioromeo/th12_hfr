@@ -6,7 +6,10 @@ cd "$(dirname "$0")"
 mkdir -p build/tests
 CC=${CC:-i686-w64-mingw32-gcc}
 RUN=${RUN:-wine}
-$CC -std=gnu11 -O2 -Wall -Wextra -Wno-unused-function -Wno-unused-parameter -static-libgcc \
+# The same code-generation flags as build.sh: the runtime ships compiled for SSE, and a stub
+# that has to survive whatever the compiler does with a float multiply cannot be tested against
+# a build where that multiply is x87.
+$CC -std=gnu11 -O2 -msse2 -mfpmath=sse -Wall -Wextra -Wno-unused-function -Wno-unused-parameter -static-libgcc \
     tools/test_hfr.c -o build/tests/test_hfr.exe -ld3d9 -lwinmm -lgdi32 -ldwmapi -lpsapi \
     -Wl,--image-base,0x300000,--disable-dynamicbase,--section-start,.fixture=0x400000
 python3 tools/fill_pe_gaps.py build/tests/test_hfr.exe

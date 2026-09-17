@@ -13,6 +13,18 @@ static char g_ini_path[MAX_PATH];
    under the frame being drawn. */
 static int g_pending_chain, g_pending_rate, g_pending_window;
 
+/* The i-th sub-steppable class, and how many there are. */
+static int ui_sub_class(int i) {
+    if (!g_game || i < 0) return -1;
+    for (size_t k = 0; k < g_class_count; ++k)
+        if (g_classes[k].mode == MODE_SUB && i-- == 0) return (int)k;
+    return -1;
+}
+static int ui_sub_count(void) {
+    int n = 0;
+    for (size_t k = 0; g_game && k < g_class_count; ++k) n += g_classes[k].mode == MODE_SUB;
+    return n;
+}
 int hfr_ui_get(int id) {
     switch (id) {
     case UI_VIDEO_AVAILABLE:    return 1;
@@ -54,7 +66,7 @@ int hfr_ui_get(int id) {
        state its own update never advanced. Same for sub-tick input and the two addresses it
        reads and writes. Both are read-only answers about the profile, so the menu greys them
        out and the setters below refuse them however they are asked. */
-    case UI_SUBSTEP_AVAILABLE:  return g_game && g_class_count != 0;
+    case UI_SUBSTEP_AVAILABLE:  return ui_sub_count() != 0;
     case UI_SUBTICK_AVAILABLE:  return g_game && g_game->addr.poll_input && g_game->addr.game_input;
     case UI_SHARPEN:            return cfg.sharpen;
     case UI_SHARPEN_STRENGTH:   return cfg.sharpen_strength;
@@ -109,10 +121,16 @@ int         hfr_ui_post_count(void) { return post_count(); }
 const char* hfr_ui_post_name(int index) { struct Filter* f = post_at(index); return f ? f->name : ""; }
 int         hfr_ui_menu_key(void) { return cfg.menu_key; }
 const char* hfr_ui_dim_special_name(void) { return g_game ? g_game->draw.special_name : NULL; }
-int         hfr_ui_system_count(void) { return g_game ? (int)g_class_count : 0; }
-const char* hfr_ui_system_name(int i) { return (g_game && i >= 0 && i < (int)g_class_count) ? g_classes[i].name : ""; }
-int         hfr_ui_system_get(int i) { return (i >= 0 && i < (int)g_class_count) ? g_sub_enabled[i] : 0; }
-void        hfr_ui_system_set(int i, int v) { if (i >= 0 && i < (int)g_class_count) g_sub_enabled[i] = !!v; }
+/* The menu's list of sub-stepped systems is the systems that can be sub-stepped, which is not
+   the same as the class table: a profile names every callback it has identified so that the
+   census has something to report against, and most of them are MODE_FRAME. A checkbox against
+   one of those cannot do anything -- node_mode answers MODE_FRAME for it however the switch is
+   set -- and an inert checkbox in a panel for narrowing down a problem is worse than no
+   checkbox, because it makes a system look ruled out when it was never stepped. */
+int         hfr_ui_system_count(void) { return ui_sub_count(); }
+const char* hfr_ui_system_name(int i) { int k = ui_sub_class(i); return k < 0 ? "" : g_classes[k].name; }
+int         hfr_ui_system_get(int i) { int k = ui_sub_class(i); return k < 0 ? 0 : g_sub_enabled[k]; }
+void        hfr_ui_system_set(int i, int v) { int k = ui_sub_class(i); if (k >= 0) g_sub_enabled[k] = !!v; }
 const char* hfr_ui_present_path(void) { return g_own_present ? "own swap chain" : "the game's swap chain"; }
 /* A stage in progress is recording a replay, and the recording carries the simulation
    settings; changing them part way through would describe the run incorrectly. */
@@ -171,7 +189,9 @@ void hfr_ui_save(void) {
     ini_put_int("hfr", "subtick_input", cfg.subtick_input);
     ini_put_int("hfr", "enemy_interp", cfg.enemy_interp);
     ini_put_int("hfr", "debug", cfg.debug);
-    for (int i = 0; g_game && i < (int)g_class_count; ++i) {
+    /* Only the systems that can be sub-stepped: a `sub_` key for a MODE_FRAME class would be
+       read back into a flag nothing consults, and the file is read by people. */
+    for (int i = 0; g_game && i < (int)g_class_count; ++i) if (g_classes[i].mode == MODE_SUB) {
         char key[64]; snprintf(key, sizeof key, "sub_%s", g_classes[i].name);
         ini_put_int("systems", key, g_sub_enabled[i]);
     }
