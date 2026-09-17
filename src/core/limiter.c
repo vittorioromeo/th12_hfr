@@ -191,6 +191,8 @@ static double tick_rate_since(double now) {
     return (double)(g_ticks_run - g_stat_ticks_run_last) / dt;
 }
 
+/* dimming.c comes after this one in the build, and the stats line reports its census. */
+static void dim_census_report(void);
 static void limiter_stats(double now) {
     g_stat_ticks++;
     if (g_ticks_run == g_stat_ticks_run_prev) g_stat_repeat_frames++;
@@ -233,6 +235,7 @@ static void limiter_stats(double now) {
         g_stat_subtick_polls = g_stat_subtick_applied = 0; g_stat_repeat_frames = 0;
         if (cfg.debug) {
             node_census_report();
+            dim_census_report();
             uint8_t* rm=G_REPLAY_MANAGER;
             if (rm) LOG("state: stage=%d replay_frame=%d replay_mode=%d input=%08x",
                 *(int*)(rm+g_game->layout.replay_stage),*(int*)(rm+g_game->layout.replay_frame),*(int*)(rm+0x10),(unsigned)G_GAME_INPUT);

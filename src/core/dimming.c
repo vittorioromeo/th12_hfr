@@ -188,6 +188,35 @@ static int dim_glob(const char* pat, const char* name) {   /* "pl*.anm": one '*'
     size_t pre = (size_t)(star - pat), suf = strlen(star + 1), n = strlen(name);
     return n >= pre + suf && memcmp(pat, name, pre) == 0 && memcmp(star + 1, name + n - suf, suf) == 0;
 }
+/* Every (priority, ANM, layer) that has been drawn, and how the rules classify it. The traced
+   frames are one in every ten seconds, so anything short-lived -- an item, a bomb, a death --
+   can be on screen constantly and still never appear in one. This sees every VM of every frame
+   instead, which is what it takes to answer "and what draws the items?". Debug only, reported
+   once and again whenever something new shows up, like the update-node census. */
+enum { DIM_CENSUS = 96 };
+static struct { int prio, layer, cls; const char* anm; unsigned long long n; } g_dim_census[DIM_CENSUS];
+static int g_dim_census_n, g_dim_census_reported;
+static void dim_census(int prio, const char* anm, int layer, int cls) {
+    if (!cfg.debug) return;
+    for (int i = 0; i < g_dim_census_n; ++i)
+        if (g_dim_census[i].prio == prio && g_dim_census[i].layer == layer &&
+            g_dim_census[i].anm == anm) { ++g_dim_census[i].n; return; }
+    if (g_dim_census_n >= DIM_CENSUS) return;
+    g_dim_census[g_dim_census_n].prio = prio; g_dim_census[g_dim_census_n].layer = layer;
+    g_dim_census[g_dim_census_n].anm = anm; g_dim_census[g_dim_census_n].cls = cls;
+    g_dim_census[g_dim_census_n].n = 1;
+    ++g_dim_census_n; g_dim_census_reported = 0;
+}
+static void dim_census_report(void) {
+    if (!cfg.debug || g_dim_census_reported || !g_dim_census_n) return;
+    g_dim_census_reported = 1;
+    for (int i = 0; i < g_dim_census_n; ++i) {
+        int c = g_dim_census[i].cls;
+        LOG("draw census: priority %d, %s layer %d, %llu draws -- %s", g_dim_census[i].prio,
+            g_dim_census[i].anm ? g_dim_census[i].anm : "(no VM)", g_dim_census[i].layer,
+            g_dim_census[i].n, c >= 0 && c < DIM_COUNT ? DIM_NAMES[c] : "not faded");
+    }
+}
 /* The class of a VM (anm name and layer given) or of a non-VM draw (anm NULL) under the running callback. */
 static int dim_classify(const char* anm, int layer, int script) {
     for (size_t i = 0; i < g_game->draw.rule_count; ++i) {
@@ -215,6 +244,7 @@ static void __cdecl __attribute__((force_align_arg_pointer)) dim_vm_enter(uint32
     if (g_game->draw.vm_script_off) script = *(const uint16_t*)(g_vm + g_game->draw.vm_script_off);
     dim_vm_trace(anm, layer, script); g_frame_vms++;
     int cls = dim_classify(anm, layer, script);
+    dim_census(g_draw_prio, anm, layer, cls);
     if (cls == g_batch_class) return;
     g_dim_flush(); g_frame_flushes++;
     g_batch_class = cls;

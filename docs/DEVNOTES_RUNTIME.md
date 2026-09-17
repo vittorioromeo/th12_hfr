@@ -231,6 +231,20 @@ because the crash coincided with a key press. `git diff` on the file, not the lo
 
 ## 3b. Dimming the background and the pickups, and what draws what
 
+> **The census, added while porting TH14.** The per-frame trace below samples one frame every
+> ten seconds, which is fine for the things that are always on screen and useless for the ones
+> that are not. An item, a bomb, a death can be happening constantly and still never land in a
+> traced frame -- TH14's items were missed twice that way. So with `debug` on, every VM draw of
+> every frame now also feeds a `(priority, ANM, layer)` census, reported on the stats line like
+> the update-node one, with how the current rules classify each row:
+>
+> ```text
+> draw census: priority 35, bullet.anm layer 0, 41022 draws -- not faded
+> ```
+>
+> That is the table the rules are written from, and it makes "what draws the items?" a question
+> the log answers rather than one the trace has to be lucky enough to catch.
+
 The request was simple — fade the stage towards black and the P/point items towards
 transparent so bullets stand out — and the first two attempts were wrong in instructive ways.
 
