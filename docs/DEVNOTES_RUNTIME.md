@@ -963,3 +963,42 @@ code.
 6. **TH14 and beyond.** TH13's port (§7a) is the template: the speed-float pattern held, the
    engine changes were absorbed by profile fields, and the per-object hooks were found by
    meaning rather than by byte shape. Expect the same shape of job.
+
+## Sub-steps per 60 Hz frame at a rate that is not a multiple of 60
+
+Raised from outside, and worth settling with numbers rather than argument: with sub-stepping on
+the logic rate follows the display, so at 144 Hz the scheduler runs 144 ticks a second against
+60 Hz frames. 144/60 is 2.4, so the number of ticks that fall inside one 60 Hz frame cannot be
+constant. Measured over 200 frames:
+
+| rate | ticks per 60 Hz frame | travel between consecutive collision tests |
+|---|---|---|
+| 144 | 2 or 3, period 5: `3 2 3 2 2` | 106 or 107 units of 256 -> 0.4141 / 0.4180 frames |
+| 165 | 2 or 3, period 4: `3 3 3 2` | 93 or 94 -> 0.3633 / 0.3672 |
+| 240 | 4, always | 64 -> 0.2500 |
+| 360 | 6, always | 42 or 43 -> 0.1641 / 0.1680 |
+
+The counts are exactly as predicted, including the periods. **The conclusion that follows from
+them is not.** The worry was that a 2-tick frame bounds hit detection more loosely than the 2.4
+average suggests -- but what bounds tunnelling is the distance a bullet travels between two
+consecutive collision tests, and collision is tested once per tick. The ticks are evenly spaced
+in real time, so that distance is uniform: 0.414 to 0.418 of a game frame at 144 Hz, everywhere,
+with no frame in which a bullet moves half a frame between tests. The 2-or-3 split is where the
+60 Hz boundaries happen to fall among evenly spaced ticks, not a variation in their spacing.
+
+Note that 360 Hz has the same one-unit dither in `dt` (42 or 43 of 256) while still giving
+exactly six ticks a frame, which is the same fact from the other side: the Bresenham step is
+what keeps the slices summing to exactly one frame, and it dithers whether or not the rate
+divides 60.
+
+What the split does decide is where the *major* tick falls -- the boundary tick on which the
+frame-locked systems run. Those still run exactly sixty times a second at every rate, which is
+the property the whole design rests on.
+
+So 144 and 165 are not the odd ones out for hit detection. They would be for a design that fixed
+N sub-steps per 60 Hz frame and presented whenever the panel was ready: that makes the count
+uniform and the *spacing* non-uniform, which is the trade in the wrong direction, and it also
+stops a presented frame coinciding with a tick, so every sub-stepped object would need
+interpolating to draw. The current arrangement gets uniform spacing and exact 60 Hz boundaries
+at the cost of a count that is only constant when the rate divides 60, and the count is the part
+that does not matter.

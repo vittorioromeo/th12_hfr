@@ -36,6 +36,13 @@
    conservative half of TH13's split. */
 static const struct DimRule th14_dim_rules[] = {
     { 31, 35, "bullet.anm",  -1, -1, -1, -1, DIM_NONE },       /* bullets are what the rest is faded for */
+    /* bullet.anm above the world, on the same two layers effect.anm uses there. These appear
+       only when items are on screen, which is why they are classified as items -- but bullet
+       cancels are drawn from bullet.anm too and would look identical in the census, and
+       telling the two apart needs the script index, which is the one VM field still unread.
+       So this line is an experiment with a one-run answer: turn dim_items up and see which
+       fades. If it is the cancel bursts, this becomes DIM_EFFECTS. */
+    { 42, 43, "bullet.anm",  20, 21, -1, -1, DIM_ITEMS },
     {  9,  9, "effect.anm",   2,  2, -1, -1, DIM_EFFECTS },    /* under the world */
     /* The focus ring and the hitbox are drawn from effect.anm, not from pl00.anm, on the
        player's own layer and inside the player's priority band -- the trace shows exactly one
