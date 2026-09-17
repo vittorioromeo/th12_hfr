@@ -644,6 +644,39 @@ What a rate pointer cannot fix, and so what every hook here is one of:
    Player call (`g_ptf_prev`/`g_ptf_cur`), which is true every tick, so the "multiple of 3" then
    holds for a whole frame as it did. TH13 replaces the identical guard at 0x446888.
 
+### The two guards that stop a sub-stepped player doing damage
+
+`0x451400` is "test this enemy against every one of the player's shots", called by the enemy
+with its position and radius. It has two guards, and both fail silently under sub-stepping in
+the same way: the question is asked on the boundary tick, because the enemy code is MODE_FRAME,
+and the thing it asks about now changes on some *other* tick.
+
+**The player's state timer, at the top of the function** (`0x451450`). "The integer did not
+change -> return 0". Sub-stepped, that integer changes on one tick of six, and at 360 Hz, where
+dt is not exact in float32, that is never the boundary tick. The function returns 0 every frame
+and nothing the player fires ever hits anything. It is replaced with the same question asked of
+the timer's *float* before and after this tick's Player call, which is what `g_ptf_prev` and
+`g_ptf_cur` are for -- true on every tick, as "the timer advanced this frame" was before.
+
+**Each shot's own timer, inside the loop** (`0x4514ce`): "this shot's integer changed this tick,
+and is a multiple of the shot's interval at +0x80". That is the shot's hit cadence in frames.
+Here the fix is at the other end -- where the timer is ticked, in the player's own tail
+(`0x44e08d`, a countdown by its rate pointer, which is the game speed). It is ticked by the
+logical speed on the boundary tick, one whole frame's worth, and not at all on the others, with
+prev set to the integer so the guard reads "unchanged". The total per frame is unchanged and so
+is the shot's lifetime; what changes is that the integer now crosses on the tick that asks.
+
+TH13 has this exact pair at `0x446888` and `0x4436b4`, and its notes say what it costs to miss
+it. Ours cost a build: the player moved beautifully and could not kill anything. The lesson that
+generalises is that the failure is not in the system being sub-stepped, it is in the *other*
+system that reads it once a frame -- so the question to ask of every new MODE_SUB callback is
+not "does this still work" but "who reads this, and how often".
+
+The shot array itself: 256 entries of 0xa4 at `player+0xde28`, with the timer at +0x60 (prev),
++0x64 (integer), +0x68 (float), +0x6c (rate), the interval at +0x80 and the active flag at +0x00.
+The hit test walks it as `[player+0xde18]` with the cursor at +0x74; the player's tail walks the
+same array as `[player+0xde90]`.
+
 ### Gate the dispatch, not the arms
 
 The player's life state machine (`[+0x684]`, table at 0x44ebf4) has five arms and only state 1

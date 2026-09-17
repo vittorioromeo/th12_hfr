@@ -209,6 +209,42 @@ static void th14_install_sites(void) {
     EJCC(0x8c, 0x44db3d);                           /* jl: the game's own branch */
     EJMP(0x44d9aa); site_hook(0x44d9a1, 9);
 
+    /* --- Player shots against enemies (0x451400, called by the enemy with its position and
+           radius). Two guards in it, and both are the reason a sub-stepped player stops doing
+           damage; TH13 has the same pair at 0x446888 and 0x4436b4.
+
+           The first is at the top of the function: "the player's state timer integer did not
+           change -> return 0". Sub-stepped, that integer changes on one tick of the six and the
+           enemy code runs on the boundary tick, so on most rates it never changed on the tick
+           that asked -- and nothing the player fired ever hit anything. Ask the question of the
+           timer's float before and after this tick's Player call instead. --- */
+    STUB_BEGIN();
+    E(0x50, 0xa1); E32((uint32_t)(uintptr_t)&g_ptf_prev);
+    E(0x3b, 0x05); E32((uint32_t)(uintptr_t)&g_ptf_cur); E(0x58);
+    EJCC(0x85, 0x451463);                           /* changed: the game's own jne target */
+    EJMP(0x451458);                                 /* unchanged: its fall-through, return 0 */
+    site_hook(0x451450, 8);
+
+    /* --- The second guard is per shot, inside that function's loop over the 256 shots at
+           player+0xde28: "this shot's timer integer changed this tick, and is a multiple of the
+           shot's interval" (0x4514ce). That is the shot's hit cadence in frames, and it is
+           asked on the boundary tick, so the integer has to change on the boundary tick and
+           nowhere else. The timer is ticked in the player's own tail (0x44e08d, a countdown by
+           its rate pointer, which is the game speed); sub-stepped it crosses a whole number on
+           whichever tick the float happens to reach one, and at 360 Hz, where dt is not exact in
+           float32, that is never the boundary tick.
+
+           So tick it by the logical speed on the boundary tick -- one whole frame, which is what
+           the unmodified game does -- and leave it alone on the others, with prev already set to
+           the integer so the guard reads "unchanged". The total per frame is the same, and the
+           shot's lifetime is still the same number of frames. --- */
+    STUB_BEGIN();
+    E(0x8b, 0x43, 0xfc);                            /* mov eax,[ebx-4]  (the integer) */
+    E(0x89, 0x43, 0xf8);                            /* mov [ebx-8],eax  (prev = integer) */
+    E_not_major(); EJCC(0x84, 0x44e0dd);            /* minor tick: no countdown, eax is the int */
+    E(0xb8); E32((uint32_t)(uintptr_t)&g_logical);  /* mov eax,&g_logical -- one frame's worth */
+    EJMP(0x44e096); site_hook(0x44e08d, 13);
+
     stub_end();
     LOG("TH14 site patches installed (%u bytes of stubs)", (unsigned)g_stub_used);
 }

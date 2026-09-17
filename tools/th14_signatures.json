@@ -128,6 +128,14 @@
   "bytes": "83 f8 1e 0f 8c 93 01 00 00"
  },
  {
+  "address": "0x451450",
+  "bytes": "3b 86 8c 06 00 00 75 0b"
+ },
+ {
+  "address": "0x44e08d",
+  "bytes": "8b 43 fc 89 43 f8 8b 43 04 85 c0 74 2c"
+ },
+ {
   "address": "0x401382",
   "bytes": "5f 8b c6 5e 5b 8b e5 5d c3"
  },
