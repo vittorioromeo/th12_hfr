@@ -32,6 +32,12 @@ static const struct GameProfile th14_profile = {
         .remove_node = 0x401630,
         .crit = 0x4f56d0,
         .crit_count = 0x4f5808,
+        /* The frame function's own "this is a frame pass" context, which the catch-up tick
+           reproduces: `mov [0x4d9640], 0x4d93e8` at 0x46a965 and `mov [0x4d9644], 2` at
+           0x46a994, the pair TH13 writes as 0x4dcc18/0x4dc9d0 and 1. */
+        .frame_context_ptr = 0x4d9640, .frame_flag = 0x4d9644, .frame_context_value = 0x4d93e8,
+        /* ... and what it calls when the pass says stop, at 0x46a9a7 and 0x46a9bf. */
+        .cleanup_fn = 0x403bb0, .cleanup_this = 0x4d98ec,
         .frame_calls = {0x469a27, 0x469a45, 0x469a51},
         .runner_fn = 0x401280, .runner_ret = 0x40138a,
         .latency_cmp = 0x46aa80,
@@ -47,7 +53,23 @@ static const struct GameProfile th14_profile = {
     .runner_arg = RUNNER_ARG_ECX,
     .frame_ctx_ecx = 1,
     .screenshot_stack_arg = 1,
+    .cleanup_this_ecx = 1,
+    .frame_flag_value = 2,
     .remove_node_abi = REMOVE_NODE_RUNNER_THIS,
     .native_size_cycle = 1,
+    /* The draw path, as far as it is read so far. The dispatch is the draw runner's own
+       `mov ecx,[edi+0x24]; mov eax,[edi+8]; call eax` at 0x40141a, the same three instructions
+       TH13 has at 0x470c9e with the node in ESI instead. The flush and its manager come off
+       the frame function's first act, which is where TH13's were read from too.
+
+       `world_prio` is deliberately left at zero: which priority the world starts at is read
+       off a running game, not out of the executable, and a wrong one fades the wrong half of
+       the screen. Zero means the menu reports dimming as unavailable -- but the dispatch is
+       still wrapped, which is what makes the debug draw trace run, which is what will supply
+       the priority and the rules. The sprite VM draw is not described yet either, so the
+       per-VM rules stay inert; dimming.c already treats both as optional. */
+    .draw = { .dispatch = 0x40141a, .dispatch_len = 8, .node_reg = R_EDI, .prio_off = 0,
+              .flush_fn = 0x475eb0, .flush_reg = R_ECX, .flush_this = 0x4f56cc,
+              .world_prio = 0, .rules = NULL, .rule_count = 0 },
     .d3dx = "d3dx9_43.dll",
 };

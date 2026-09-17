@@ -100,6 +100,14 @@ struct GameProfile {
     int frame_ctx_ecx;
     /* The screenshot routine takes the filename pushed (stdcall) rather than in EAX. */
     int screenshot_stack_arg;
+    /* The end-of-pass cleanup takes its object in ECX (thiscall) rather than ESI. */
+    int cleanup_this_ecx;
+    /* What the game stores in `frame_flag` on the path the frame function takes, which the
+       catch-up tick has to reproduce. Zero selects 1, which is what TH10-13 store; TH14
+       stores 2. Getting this wrong does not crash -- it tells the engine it is running in a
+       context it is not, which is the kind of wrong that shows up as a scene misbehaving
+       three menus later. */
+    uint32_t frame_flag_value;
     int runner_return8_ends;
     int native_size_cycle;          /* the game cycles its own window sizes on F10 (TH11 on) */
     /* How remove_node is called. TH10-12 pass (node, runner) in ECX/EDX, TH13 swapped them,

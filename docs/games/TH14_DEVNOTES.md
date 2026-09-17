@@ -281,7 +281,40 @@ those two only compose because every one of the game's writes is a described spe
 folds the runtime's factor in. A profile with `speed` and no sites would hold the game at 1.0
 and quietly disable its own slow-motion and pause. `install()` now says so if anyone tries.
 
-## 11. What a trace still has to supply
+## 11. The catch-up tick and the draw path
+
+Two more pieces, both read the same way: find where TH13 does the thing, find the same shape
+in TH14, freeze the instructions it was read from.
+
+**The frame context.** `update_only_tick` reproduces what the frame function does before it
+runs the update list. TH13: `mov edi,0x4dc9d0; mov [0x4dcc18],edi` and a `1` in `0x4dcc1c`.
+TH14: `mov [0x4d9640],0x4d93e8` at `0x46a965` and `mov [0x4d9644],2` at `0x46a994`. So
+`frame_context_ptr=0x4d9640`, `frame_context_value=0x4d93e8`, `frame_flag=0x4d9644` -- **and
+the flag value is 2, not the 1 the runtime had hard-coded**. Checked rather than assumed: the
+stores to that word across the binary pair `0x4d93e8` with `2` every time, exactly as TH13's
+pair `0x4dc9d0` with `1`. It is now a profile field, because a wrong value there does not
+crash, it tells the engine it is running in a context it is not.
+
+**The cleanup.** `mov ecx,0x4d98ec; call 0x403bb0` at `0x46a9a7`, against TH13's
+`mov esi,0x4dcebc; call 0x473590`. Same function, different register -- the fourth thing this
+rebuild moved into ECX -- so `cleanup_this_ecx` joins the other three.
+
+With those the catch-up tick works, and the audit's six lines are down to four.
+
+**The draw dispatch.** `mov ecx,[edi+0x24]; mov eax,[edi+8]; call eax` at `0x40141a` in the
+draw runner, the same three instructions TH13 has at `0x470c9e` with the node in ESI. The
+sprite batch flush and its manager come off the frame function's first act
+(`mov ecx,[0x4f56cc]; call 0x475eb0`), which is where TH13's were read from too
+(`mov esi,[0x4dc688]; call 0x4679a0`).
+
+`world_prio` is left at zero on purpose. Which priority the world starts at is read off a
+running game, and a wrong one fades the wrong half of the screen. Zero makes the menu report
+dimming as unavailable -- but the dispatch is still wrapped, and **that is what makes the debug
+draw trace run**. Which is the point: the trace prints what draws at each priority, and that is
+the evidence the class table in §10 is waiting for. Describing the draw path is how the update
+path gets identified.
+
+## 12. What a trace still has to supply
 
 The UpdateFunc class table and the dimming rules cannot be read out of the executable. Both
 come from the patch's own log while a stage is running: the registered update list names every

@@ -147,6 +147,11 @@ static void call_with_esi(uintptr_t fn, uintptr_t esi) {
     uintptr_t s = esi;
     __asm__ volatile ("call *%1" : "+S"(s) : "r"(fn) : "eax", "ecx", "edx", "memory", "cc");
 }
+typedef void (__attribute__((thiscall)) *CleanupThisFn)(void* self);
+static void call_cleanup(void) {
+    if (g_game->cleanup_this_ecx) ((CleanupThisFn)g_game->addr.cleanup_fn)((void*)g_game->addr.cleanup_this);
+    else call_with_esi(g_game->addr.cleanup_fn, g_game->addr.cleanup_this);
+}
 /* Whether the catch-up tick can be made at all. It sets up the game's frame context by hand
    and may have to run the game's own end-of-pass cleanup, so it needs five addresses that a
    profile describing only the scheduler has not got yet. Without them the frame hook still
@@ -160,10 +165,10 @@ static int catchup_available(void) {
 static int update_only_tick(void) {
     if (!catchup_available()) return 0;
     G_FRAME_FLAG34 = g_game->addr.frame_context_value;
-    G_FRAME_FLAG38 = 1;
+    G_FRAME_FLAG38 = g_game->frame_flag_value ? g_game->frame_flag_value : 1;
     int r = hfr_runner(G_UPDATE_RUNNER);
-    if (r == 0)  { call_with_esi(g_game->addr.cleanup_fn, g_game->addr.cleanup_this); return 1; }
-    if (r == -1) { call_with_esi(g_game->addr.cleanup_fn, g_game->addr.cleanup_this); return 2; }
+    if (r == 0)  { call_cleanup(); return 1; }
+    if (r == -1) { call_cleanup(); return 2; }
     return 0;
 }
 
