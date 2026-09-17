@@ -26,7 +26,19 @@ int hfr_ui_get(int id) {
     case UI_MAX_FRAME_LATENCY:  return cfg.max_frame_latency;
     case UI_FPS:                return cfg.fps;
     case UI_SUBSTEP:            return cfg.substep;
-    case UI_DIM_CLASSES:        return (1 << DIM_COUNT) - 1;   /* every class has rules here */
+    /* Which classes this game can actually fade: the background whenever the world's priority
+       is known, and every category some rule mentions. It used to answer "all of them", which
+       was true of TH10-13 and is not true of a game whose rules are still being written -- and
+       a menu slider that does nothing is worse than one that is not offered. */
+    case UI_DIM_CLASSES: {
+        if (!g_game) return 0;
+        int mask = g_game->draw.world_prio > 0 ? (1 << DIM_BACKGROUND) : 0;
+        for (size_t i = 0; i < g_game->draw.rule_count; ++i) {
+            int c = g_game->draw.rules[i].category;
+            if (c >= 0 && c < DIM_COUNT) mask |= 1 << c;
+        }
+        return mask;
+    }
     case UI_SUBTICK_INPUT:      return cfg.subtick_input;
     case UI_ENEMY_INTERP:       return cfg.enemy_interp;
     case UI_DEBUG:              return cfg.debug;

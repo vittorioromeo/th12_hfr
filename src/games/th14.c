@@ -18,6 +18,29 @@
    and says why. */
 #include "../game_profile.h"
 
+/* Dimming (DEVNOTES_RUNTIME 3b, TH14_DEVNOTES 12). Written from a stage trace, and
+   deliberately short: every line below is something the trace actually showed, and the classes
+   it cannot yet place are left unclaimed rather than guessed at. `hfr_ui_get(UI_DIM_CLASSES)`
+   reports which classes a profile really has, so the menu offers these and not the rest.
+
+     prio 2,3,5,6   st01wl.anm, title.anm, front.anm -- the stage, drawn first
+     prio 9         effect.anm layer 2 -- drawn under the world, as TH13's layer 2 is at its 8
+     prio 19        enemy.anm layer 8 -- the first world object, so the world starts here
+     prio 27..30    pl00.anm layers 13..15 -- the player, its shots and its focus ring
+     prio 31, 35    bullet.anm -- lasers and bullets
+     prio 42,43     effect.anm layers 20,21 -- effects over the world
+
+   Not placed yet: items (none were on screen in the traced frames, and TH14 has no item.anm,
+   so which ANM and layer they use is still unread), and which of pl00.anm's layers is the
+   hitbox as against the shots -- so the whole of pl00.anm is left unfaded, which is the
+   conservative half of TH13's split. */
+static const struct DimRule th14_dim_rules[] = {
+    { 31, 35, "bullet.anm",  -1, -1, -1, -1, DIM_NONE },       /* bullets are what the rest is faded for */
+    {  9,  9, "effect.anm",   2,  2, -1, -1, DIM_EFFECTS },    /* under the world */
+    { -1, -1, "pl*.anm",     -1, -1, -1, -1, DIM_NONE },       /* the player, its shots and its hitbox */
+    { -1, -1, "effect.anm",  -1, -1, -1, -1, DIM_EFFECTS },
+};
+
 static const struct GameProfile th14_profile = {
     .identity = &game_identities[GI_TH14],
     .addr = {
@@ -75,7 +98,8 @@ static const struct GameProfile th14_profile = {
        per-VM rules stay inert; dimming.c already treats both as optional. */
     .draw = { .dispatch = 0x40141a, .dispatch_len = 8, .node_reg = R_EDI, .prio_off = 0,
               .flush_fn = 0x475eb0, .flush_reg = R_ECX, .flush_this = 0x4f56cc,
-              .world_prio = 0, .rules = NULL, .rule_count = 0,
+              .world_prio = 19, .rules = th14_dim_rules,
+              .rule_count = sizeof th14_dim_rules / sizeof *th14_dim_rules,
               /* The per-VM draw, so the trace can say which ANM and layer each sprite came
                  from. The VM is this function's first stack argument here, where TH10-13
                  pass it in a register -- the fifth convention this rebuild changed.
@@ -84,6 +108,11 @@ static const struct GameProfile th14_profile = {
                  they get read off a running game rather than guessed. Until they are set, no
                  VM is classified and no rule can match the wrong thing. */
               .vm_draw = 0x478f60, .vm_draw_len = 9, .vm_stack_arg = 1,
-              .vm_anm_off = 0, .vm_layer_off = 0, .vm_script_off = 0 },
+              /* Read off a running game: every VM's loaded-ANM pointer is at +0x30 and its
+                 sprite layer at +0x24, the same two places TH13 keeps them, which the trace
+                 found rather than TH13's numbers being assumed. The script index is left
+                 unknown -- no rule here needs one, and the dump the trace prints stops just
+                 short of where TH13's sits. */
+              .vm_anm_off = 0x30, .vm_layer_off = 0x24, .vm_script_off = 0 },
     .d3dx = "d3dx9_43.dll",
 };

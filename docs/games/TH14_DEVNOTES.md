@@ -388,7 +388,51 @@ way the class table and `world_prio` will be. Guessing `vm_anm_off` would have p
 table would then have been written against fiction -- the one failure here that nothing
 downstream could catch.
 
-## 14. What a trace still has to supply
+## 14. What the VM trace said
+
+`vm_anm_off` is **0x30** and `vm_layer_off` is **0x24** -- the same two places TH13 keeps them,
+which the trace found rather than TH13's numbers being assumed. Every one of 280 VMs across a
+stage reported its ANM pointer at +0x30, with no other offset ever matching.
+
+And with those, the draw list says what each priority actually puts on screen:
+
+| prio | callback | ANM / layer |
+|---|---|---|
+| 3 | `0x40eb80` | `st01wl.anm` L0 |
+| 5 | `0x47e0f0` | `title.anm`, `front.anm` L0 |
+| 9 | `0x47e110` | `effect.anm` L2 |
+| 19 | `0x47e1f0` | `enemy.anm` L8 |
+| 27, 28, 29, 30 | `0x47e230`, `0x44ec70`, `0x47e240`, `0x47e250` | `pl00.anm` L13, L14, L15 |
+| 31, 35 | `0x439780`, `0x417640` | `bullet.anm` L0 |
+| 42, 43 | `0x47e320`, `0x47e2b0` | `effect.anm` L20, L21 |
+| 49, 51 | `0x47e2c0`, `0x47e2d0` | `front.anm` L22, `st01logo.anm` L23 |
+| 54+ | the rest | `title.anm`, `ascii.anm`, `front.anm`, `text.anm` |
+
+**Which corrected a guess.** §12 read priority 31 (`0x439780`, 270 prims from one texture) as
+enemies. It draws `bullet.anm` -- it is the laser or cancel path, not enemies, and the actual
+enemies are drawn by an ANM layer callback at priority 19. That is exactly the kind of error
+prim counts produce and names do not, and it is the reason the class table waited for this.
+
+It also confirms the player: `0x44ec70` at priority 28 draws `pl00.anm`, so `0x44ec60` is the
+player's update -- which the shape matcher had put first at a thoroughly unconvincing 0.27.
+
+### The rules, and what is left unclaimed
+
+`world_prio` is 19, the first world object. Four rules: bullets never fade, `effect.anm` layer 2
+fades as effects under the world (TH13 has the same rule at its priority 8), the rest of
+`effect.anm` fades, and the whole of `pl00.anm` does not.
+
+Two things are deliberately unclaimed. Items, because none were on screen in the traced frames
+and TH14 has no `item.anm`, so which ANM and layer they use is still unread. And which of
+`pl00.anm`'s layers is the hitbox as against the shots -- so the whole file is left unfaded,
+which is the conservative half of TH13's split.
+
+`UI_DIM_CLASSES` used to answer "all of them", which was true of TH10-13 and is not true of a
+game whose rules are still being written. It now reports the classes the profile's rules
+actually mention, so the menu offers background and effects for TH14 and does not offer sliders
+that would do nothing.
+
+## 15. What a trace still has to supply
 
 The UpdateFunc class table and the dimming rules cannot be read out of the executable. Both
 come from the patch's own log while a stage is running: the registered update list names every
