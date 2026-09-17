@@ -135,7 +135,12 @@ static int install(void) {
            known, so the rate, the log and the menu all say the same thing. */
         if (!g_class_count) {
             cfg.substep = 0;
-            LOG("this game's systems are not classified yet: the frame rate is raised, the simulation stays at 60 Hz and nothing is sub-stepped.");
+            /* Say what this looks like, not what it is. Presenting at the display's rate with
+               nothing moving between 60 Hz ticks means the same picture six times in a row at
+               360 Hz, which on screen is indistinguishable from the stock game -- and "the
+               frame rate is raised" reads like a promise that it will not look that way. */
+            LOG("this game's systems are not classified yet: nothing moves between 60 Hz ticks, so motion still looks exactly like the unmodified game.");
+            LOG("  the window, scaling, filters, dimming and the menu are all active; the frame rate is not yet worth anything on its own.");
         }
         if (!g_game->addr.poll_input || !g_game->addr.game_input) {
             if (cfg.subtick_input) LOG("this game's input path is not described: sub-tick input is off.");

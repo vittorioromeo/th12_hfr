@@ -32,13 +32,16 @@ you remove the patch by deleting them again.
 | Touhou 11 — Subterranean Animism | v1.00a | `th11.exe`, `th11e.exe` | supported |
 | Touhou 12 — Undefined Fantastic Object | v1.00b | `th12.exe`, `th12e.exe` | supported |
 | Touhou 13 — Ten Desires | v1.00c | `th13.exe`, `th13e.exe` | supported |
-| Touhou 14 — Double Dealing Character | v1.00b | `th14.exe` | **partial** — frame rate only, see below |
+| Touhou 14 — Double Dealing Character | v1.00b | `th14.exe` | **partial** — picture only, see below |
 | Touhou Koumakyou: New Classic | see [notes](docs/games/TH06NC_DEVNOTES.md#2-product-and-inspected-build) | `th06nc.exe` | **experimental**, smaller feature set — [details](#new-classic) |
 
-TH14 is new and only half described. It runs at the display's rate, with the whole picture
-path — resizing, scaling, filters, borderless, the F11 menu — and its simulation stays at
-60 Hz: no sub-stepping, no dimming, no replay extension. Only the Japanese `th14.exe` is
-recognised so far; the English and Steam builds still have to be checked.
+TH14 is new and only half described. What works is the picture: resizing, scaling, filters,
+borderless, dimming and the F11 menu. What does not work yet is the thing the patch is for —
+**motion still looks exactly like the unmodified game.** The game presents at your display's
+rate, but nothing moves between its 60 Hz ticks, so at 360 Hz you are shown the same frame six
+times. Smoothness needs sub-stepping, and that needs work on TH14 that is not finished. There
+is also no replay extension and no sub-tick input. Only the Japanese `th14.exe` is recognised
+so far; the English and Steam builds still have to be checked.
 
 Japanese and English executables are both supported for TH10–13, and so are the Steam releases. Other
 versions, other games, and the `th06c.exe` (Classic) executable bundled with New Classic are
