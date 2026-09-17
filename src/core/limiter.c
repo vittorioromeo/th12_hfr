@@ -236,6 +236,7 @@ static void limiter_stats(double now) {
         if (cfg.debug) {
             node_census_report();
             dim_census_report();
+            site_census_report();
             uint8_t* rm=G_REPLAY_MANAGER;
             if (rm) LOG("state: stage=%d replay_frame=%d replay_mode=%d input=%08x",
                 *(int*)(rm+g_game->layout.replay_stage),*(int*)(rm+g_game->layout.replay_frame),*(int*)(rm+0x10),(unsigned)G_GAME_INPUT);

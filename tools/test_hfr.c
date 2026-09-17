@@ -310,6 +310,11 @@ int main(int argc,char**argv) {
        import redirection runs against the real modules and can be checked afterwards. */
     LoadLibraryA("d3d9.dll");LoadLibraryA("winmm.dll");
     cfg.subtick_input=1;cfg.d3d9ex=1;
+    /* A profile may install extra sites only when the ini asks for debug -- counters inside the
+       game's own guards, for working out why a sub-stepped system does nothing. Those are code
+       written into the game like any other patch, so they are validated here rather than being
+       a path only the person testing ever runs. */
+    cfg.debug=1;
     if (g_game->provisional && !getenv("HFR_VALIDATE_PROVISIONAL")) {
         assert(!install());          /* a provisional game must be left completely alone */
         puts("SKIP: hook installation (this game is provisional; the patch does not touch it)");
@@ -321,6 +326,7 @@ int main(int argc,char**argv) {
     assert(g_frame_hook_installed == sim);   /* the frame hook exists exactly when the profile describes one */
     assert(orig_Direct3DCreate9 && orig_D3DXCreateTexture && orig_D3DXCreateTextureFromFileInMemoryEx);
     assert(!sim || orig_joyGetPosEx);   /* sub-tick input only where there is a simulation */
+    cfg.debug=0;
     puts("PASS: complete patch plan has frozen signatures, no overlaps; failed transaction leaves code intact");
     dump(argv[2],".game",base,nt->OptionalHeader.SizeOfImage);
     dump(argv[2],".stubs",g_stub_mem,g_stub_used);

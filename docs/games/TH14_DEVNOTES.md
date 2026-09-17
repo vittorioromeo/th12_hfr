@@ -677,6 +677,41 @@ The shot array itself: 256 entries of 0xa4 at `player+0xde28`, with the timer at
 The hit test walks it as `[player+0xde18]` with the cursor at +0x74; the player's tail walks the
 same array as `[player+0xde90]`.
 
+### The weapon timer, and a census for "it does nothing"
+
+Reimu's focus weapon -- the spinning broom -- kept moving and stopped damaging anything after the
+player was sub-stepped, while her ordinary shots were fine. The two go through different state.
+
+The player owns 256 *weapon* objects at `player+0x6c8`, walked by `0x451380` and updated by
+`0x4510b0`, which calls the weapon type's own update (a table of six callbacks per type, at
+`0x4d5908`, `0x4d5928`, `0x4d5948`) and then ticks the weapon's timer at `0x45131b` -- prev
+`+0x18`, integer `+0x1c`, float `+0x20`, rate `+0x24`, the rate pointing at the game speed. Every
+weapon type's update asks that integer "did it change, and is it a multiple of N": the cadence on
+which the weapon fires, retargets, and drives the damage volume it owns in the shot array
+(`weapon+0xc0`, whose flags it sets to the swept shape at `0x451b17`). It is the same rule as the
+shot timer's, and it gets the same treatment -- advanced by the logical speed on the boundary
+tick and not at all on the others, with the integer and float written back unchanged. The
+weapon's motion is a MotionState stepped every tick by `0x4510b0`, so nothing moves in steps.
+
+**And a census, because guessing was not working.** "The player fires and nothing dies" has four
+possible answers inside `0x451430` and no way to tell them apart by reading. `E_count` and
+`site_census_report` are a handful of counters a profile's site hooks can increment, printed on
+the debug stats line; TH14 installs six of them, only when the ini asks for debug, inside the
+game's own guards:
+
+| | |
+|---|---|
+| `tests` | enemies tested against the shot array |
+| `shots` | shot slots examined |
+| `notick` | rejected: this shot's timer integer did not change on this tick |
+| `cadence` | rejected: the integer is not a multiple of the shot's interval |
+| `hit` | reached the shape test |
+| `melee` | of those, the ones with the swept shape -- a focus weapon's damage volume |
+
+A build that installs code only when a person's ini says so is a path nothing else exercises, so
+the harness now sets `cfg.debug` before validating the patch plan: these are patches into the
+game like any other and are frozen and checked like any other.
+
 ### Gate the dispatch, not the arms
 
 The player's life state machine (`[+0x684]`, table at 0x44ebf4) has five arms and only state 1

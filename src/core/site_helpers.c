@@ -76,3 +76,28 @@ static void movement_cvttss(uintptr_t addr, uint8_t src_modrm, uint32_t src_disp
     ECOPY(addr, 8); E(0x9d); E(0xc3);                              /* plain: the original; popfd; ret */
     patch_call_n(addr, st, 8, site_expected(addr, 8));
 }
+
+/* A handful of counters a game's own site hooks can increment, printed on the debug stats line.
+   The update and draw censuses answer "what is there"; this answers "which of this game's own
+   guards is rejecting, and how often", which is the question left when a system is sub-stepped,
+   looks right and quietly does nothing. Debug-only: the counting stubs are installed only when
+   the ini asks for them, so a normal build has no extra code in the game's hot loops. */
+enum { SITE_CENSUS = 8 };
+static unsigned g_site_census[SITE_CENSUS];
+static const char* g_site_census_name[SITE_CENSUS];
+/* emit "inc dword [&g_site_census[i]]" -- 6 bytes, clobbers the flags */
+static void E_count(unsigned i, const char* name) {
+    g_site_census_name[i] = name;
+    E(0xff, 0x05); E32((uint32_t)(uintptr_t)&g_site_census[i]);
+}
+static void site_census_report(void) {
+    char line[256]; int n = 0, any = 0;
+    if (!cfg.debug) return;
+    for (unsigned i = 0; i < SITE_CENSUS; ++i) if (g_site_census_name[i]) {
+        any = 1;
+        n += snprintf(line + n, sizeof line - (size_t)n, "%s%s=%u",
+                      n ? " " : "", g_site_census_name[i], g_site_census[i]);
+        g_site_census[i] = 0;
+    }
+    if (any) LOG("site census: %s", line);
+}

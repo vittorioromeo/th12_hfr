@@ -245,6 +245,60 @@ static void th14_install_sites(void) {
     E(0xb8); E32((uint32_t)(uintptr_t)&g_logical);  /* mov eax,&g_logical -- one frame's worth */
     EJMP(0x44e096); site_hook(0x44e08d, 13);
 
+    /* --- The player's weapons (0x100 of them at player+0x6c8, walked by 0x451380, each updated
+           by 0x4510b0 which calls its type's update and then ticks its own timer at 0x45131b).
+           That timer's integer is what every weapon type's update asks "did it change, and is it
+           a multiple of N" -- the cadence on which a weapon fires, retargets and drives the
+           damage volume it owns in the shot array. It is the same rule as the shot timer one
+           line above, and for the same reason: whatever the weapon does on that tick is read by
+           the enemy once a frame, on the frame boundary, so the integer has to cross there.
+
+           Advance it by the logical speed on the boundary tick and not at all on the others,
+           writing the integer and the float back unchanged so nothing else notices. The weapon's
+           own motion is a MotionState stepped every tick by 0x4510b0, so this does not make the
+           broom or the options move in steps. --- */
+    STUB_BEGIN();
+    E(0x8b, 0x46, 0x1c);                            /* mov eax,[esi+0x1c]  (the integer) */
+    E(0x89, 0x46, 0x18);                            /* mov [esi+0x18],eax  (prev = integer) */
+    E_not_major(); E(0x75, 0x0a);                   /* boundary tick: advance */
+    E(0xf3, 0x0f, 0x10, 0x46, 0x20);                /* movss xmm0,[esi+0x20] */
+    EJMP(0x45135f);                                 /* ... and store both back unchanged */
+    E(0xb9); E32((uint32_t)(uintptr_t)&g_logical);  /* mov ecx,&g_logical -- one frame's worth */
+    EJMP(0x451328); site_hook(0x45131b, 13);
+
+    /* --- Debug only: count what the shot-versus-enemy test does, because "the player fires and
+           nothing dies" has four possible answers inside one function and guessing between them
+           is how a build ships with the wrong one fixed. tests = enemies tested, shots = shot
+           slots examined, notick = rejected because the shot's timer integer did not change,
+           cadence = rejected on its interval, hit = reached the shape test, melee = of those,
+           the ones with the swept shape, which is what a focus weapon's damage volume is. --- */
+    if (cfg.debug) {
+        STUB_BEGIN();
+        E_count(5, "tests");
+        E(0x8b, 0x0d); E32(0x4db52c);               /* mov ecx,[0x4db52c] */
+        EJMP(0x451469); site_hook(0x451463, 6);
+
+        STUB_BEGIN();
+        E_count(0, "shots");
+        E(0x8b, 0x06);                              /* mov eax,[esi] */
+        E(0x3b, 0x46, 0xfc);                        /* cmp eax,[esi-4] */
+        E(0x75, 0x0b);                              /* changed: on to the interval */
+        E_count(1, "notick");
+        EJMP(0x45174a);
+        EJMP(0x4514d9); site_hook(0x4514ce, 11);
+
+        STUB_BEGIN();
+        E(0x85, 0xd2);                              /* test edx,edx */
+        E(0x74, 0x0b);                              /* zero: this shot hits */
+        E_count(2, "cadence");
+        EJMP(0x4516b7);
+        E_count(3, "hit");
+        E(0xf6, 0xc1, 0x02);                        /* test cl,2 -- the swept shape */
+        E(0x74, 0x06);
+        E_count(4, "melee");
+        EJMP(0x4514e5); site_hook(0x4514dd, 8);
+    }
+
     stub_end();
     LOG("TH14 site patches installed (%u bytes of stubs)", (unsigned)g_stub_used);
 }
