@@ -644,6 +644,22 @@ What a rate pointer cannot fix, and so what every hook here is one of:
    Player call (`g_ptf_prev`/`g_ptf_cur`), which is true every tick, so the "multiple of 3" then
    holds for a whole frame as it did. TH13 replaces the identical guard at 0x446888.
 
+### Items: two counters, and nothing else
+
+The item update (`0x438550` behind `0x439750`, EDI = item, stride `0xc18`, timer prev `+0xbc8`,
+integer `+0xbcc`, float `+0xbd0`, rate `+0xbd4`, ticked in the per-item tail at `0x438d0c`) was
+the cheapest system yet. Its motion is already `pos += vel * speed` (`0x4386b6`) and even its
+gravity is `speed * 0.2` (`0x438716`), so an item falls at the same rate however often it is
+stepped. Only two things count frames by hand: the despawn countdown in state 5 (`0x4385c3`) and
+the "wait, then start falling" countdown in state 1 (`0x438631`). Both are gated on the item's
+own timer having crossed a whole frame, and the second keeps the game's "already expired" branch
+*ahead* of the gate, so an item that is falling is still updated every tick -- it is only the
+counting that happens once a frame.
+
+Who reads items once a frame, which is the question this port now asks of every new MODE_SUB
+callback: nobody. The manager collects against the player inside its own update rather than the
+player reaching into the items, so there is no once-a-frame reader to get out of step with.
+
 ### The two guards that stop a sub-stepped player doing damage
 
 `0x451400` is "test this enemy against every one of the player's shots", called by the enemy

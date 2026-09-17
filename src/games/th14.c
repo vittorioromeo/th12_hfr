@@ -154,6 +154,35 @@ static void th14_install_sites(void) {
     EJCC(0x84, 0x416bd9);                           /* the same frame again: motion only */
     EJMP(0x416b24); site_hook(0x416b0f, 21);
 
+    /* --- Items (0x438550 behind the callback 0x439750, EDI = item, stride 0xc18, timer prev
+           +0xbc8 / integer +0xbcc / float +0xbd0 / rate +0xbd4, ticked in the per-item tail at
+           0x438d0c). Everything about an item's motion is already right: the velocity is
+           `pos += vel * speed` (0x4386b6) and even the gravity is `speed * 0.2` (0x438716), so
+           an item falls at the same rate however often it is stepped. What is not right is the
+           two integer countdowns the update decrements itself -- the despawn countdown in state
+           5, and the "wait, then start falling" countdown in state 1. Both are gated on the
+           item's own timer having crossed a whole frame.
+
+           The second keeps the game's own "already expired" branch ahead of the gate, so an item
+           that is falling keeps being updated every tick; it is only the counting that is once a
+           frame. --- */
+    STUB_BEGIN();
+    E_timer_unchanged(R_EDI, 0xbc8, 0xbcc); EJCC(0x84, 0x438d96);
+    E(0xff, 0x8f); E32(0xc00);                      /* dec dword [edi+0xc00] */
+    EJCC(0x89, 0x438d96);                           /* jns: still waiting */
+    EJMP(0x4385cf); site_hook(0x4385c3, 12);
+
+    STUB_BEGIN();
+    E(0x8b, 0x87); E32(0xc00);                      /* mov eax,[edi+0xc00] */
+    E(0x85, 0xc0);                                  /* test eax,eax */
+    EJCC(0x8e, 0x43865c);                           /* jle: expired, the normal path every tick */
+    E_timer_unchanged(R_EDI, 0xbc8, 0xbcc); EJCC(0x84, 0x438d96);
+    E(0x48);                                        /* dec eax */
+    E(0x89, 0x87); E32(0xc00);                      /* mov [edi+0xc00],eax */
+    E(0x85, 0xc0);                                  /* test eax,eax */
+    EJCC(0x8f, 0x438d96);                           /* jg: still waiting */
+    EJMP(0x43864a); site_hook(0x438631, 25);
+
     /* --- Player (0x44dbd0 behind the callback 0x44ec60, EDI = player). The life-state machine
            dispatches on [+0x684] through a table at 0x44ebf4: state 1 is alive and is the only
            one whose body belongs at the display's rate. The other four are the death, respawn
@@ -351,7 +380,7 @@ static const struct node_class th14_classes[] = {
     { 0x44ec60, MODE_SUB,   "Player"          },
     { 0x411eb0, MODE_FRAME, "Update20"        },
     { 0x422a60, MODE_FRAME, "Update21"        },
-    { 0x439750, MODE_FRAME, "ItemManager"     },
+    { 0x439750, MODE_SUB,   "ItemManager"     },
     { 0x41cb50, MODE_FRAME, "Update26"        },
     { 0x455e60, MODE_FRAME, "ReplayPlayback"  },
 };

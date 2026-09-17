@@ -38,7 +38,7 @@ you remove the patch by deleting them again.
 TH14 is new and still only part described. The picture is all there: resizing, scaling,
 filters, borderless, dimming and the F11 menu. So is sprite animation — the menus, the HUD, the
 title screen, the dialogue portraits and anything else that plays out of an animation script.
-The bullets and the player move at your display's rate too. **Enemies, items and lasers do
+The bullets, the player and the items move at your display's rate too. **Enemies and lasers do
 not yet** — they still move in 60 Hz steps, and so do the player's options, which trail her in
 whole frames on purpose until they can be interpolated. There is also no replay extension and no
 sub-tick input. Only the Japanese `th14.exe` is recognised so far; the English and Steam builds
