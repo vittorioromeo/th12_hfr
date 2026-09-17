@@ -154,6 +154,61 @@ static void th14_install_sites(void) {
     EJCC(0x84, 0x416bd9);                           /* the same frame again: motion only */
     EJMP(0x416b24); site_hook(0x416b0f, 21);
 
+    /* --- Player (0x44dbd0 behind the callback 0x44ec60, EDI = player). The life-state machine
+           dispatches on [+0x684] through a table at 0x44ebf4: state 1 is alive and is the only
+           one whose body belongs at the display's rate. The other four are the death, respawn
+           and stage-clear sequences -- they count whole frames, spawn effects on exact frame
+           numbers and draw on the RNG, and every one of them would do it six times. Rather than
+           gate each, gate the dispatch: on a tick that is not a frame boundary, any state but 1
+           goes straight to the update's tail, which is where the sprite VMs are stepped and so
+           still runs every tick. --- */
+    STUB_BEGIN();
+    E(0x83, 0xf8, 0x01);                            /* cmp eax,1 */
+    E(0x74, 0x0d);                                  /* je: alive, always dispatch */
+    E_not_major(); EJCC(0x84, 0x44dfd1);            /* minor tick: skip to the tail */
+    E(0xff, 0x24, 0x85); E32(0x44ebf4);             /* jmp [eax*4 + table] */
+    site_hook(0x44dbf8, 7);
+
+    /* --- The player's position is fixed point at [+0x5ec]/[+0x5f0], 1/128 of a pixel, advanced
+           by the truncation of a velocity the game has already multiplied by the game speed
+           (0x44d72f, 0x44d746). Carry the truncation residual across sub-steps, or six sixths
+           of a velocity add up to less than one whole. --- */
+    movement_cvttss(0x44d774, 0x8f, 0x604, R_ECX, 0);
+    movement_cvttss(0x44d77c, 0x87, 0x608, R_EAX, 1);
+
+    /* --- Invincibility blink: "the state timer's integer changed, and is a multiple of 3" ->
+           flash (0x44e16f). The game asks the question with its own prev/int pair, which under
+           sub-stepping is true on exactly one tick of the frame, so the flash would be set for a
+           sixth of a frame and cleared for the rest. Ask it of the timer's float instead, before
+           and after this tick's Player call, which is what g_ptf_prev/g_ptf_cur are: that is
+           true on every tick, and the "multiple of 3" then holds for a whole frame, as it did.
+           TH13 replaces the identical guard at 0x446888 for the same reason. --- */
+    STUB_BEGIN();
+    E(0x50, 0xa1); E32((uint32_t)(uintptr_t)&g_ptf_prev);
+    E(0x3b, 0x05); E32((uint32_t)(uintptr_t)&g_ptf_cur); E(0x58);
+    EJCC(0x84, 0x44e1a5);                           /* unchanged: the game's own je target */
+    E(0x8b, 0x87); E32(0x690);                      /* mov eax,[edi+0x690] -- what follows divides it */
+    EJMP(0x44e17d); site_hook(0x44e16f, 14);
+
+    /* --- The focus counter [+0x1830c]++ once per frame (0x44d924); the option-gather laser
+           reads it against 30 at 0x44da0d. --- */
+    gate_block(0x44d924, 6, 0x44d92a, R_EDI, 0x68c);
+
+    /* --- The options chase the player by a fixed proportion of the remaining distance each
+           frame (0x44d9aa: (target - pos) * [+0x182bc] / 100, with the blend at 30). An
+           exponential approach run six times a frame is not the same approach: at 30% a tick the
+           options would close 88% of the gap in a frame instead of 30%, and sit on the player
+           instead of trailing her. Run the approach on frame boundaries only. The tail from
+           0x44db3d, which puts the option's position into its sprite VM, still runs every tick.
+           That leaves the options moving in 60 Hz steps while the player does not; making them
+           smooth means interpolating between the two frame positions, the way `place_enemy`
+           already does for enemies, and that is a separate piece of work. --- */
+    STUB_BEGIN();
+    E_not_major(); EJCC(0x84, 0x44db3d);            /* minor tick: no approach this tick */
+    E(0x83, 0xf8, 0x1e);                            /* cmp eax,0x1e */
+    EJCC(0x8c, 0x44db3d);                           /* jl: the game's own branch */
+    EJMP(0x44d9aa); site_hook(0x44d9a1, 9);
+
     stub_end();
     LOG("TH14 site patches installed (%u bytes of stubs)", (unsigned)g_stub_used);
 }
@@ -203,7 +258,7 @@ static const struct node_class th14_classes[] = {
     { 0x455e40, MODE_FRAME, "ReplayRecord"    },
     { 0x40eb70, MODE_FRAME, "Update13"        },
     { 0x457ee0, MODE_FRAME, "Update17"        },
-    { 0x44ec60, MODE_FRAME, "Player"          },
+    { 0x44ec60, MODE_SUB,   "Player"          },
     { 0x411eb0, MODE_FRAME, "Update20"        },
     { 0x422a60, MODE_FRAME, "Update21"        },
     { 0x439750, MODE_FRAME, "ItemManager"     },
@@ -223,6 +278,9 @@ static const struct GameProfile th14_profile = {
         .raw_input = 0x4d6878,
         .raw_pressed = 0x4d6884,
         .replay_manager = 0x4db688,
+        /* The player, and the callback the runner watches so that it can read the state
+           timer's float before and after every Player call (layout.player_timer). */
+        .player = 0x4db67c, .player_callback = 0x44ec60,
         /* The sprite/ANM manager, which is also what the batch flush takes. */
         .anm_manager = 0x4f56cc,
         /* The replay nodes, from the draw trace's pairing and from where OpenInputLagPatch
@@ -248,6 +306,10 @@ static const struct GameProfile th14_profile = {
         .node_arg = 0x24,        /* as TH13 */
         .runner_next = 0x50,     /* as TH13: the runner keeps the walk's next node in itself */
         .input_width = 4,
+        /* The player's life-state timer: prev +0x68c, integer +0x690, float +0x694, and its
+           rate pointer at +0x698 -- which the constructor points at the game speed (0x44dd2a),
+           so the timer sub-steps by itself. */
+        .player_timer = 0x694,
     },
     .critical_flag_mask = 0xff,
     .runner_return8_ends = 1,

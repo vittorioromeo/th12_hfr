@@ -122,3 +122,83 @@ static void test_speed_sites(void) {
     VirtualFree(code, 0, MEM_RELEASE);
     puts("PASS: speed stubs capture an immediate, an XMM register, and leave every register intact");
 }
+
+/* The fixed-point movement stub, which is the other piece of hand-written SSE in the patch and
+   the one with the most ways to be quietly wrong. It was: the memory operand is re-emitted from
+   the original instruction's modrm byte, and the first version took that byte unchanged, so a
+   site whose destination was ECX loaded the velocity into xmm1 and truncated whatever the game
+   had left in xmm0. The stubs disassemble to something plausible either way; only running them
+   says which. */
+uint32_t g_test_move_obj __attribute__((used));
+uint32_t g_test_move_out __attribute__((used));
+void (*g_test_move_site)(void) __attribute__((used));
+__asm__(
+    ".intel_syntax noprefix\n"
+    ".globl _test_call_move_site\n_test_call_move_site:\n"
+    "  pushad\n"
+    "  mov edi,[_g_test_move_obj]\n"
+    "  movaps xmm0,[_g_test_xmm_in+0x00]\n  movaps xmm1,[_g_test_xmm_in+0x10]\n"
+    "  call dword ptr [_g_test_move_site]\n"
+    "  mov [_g_test_move_out],ecx\n"
+    "  movaps [_g_test_xmm_out+0x00],xmm0\n  movaps [_g_test_xmm_out+0x10],xmm1\n"
+    "  popad\n  ret\n"
+    ".att_syntax\n"
+);
+extern void test_call_move_site(void);
+
+static void test_movement_residual(void) {
+    const struct GameProfile* real = g_game;
+    struct GameProfile game = *real;
+    struct GameIdentity id = *real->identity;
+
+    uint8_t* code = (uint8_t*)VirtualAlloc(NULL, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    assert(code);
+    /* cvttss2si ecx, dword [edi+0x604] -- the shape of TH14's player movement, ECX rather than
+       EAX on purpose, because that is the case the modrm bug got wrong. */
+    static const uint8_t site[8] = {0xf3,0x0f,0x2c,0x8f,0x04,0x06,0x00,0x00};
+    memcpy(code, site, 8); code[8] = 0xc3;
+
+    struct GameSignature sig = {(uintptr_t)code, 8, {0}};
+    memcpy(sig.bytes, site, 8);
+    id.signatures = &sig; id.signature_count = 1;
+    game.identity = &id;
+    g_game = &game;
+
+    static uint8_t obj[0x700];
+    g_test_move_obj = (uint32_t)(uintptr_t)obj;
+    g_test_move_site = (void (*)(void))code;
+    for (int r = 0; r < 8; ++r)
+        for (int l = 0; l < 4; ++l) g_test_xmm_in[r][l] = (float)(r * 4 + l) + 0.5f;
+
+    g_p = stub_begin(); patch_begin();
+    movement_cvttss((uintptr_t)code, 0x8f, 0x604, R_ECX, 0);
+    stub_end(); assert(patch_commit());
+
+    float saved_factor = g_factor;
+    /* Six ticks at a sixth of a frame, a velocity of 0.4 fixed-point units per tick. Truncated
+       on its own that is six zeroes and a player who never moves; carried, it is the 2 units
+       the whole frame was worth. */
+    *(float*)(obj + 0x604) = 0.4f;
+    g_factor = 1.0f / 6.0f; g_move_residual[0] = 0;
+    int sum = 0;
+    for (int i = 0; i < 6; ++i) { test_call_move_site(); sum += (int)g_test_move_out; }
+    assert(sum == 2);
+    /* The wrapper only loads and reads back the two registers this stub touches. */
+    for (int r = 0; r < 2; ++r)
+        for (int l = 0; l < 4; ++l)
+            if (g_test_xmm_in[r][l] != g_test_xmm_out[r][l]) {
+                printf("FAIL: the movement stub clobbered xmm%d lane %d (%f -> %f)\n",
+                       r, l, g_test_xmm_in[r][l], g_test_xmm_out[r][l]);
+                abort();
+            }
+
+    /* And with no sub-stepping it must be the instruction it replaced, residual or not. */
+    g_factor = 1.0f; g_move_residual[0] = 0.9f;
+    *(float*)(obj + 0x604) = 3.5f;
+    test_call_move_site();
+    assert(g_test_move_out == 3 && g_move_residual[0] == 0.9f);
+
+    g_factor = saved_factor; g_move_residual[0] = 0; g_game = real;
+    VirtualFree(code, 0, MEM_RELEASE);
+    puts("PASS: fixed-point movement carries its truncation residual across sub-steps");
+}

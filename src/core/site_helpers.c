@@ -32,3 +32,47 @@ static void gate_shot_callback(uintptr_t addr) {
     E(0x75,0x04,0x9d,0x31,0xc0,0xc3);
     E(0x9d); ECOPY(addr,6); EJMP(addr+6); site_hook(addr,6);
 }
+
+/* The SSE form of movement_ftol, for the builds whose compiler emits `cvttss2si reg, dword
+   [base+disp]` inline instead of loading the FPU and calling the game's ftol.
+
+   The problem is the same: a position kept in fixed-point integers, advanced by the truncation
+   of a float velocity that the game has already multiplied by the game speed. At one tick a
+   frame the velocity is a whole number of fixed-point units and the truncation loses nothing;
+   at a sixth of a frame it loses the fraction six times, and a velocity under six units a frame
+   truncates to zero and the player does not move at all. So the fraction is carried: the
+   residual is added back before the truncation and what the truncation dropped is kept for the
+   next tick. With no sub-stepping the site runs exactly the instruction it replaced, because
+   the game's own slow-motion truncates the same way it always did and that is not ours to fix.
+
+   `src_modrm` is the modrm byte and disp32 of the original instruction's memory operand; it is
+   re-emitted unchanged, so the operand must not be esp- or eip-relative (these sites are
+   [edi+disp32]). The two XMM registers used are saved to static scratch rather than the stack
+   so that the operand's base+disp stays valid. */
+static float g_xmm_scratch[8] __attribute__((aligned(16)));
+static void movement_cvttss(uintptr_t addr, uint8_t src_modrm, uint32_t src_disp,
+                            unsigned dst_reg, unsigned axis) {
+    uint8_t* st = g_p;
+    E(0x9c);                                                       /* pushfd */
+    E(0x81, 0x3d); E32((uint32_t)(uintptr_t)&g_factor); E32(0x3f800000);
+    uint8_t* to_plain = g_p; E(0x74, 0x00);                        /* je plain */
+    E(0x0f, 0x11, 0x05); E32((uint32_t)(uintptr_t)&g_xmm_scratch[0]);   /* movups [s0],xmm0 */
+    E(0x0f, 0x11, 0x0d); E32((uint32_t)(uintptr_t)&g_xmm_scratch[4]);   /* movups [s1],xmm1 */
+    /* The same memory operand, but into xmm0: the modrm is re-used for its mod and rm bits and
+       its reg field forced to 0, because the byte came from an instruction whose destination
+       was a general register. Taking it unchanged puts the value in whichever XMM register
+       matches that general register's number, which for the first of these two sites is xmm1
+       and leaves xmm0 holding whatever the game left there. */
+    E(0xf3, 0x0f, 0x10, (uint8_t)(src_modrm & 0xc7)); E32(src_disp);   /* movss xmm0,[base+disp] */
+    E(0xf3, 0x0f, 0x58, 0x05); E32((uint32_t)(uintptr_t)&g_move_residual[axis]);
+    E(0xf3, 0x0f, 0x2c, (uint8_t)(0xc0 | (dst_reg << 3)));         /* cvttss2si dst,xmm0 */
+    E(0xf3, 0x0f, 0x2a, (uint8_t)(0xc8 | dst_reg));                /* cvtsi2ss xmm1,dst */
+    E(0xf3, 0x0f, 0x5c, 0xc1);                                     /* subss xmm0,xmm1 */
+    E(0xf3, 0x0f, 0x11, 0x05); E32((uint32_t)(uintptr_t)&g_move_residual[axis]);
+    E(0x0f, 0x10, 0x05); E32((uint32_t)(uintptr_t)&g_xmm_scratch[0]);
+    E(0x0f, 0x10, 0x0d); E32((uint32_t)(uintptr_t)&g_xmm_scratch[4]);
+    E(0x9d); E(0xc3);                                              /* popfd; ret */
+    to_plain[1] = (uint8_t)(g_p - (to_plain + 2));
+    ECOPY(addr, 8); E(0x9d); E(0xc3);                              /* plain: the original; popfd; ret */
+    patch_call_n(addr, st, 8, site_expected(addr, 8));
+}

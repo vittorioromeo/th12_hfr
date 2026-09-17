@@ -606,6 +606,77 @@ panel meant for narrowing down a problem is worse than no checkbox, because it m
 look ruled out when it was never stepped. That change also applies to TH10-13, whose lists lose
 the entries that were never sub-stepped.
 
+## 15c. Sub-stepping the gameplay: what this engine makes easy, and what it does not
+
+**The timers carry a rate pointer.** A timer here is `{prev, int, float, const float* rate}` and
+its tick is `float += rate ? *rate : 1; int = (int)float; prev = the int before`. The
+constructors store `&0x4d8f58` -- the game speed -- into that rate field in a hundred and
+ninety-nine places. So under sub-stepping those timers advance by a fraction of a frame per tick
+by themselves and each integer crosses a whole number on exactly one tick per frame. That is why
+TH14's hooks are a dozen lines where TH13's were three hundred: most of what TH13 had to hook
+was timers with no such pointer. Every offset below was read off the constructor that sets it,
+not guessed from TH13's.
+
+What a rate pointer cannot fix, and so what every hook here is one of:
+
+1. **An integer the update decrements or increments itself.** Bullet `[+0x24]` (0x416a7a and
+   0x416d09) and `[+0xbfc]` (0x416d14); the player's focus counter `[+0x1830c]` (0x44d924).
+2. **A block gated on a timer's integer *being* N**, which stays true for a whole frame and so
+   runs on every tick of it. The bullet's cancel-effect spawn at `cmp eax,3` (0x416b0f); the
+   player's whole death/respawn state machine.
+3. **A truncation.** The player's position is fixed point in 1/128 of a pixel at `[+0x5ec]` and
+   `[+0x5f0]`, advanced by `cvttss2si` of a velocity the game has already scaled by the speed
+   (0x44d774, 0x44d77c). Six sixths of a velocity truncate to less than one whole, and a
+   velocity under six units a frame truncates to nothing at all -- the player would simply not
+   move. `movement_cvttss` carries the residual, and does nothing at all when the factor is 1,
+   because the game's own slow-motion truncates the same way it always did.
+4. **An exponential approach.** The options close a fixed proportion of the distance to the
+   player each frame -- `(target - pos) * [+0x182bc] / 100` at 0x44d9aa, with the blend at 30.
+   Thirty percent six times a frame is eighty-eight percent a frame, and the options would sit
+   on the player instead of trailing her, which is a gameplay difference and not a cosmetic one.
+   The approach runs on frame boundaries only. What that costs is options moving in 60 Hz steps
+   while the player does not; making them smooth means interpolating between the two frame
+   positions, the way `place_enemy` does for enemies, and that is separate work.
+5. **A guard the game writes in terms of its own prev/int pair.** The invincibility blink at
+   0x44e16f asks "did the state timer's integer change, and is it a multiple of 3". Sub-stepped,
+   the answer is yes on one tick of six, so the flash would appear for a sixth of a frame. It is
+   replaced with the same question asked of the timer's *float* before and after this tick's
+   Player call (`g_ptf_prev`/`g_ptf_cur`), which is true every tick, so the "multiple of 3" then
+   holds for a whole frame as it did. TH13 replaces the identical guard at 0x446888.
+
+### Gate the dispatch, not the arms
+
+The player's life state machine (`[+0x684]`, table at 0x44ebf4) has five arms and only state 1
+is alive. The other four count whole frames, spawn effects on exact frame numbers and draw on
+the RNG. Gating each of those would be a dozen hooks in code that is hard to test; gating the
+dispatch is one (0x44dbf8), and it says what is meant: on a tick that is not a frame boundary,
+anything but state 1 goes straight to the update's tail. The tail is where the sprite VMs are
+stepped, so it still runs every tick and the death animation is still smooth -- it is the
+sequence's *logic* that stays at 60 Hz.
+
+### Two hand-written stubs, and why they are tested by running them
+
+`install_speed_sites`' XMM save and `movement_cvttss` are the patch's hand-encoded SSE, and both
+had a bug that disassembled to something plausible. The speed stub clobbered xmm0 because the
+operation behind it is C compiled `-mfpmath=sse` and nothing was saving it. `movement_cvttss`
+re-emits the original instruction's memory operand from its modrm byte, and took the byte
+unchanged -- so a site whose destination was ECX loaded the velocity into *xmm1* and truncated
+whatever the game had left in xmm0. Reading the emitted bytes back is what found both, and
+`tools/test_speed.h` is what keeps them found: it builds a real site, runs it through the real
+installer, calls it, and checks the arithmetic and the registers. Neither test passes with its
+fix removed, which is the only thing that makes it a test.
+
+### Where the addresses came from
+
+| | |
+|---|---|
+| `addr.player` | `0x4db67c` -- `mov eax,[0x4db67c]` then `[eax+0x184b4]`, a field the player update writes through EDI |
+| `addr.player_callback` | `0x44ec60`, which is `jmp 0x44dbd0` |
+| `layout.player_timer` | `0x694`, the float of the life-state timer at `0x68c`; its rate pointer at `+0x698` is set to the game speed at 0x44dd2a |
+| the bullet's timer | prev `+0x13c0`, int `+0x13c4`, ticked by the manager after every update (0x4171b7); rate set at 0x416f82 |
+| the bullet's second timer | prev `+0x13d4`, int `+0x13d8`, ticked by the update itself at entry; rate set at 0x416fdb |
+| the game manager | `0x4db558`, flags at `+0x80` -- the word every update callback's gate tests. Not in the profile yet: the runtime's pause test is written against TH10-13's bit assignments (`0x70`) and TH14's are not those, so it needs reading before it is described. |
+
 ## 16. What a trace still has to supply
 
 The dimming rules and the class table came out of the patch's own log while a stage was
