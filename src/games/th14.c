@@ -103,6 +103,61 @@ static const struct DimRule th14_dim_rules[] = {
     { -1, -1, "effect.anm",  -1, -1, -1, -1, DIM_EFFECTS },
 };
 
+/* ------------------------------------------------------------------ per-frame hooks
+
+   A system may only be MODE_SUB once everything it counts in whole frames still counts in
+   whole frames when its update runs six times a frame. TH14 makes that far smaller a job than
+   TH13 did, and the reason is worth stating once: *this engine's timers carry a rate pointer*.
+   A timer is {prev, int, float, const float* rate} and its tick is "float += rate ? *rate : 1,
+   int = (int)float, prev = the int before that" -- and the constructors store `&0x4d8f58`, the
+   game speed, into that rate field in a hundred and ninety-nine places. So under sub-stepping
+   every one of those timers advances by a sixth of a frame per tick all by itself, and its
+   integer crosses a whole number on exactly one tick per frame. TH13's three hundred lines of
+   hooks were mostly for timers that had no such pointer.
+
+   What is left is the three things a rate pointer cannot fix:
+     - an integer counter decremented by the update itself rather than by a timer,
+     - a block gated on "the timer's integer *is* N", which stays true for a whole frame and so
+       runs on every tick of it rather than once,
+     - anything that consumes the replay RNG.
+   Each hook below is one of those, and each is gated on the same question: did this tick cross
+   a whole frame? The bullet's own timer answers it -- prev at +0x13c0 against int at +0x13c4,
+   which the manager ticks after every update (0x4171b7). */
+static void th14_install_sites(void) {
+    g_p = stub_begin();
+
+    /* --- Bullet (0x416700, ESI = bullet): the wait counter [+0x24]-- inside the behaviour
+           loop, and the same counter plus the collision countdown [+0xbfc]-- at the end of the
+           update. Three raw decrements per call, none of them through a timer. The copied
+           bytes keep their own short jumps: each one skips exactly the instructions that follow
+           it in the copy, and what follows the copy is the jump back, which is where they
+           landed before. --- */
+    STUB_BEGIN();
+    E_timer_unchanged(R_ESI, 0x13c0, 0x13c4); EJCC(0x84, 0x416a85);
+    ECOPY(0x416a7a, 11); EJMP(0x416a85); site_hook(0x416a7a, 11);
+
+    STUB_BEGIN();
+    E_timer_unchanged(R_ESI, 0x13c0, 0x13c4); EJCC(0x84, 0x416d25);
+    ECOPY(0x416d09, 28); EJMP(0x416d25); site_hook(0x416d09, 28);
+
+    /* --- Bullet state 5 (the cancel animation, jump-table arm at 0x416d6c): on the frame where
+           the timer's integer *is* 3, and only then, it spawns the cancel effect -- `cmp eax,3`
+           with a `jne` past the whole block. The integer sits at 3 for a frame, so six ticks a
+           frame is six effects and six draws on the RNG. Keep the game's two branches and add
+           the third: the integer has to have changed on this tick. --- */
+    STUB_BEGIN();
+    E(0x8b, 0x86); E32(0x13c4);                     /* mov eax,[esi+0x13c4] */
+    E(0x83, 0xf8, 0x03);                            /* cmp eax,3 */
+    EJCC(0x8c, 0x416c40);                           /* jl  : too early, no motion for this arm */
+    EJCC(0x85, 0x416bd9);                           /* jne : past it, motion only */
+    E_timer_unchanged(R_ESI, 0x13c0, 0x13c4);
+    EJCC(0x84, 0x416bd9);                           /* the same frame again: motion only */
+    EJMP(0x416b24); site_hook(0x416b0f, 21);
+
+    stub_end();
+    LOG("TH14 site patches installed (%u bytes of stubs)", (unsigned)g_stub_used);
+}
+
 /* Which of the update list's callbacks may run more than once a frame.
 
    Only the two sprite-manager passes do, and that is a deliberate stopping point rather than a
@@ -135,7 +190,7 @@ static const struct node_class th14_classes[] = {
     { 0x47e7c0, MODE_SUB,   "AnmSpritesLate"  },   /* priority 29 -> 0x47e5e0, behind a gate */
     /* The rest, named where the dev notes could name them, so that the census has somewhere to
        report against and a later change is an edit to one line rather than a new table. */
-    { 0x417610, MODE_FRAME, "BulletManager"   },
+    { 0x417610, MODE_SUB,   "BulletManager"   },
     { 0x43a6a0, MODE_FRAME, "LaserManager?"   },
     { 0x40b8e0, MODE_FRAME, "Ascii"           },
     { 0x459f30, MODE_FRAME, "Title"           },
@@ -214,6 +269,7 @@ static const struct GameProfile th14_profile = {
        still wrapped, which is what makes the debug draw trace run, which is what will supply
        the priority and the rules. The sprite VM draw is not described yet either, so the
        per-VM rules stay inert; dimming.c already treats both as optional. */
+    .install_sites = th14_install_sites,
     .speed_sites = th14_speed_sites, .speed_site_count = sizeof th14_speed_sites / sizeof *th14_speed_sites,
     .classes = th14_classes, .class_count = sizeof th14_classes / sizeof *th14_classes,
     .draw = { .dispatch = 0x40141a, .dispatch_len = 8, .node_reg = R_EDI, .prio_off = 0,

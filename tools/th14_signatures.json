@@ -92,6 +92,18 @@
   "description": "the script instruction that sets the speed"
  },
  {
+  "address": "0x416a7a",
+  "bytes": "8b 46 24 85 c0 74 04 48 89 46 24"
+ },
+ {
+  "address": "0x416d09",
+  "bytes": "8b 46 24 85 c0 74 04 48 89 46 24 8b 86 fc 0b 00 00 85 c0 7e 07 48 89 86 fc 0b 00 00"
+ },
+ {
+  "address": "0x416b0f",
+  "bytes": "8b 86 c4 13 00 00 83 f8 03 0f 8c 22 01 00 00 0f 85 b5 00 00 00"
+ },
+ {
   "address": "0x401382",
   "bytes": "5f 8b c6 5e 5b 8b e5 5d c3"
  },
