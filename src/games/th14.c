@@ -37,7 +37,17 @@
 static const struct DimRule th14_dim_rules[] = {
     { 31, 35, "bullet.anm",  -1, -1, -1, -1, DIM_NONE },       /* bullets are what the rest is faded for */
     {  9,  9, "effect.anm",   2,  2, -1, -1, DIM_EFFECTS },    /* under the world */
-    { -1, -1, "pl*.anm",     -1, -1, -1, -1, DIM_NONE },       /* the player, its shots and its hitbox */
+    /* The focus ring and the hitbox are drawn from effect.anm, not from pl00.anm, on the
+       player's own layer and inside the player's priority band -- the trace shows exactly one
+       of them, layer 14 at priority 29, between pl00.anm's layers 13 and 15. TH13 has the same
+       carve-out (`effect.anm` layer 12, inside its 12..43 world band) and it was dropped when
+       these rules were written, so the hitbox faded with the effects. The band is widened to
+       the player's three layers rather than pinned to the one the trace caught: anything
+       effect.anm draws inside the player's own band is the player's furniture, and the cost of
+       being wrong that way is an effect near the player that does not fade, against a hitbox
+       that disappears when you need it. */
+    { 27, 30, "effect.anm",  13, 15, -1, -1, DIM_NONE },       /* the focus ring and the hitbox */
+    { -1, -1, "pl*.anm",     -1, -1, -1, -1, DIM_NONE },       /* the player and its shots */
     { -1, -1, "effect.anm",  -1, -1, -1, -1, DIM_EFFECTS },
 };
 

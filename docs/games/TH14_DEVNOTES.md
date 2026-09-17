@@ -427,6 +427,16 @@ and TH14 has no `item.anm`, so which ANM and layer they use is still unread. And
 `pl00.anm`'s layers is the hitbox as against the shots -- so the whole file is left unfaded,
 which is the conservative half of TH13's split.
 
+**A fifth rule, after the first report.** Fading the effects also faded the focus ring and the
+hitbox, because those are drawn from `effect.anm` rather than from `pl00.anm` -- layer 14 at
+priority 29, between `pl00.anm`'s layers 13 and 15 -- and the general `effect.anm` rule caught
+them. TH13 has exactly this carve-out (`effect.anm` layer 12, inside its world band, commented
+"the focus ring") and it was dropped when these rules were written from the same file. The band
+is widened to the player's three layers rather than pinned to the one the trace caught, because
+anything `effect.anm` draws inside the player's own band is the player's furniture, and being
+wrong that way costs an effect near the player that does not fade -- against a hitbox that
+disappears exactly when it is being looked at.
+
 `UI_DIM_CLASSES` used to answer "all of them", which was true of TH10-13 and is not true of a
 game whose rules are still being written. It now reports the classes the profile's rules
 actually mention, so the menu offers background and effects for TH14 and does not offer sliders
