@@ -314,7 +314,68 @@ draw trace run**. Which is the point: the trace prints what draws at each priori
 the evidence the class table in §10 is waiting for. Describing the draw path is how the update
 path gets identified.
 
-## 12. What a trace still has to supply
+## 12. The draw list, and what it settles
+
+With the dispatch wrapped, a stage's draw trace gives the other half of the picture: every draw
+callback with its priority, and what each one actually put on screen. Nothing was corrupted by
+the wrap, which is the first thing that trace had to establish.
+
+Draw callbacks pair with update callbacks by address -- each manager's two thunks sit together,
+usually 0x10 apart -- so the two lists compose:
+
+| system | update (prio) | draw (prio) | what the draw trace shows |
+|---|---|---|---|
+| text / HUD digits | `0x40b8e0` (4) | `0x40b900` (72) | 3796 prims, one texture, full screen |
+| stage / background | `0x436d70` (11) | `0x436d80` (2) | drawn first, into the offscreen target |
+| bullets | `0x417610` (23) | `0x417640` (35) | 1316 prims, one texture, in the play area |
+| player | `0x44ec60` (18) | `0x44ec70` (28) | ~10 quads, one texture |
+| enemies | `0x439750` (24) | `0x439780` (31) | 270 prims, one texture |
+| GUI | `0x431a40` (28) | `0x431a50`, `0x431a60` (48, 45) | `front.anm` in its constructor |
+| replay record / playback | `0x455e40` (12), `0x455e60` (30) | `0x455eb0` (62) | -- |
+| ANM managers | `0x47e7f0` (8), `0x47e7c0` (29) | the `0x47e0f0`..`0x47e550` layer callbacks | -- |
+
+**`0x417610` is the bullet manager on three independent signals now**: a 0.91 code-shape match
+against TH13's, `bullet.anm` in its registering constructor, and 658 sprites from one texture
+in the play area on a stage frame. `0x436d70` is the stage on two (0.59 shape, drawn first).
+`0x40b8e0` is the text renderer on two (`ascii.anm`, and 3796 prims of glyphs).
+
+The replay pair is worth the note: `0x455e60` is the playback node because OpenInputLagPatch
+patches `0x455e82`, twenty-two bytes into it, to skip replay speed control.
+
+Rendering goes through two offscreen targets and only reaches the game's own from priority 52,
+which is why every world draw in the trace reports an offscreen viewport.
+
+## 13. `vm_draw`, and the fifth thing that moved
+
+The per-VM draw is the lever that would finish both remaining pieces: it is what makes the
+trace print each VM's ANM file and sprite layer, which is what the dim rules are written
+against *and* what would confirm the systems above by name rather than by prim count.
+
+It is `0x478f60` -- 0.71 against TH13's `0x46a700`, same prologue, and called both from the
+ANM manager's layer worker and from each system's draw. But:
+
+```text
+TH13 0x46a700:  push ebp; mov ebp,esp; and esp,-8; sub esp,0x1c; push ebx
+                mov ebx,eax                 <- the VM arrives in EAX
+                mov eax,[ebx+0x594]
+TH14 0x478f60:  push ebp; mov ebp,esp; and esp,-8; sub esp,0x18; push esi
+                mov esi,[ebp+8]             <- the VM arrives on the stack
+                mov edi,ecx                 <- ... and `this` in ECX
+                mov eax,[esi+0x5bc]
+```
+
+So the VM is a stack argument here, where every game so far has passed it in a register, and
+`draw.vm_reg` has no way to say that. That is the fifth thing this rebuild moved, and it needs
+a `vm_stack_arg` in the same family as `runner_arg`, `frame_ctx_ecx`, `cleanup_this_ecx` and
+`screenshot_stack_arg`. The VM struct also grew -- `+0x594` became `+0x5bc` -- so the three
+field offsets are their own derivation and not a copy of TH13's.
+
+Nothing is guessed here: `vm_draw` stays out of the profile until the stack form exists, for
+the same reason `speed` does. A wrong `vm_anm_off` would make the trace print plausible ANM
+names that are not the ones being drawn, and the dim rules and the class table would both then
+be written against fiction.
+
+## 14. What a trace still has to supply
 
 The UpdateFunc class table and the dimming rules cannot be read out of the executable. Both
 come from the patch's own log while a stage is running: the registered update list names every

@@ -27,6 +27,11 @@ static const struct GameProfile th14_profile = {
         .raw_input = 0x4d6878,
         .raw_pressed = 0x4d6884,
         .replay_manager = 0x4db688,
+        /* The sprite/ANM manager, which is also what the batch flush takes. */
+        .anm_manager = 0x4f56cc,
+        /* The replay nodes, from the draw trace's pairing and from where OpenInputLagPatch
+           puts its replay speed-control patch (0x455e82, inside the playback one). */
+        .record_callback = 0x455e40, .playback_callback = 0x455e60,
         .update_runner = 0x4db51c,
         .frame_fn = 0x46a950,
         .remove_node = 0x401630,
