@@ -484,7 +484,59 @@ game whose rules are still being written. It now reports the classes the profile
 actually mention, so the menu offers background and effects for TH14 and does not offer sliders
 that would do nothing.
 
-## 15. What a trace still has to supply
+## 15. The game speed, and why sub-stepping waits on it
+
+Sub-stepping *is* the game speed. `set_factor` writes `g_logical * dt` into the game's own speed
+multiplier and then runs the update, so nothing can be `MODE_SUB` until that variable is
+described -- and it cannot be described without every one of the game's own writes to it being
+described too, or the runtime and the game overwrite each other once a tick.
+
+`addr.speed` is `0x4d8f58`, settled three ways: the save/override/restore idiom at `0x424780`,
+the sixty-one `mulss` reads of it across the gameplay code, and the item manager multiplying
+its per-frame step by it at `0x438716`.
+
+### Twenty-five writes, not twelve
+
+The first enumeration searched for `movss [0x4d8f58], xmm*` and found twelve. The game also
+writes the speed as `mov dword [0x4d8f58], imm32` -- thirteen more, storing `1.0` or `0.0` --
+and searching for one encoding and reporting the result as "the write sites" would have shipped
+a speed model with half its sites missing, which is silent. Same shape of error as the scan
+window in section 14: the tool answered exactly what it was asked, and the question was wrong.
+
+| | sites |
+|---|---|
+| `movss [speed], xmmN`, 8 bytes | `0x40dac5` `0x411780` `0x4247a6` `0x4247fa` `0x429796` `0x43a6f1` `0x449097` `0x44a165` `0x44af39` `0x44b0e5` `0x46feff` `0x472d4c` |
+| `mov dword [speed], 1.0f`, 10 bytes | `0x40747a` `0x40da9a` `0x435b44` `0x436100` `0x444a00` `0x448eb6` `0x448ff8` `0x449eff` `0x44a0b5` `0x44df30` `0x46fe8a` |
+| `mov dword [speed], 0.0f`, 10 bytes | `0x43a6dd` `0x46ff09` |
+
+### Three idioms, and why they cannot share one treatment
+
+- **Absolute stores.** `speed = 1.0` at a stage start, `speed = 0.0` to freeze something. These
+  clobber the runtime's factor and must become "the game means N; record it and store N x factor".
+- **Save, set, restore.** `movss xmm,[speed]` into a local, an absolute set, a call, then the
+  local written back -- `0x40da9a`/`0x40dac5` and `0x43a6dd`/`0x43a6f1` are both this. The set
+  needs the treatment above; the restore must not get it, because what it writes back is the
+  already-composed value, and running it through the same stub would multiply the factor in a
+  second time.
+- **Read, modify, write.** `0x424777`: read the speed, scale it, clamp it, store it back. That
+  composes with the factor on its own and wants no patch at all.
+
+Which is why a uniform rule does not exist, and why a heuristic does not either -- "does it read
+the speed just before?" labels the *set* of a save/set/restore triple as self-composing, because
+the save is the read it sees. Each of the twenty-five has to be read.
+
+### And the backend needs two more shapes
+
+`install_speed_sites` patches a 6-byte `fstp [speed]` and, where the op needs the stored value,
+captures it off the x87 stack. TH14 stores from an XMM register or from an immediate, so the
+capture becomes `movss [g_fpu_tmp], xmmN` with N per site, and `SpeedSite` needs somewhere to say
+which register -- or that the value is an immediate in the instruction. The 8- and 10-byte sites
+are both wide enough for the 5-byte call the patch writes.
+
+None of this is in the profile. `install()` already refuses a profile with `speed` and no sites,
+which is the guard that keeps this honest while it is being worked out.
+
+## 16. What a trace still has to supply
 
 The UpdateFunc class table and the dimming rules cannot be read out of the executable. Both
 come from the patch's own log while a stage is running: the registered update list names every
