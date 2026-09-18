@@ -882,6 +882,37 @@ fix removed, which is the only thing that makes it a test.
 | the bullet's second timer | prev `+0x13d4`, int `+0x13d8`, ticked by the update itself at entry; rate set at 0x416fdb |
 | the game manager | `0x4db558`, flags at `+0x80` -- the word every update callback's gate tests. Not in the profile yet: the runtime's pause test is written against TH10-13's bit assignments (`0x70`) and TH14's are not those, so it needs reading before it is described. |
 
+## 17. The replay path and the input path, as far as they are read
+
+Both remaining features hang off the same code, and the replay extension has to come first: it is
+what records the simulation settings into the file, and without it a replay recorded with sub-tick
+input is a replay nothing can play back. What is established so far:
+
+| | |
+|---|---|
+| save | `0x455490`, `ret 0x10` -- four stack arguments, where TH13's is fastcall with one. Called from `0x449a29`, `0x44aa5c`, `0x44b973`, `0x4617b8` -- exactly the four `replay_saves` slots |
+| load | `0x455c20`, thiscall: the manager in ECX, the filename pushed, `ret 4`. Called from `0x4549bc`, `0x454b40`, `0x454fd3`, `0x45ee0f` -- four sites where the profile has one slot, so these want a game-specific thunk in `install_sites`, as TH13's load already does |
+| `layout.replay_frame` | `0x210`, the counter the record node divides by 30 to decide when to sample the player's position (`0x45509a`) |
+| the replay mode | `+0x10`, which the playback node tests against 1 (`0x455e72`) |
+| the current stage's record | `+0xc0`, a pointer whose `+0x1518` is the write cursor the record node advances by 6 bytes a frame |
+
+Still to read: `layout.replay_stage` and the eight-entry `replay_stages` array, which is what the
+extension walks to write one input stream per stage.
+
+**And the input path falls out of the same function.** The record node at `0x455040` is where the
+game latches its input for the frame, and it names everything the profile has been missing:
+
+| | |
+|---|---|
+| `addr.poll_input` | `0x41e710`, thiscall with the raw input object `0x4d6878` in ECX |
+| `addr.game_input` | `0x4d6a90` -- the word the record node writes and the player's movement reads at `0x44d33e` |
+| the previous frame's input | `0x4d6a94`, which is where pressed and released are derived from |
+| two more recorded words | `0x4d6a9c` and `0x4d6aa0`, written into the stream alongside it |
+
+Three things per frame at six bytes is the replay's input format, and sub-tick input has to keep
+producing exactly that while sampling more often -- which is the whole reason the extension stores
+the rate and the settings next to it.
+
 ## 16. What a trace still has to supply
 
 The dimming rules and the class table came out of the patch's own log while a stage was
