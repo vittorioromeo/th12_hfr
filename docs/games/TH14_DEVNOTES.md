@@ -1078,3 +1078,78 @@ number of things.
 
 The next pair of logs should show `b=` and `e=` parting company well before frame 633, and the
 frame they part on is the frame to go and read.
+
+## 19. The desync is in the bullets, at frame 372
+
+The second pair of logs, with the fingerprint in and the sampling point fixed:
+
+```
+first difference   x        frame 634   (the death, as before)
+                   y        never
+                   enemies  never
+                   bullets  frame 372
+                   count    frame 373
+```
+
+```
+f=371  off b=ebfa108f n=200 | on b=ebfa108f n=200
+f=372  off b=ac96e06e n=203 | on b=46dec4bf n=203
+f=373  off b=9e194c45 n=206 | on b=3c0b9623 n=205
+f=374  off b=3d228d2c n=209 | on b=3e28b593 n=207
+f=375  off b=c96076d2 n=212 | on b=78f49a77 n=209
+f=379  off b=e2549192 n=220 | on b=2ba7f82e n=216
+```
+
+Three facts, and each of them narrows it.
+
+**The enemies never differ.** Not once in 667 frames. The ECL scripts, the enemy positions, and
+everything they draw from the RNG are identical in the two runs. So this is not an RNG divergence
+and not a sub-stepping error in the enemies -- which is what the decision not to sub-step them,
+and to interpolate their sprites instead, was supposed to buy, and it is nice to see it hold under
+a bit-exact test.
+
+**The bullets first differ at frame 372, and the live count is still equal on that frame.** 203 in
+both. So frame 372 is not a bullet that failed to spawn or one that was culled early; it is a
+bullet whose *state* -- a position, a velocity, a timer -- came out different while every bullet
+that should exist still exists. The count only parts company on the following frame.
+
+**From 373 the sub-stepped run has steadily fewer bullets**, and the gap widens: 1, 2, 3, 3, 3, 3,
+4. Both runs are spawning at about the same rate (~2-3 a frame, a stream), so this is not a spawn
+that stopped; it is bullets leaving slightly early, which is what you would expect downstream of a
+position or velocity that came out wrong on 372 -- the off-screen test at `0x416620` culls on
+`pos ± vel * 0.5` against `[-192, 192]` by `[-64, 448]`, so a bullet that is a little further along
+than it should be crosses that line a frame or two sooner.
+
+Fewer bullets is also why the *sub-stepped* run survives and the stock one dies. The player is not
+being killed by the mod; she is being killed by the replay being played back in a simulation that
+is not the one that recorded it, and the recording simulation is the one with the thinner bullet
+pattern.
+
+### 19a. One hypothesis, checked and dead
+
+The obvious suspect was a countdown. A bullet carries two of them, at `+0x10a8` and `+0x12e8`,
+each the mirror image of the game's own timer -- `-= rate` where the timer does `+= rate`, same
+rate-pointer field, same "if the rate is between 0.99 and 1.01, skip the multiply" fast path at
+`0x41698e` and `0x416a2c`. Both have a branch that subtracts a whole 1.0 when the rate pointer is
+null, and a per-frame quantity on a per-tick path is exactly the class of bug that has bitten this
+port three times already.
+
+It is not this. `0x4190bb` stores `&0x4d8f58` into `+0x12f4` directly, and the other timer is
+initialised through the generic helper at `0x408b00`, which stores the same pointer into its
+`+0xc` -- that is `+0x10b4`. Both scale. The null-rate branch is not reached by a bullet.
+
+Worth recording because the check cost one look at `0x408b00` and would otherwise have cost a
+build, a round trip, and a wrong fix.
+
+### 19b. `trace_dump`
+
+So: stop reasoning and look at the bullet. `trace_dump` writes one line per live slot for the
+frames between `replay_trace_from` and `replay_trace_to` -- slot index, state word, the timer at
+`+0x24`, the position and velocity triples, the rest of the motion block, the flag word at `+0xc04`
+and both countdowns' integers, all raw hex so the comparison is exact rather than approximate.
+
+The slot index is what makes this work. The bullets are an array of 2001 fixed slots, not an
+allocation, so slot 37 is slot 37 in both runs for as long as the runs have agreed -- which is
+precisely the situation a window opened just before the first difference is in. Diff the two logs
+across the window: the lines that differ name the bullet, and the column that differs names the
+field that went wrong.

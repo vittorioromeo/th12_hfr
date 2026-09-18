@@ -25,6 +25,8 @@ static void read_config(void) {
     cfg.fullscreen_refresh = GetPrivateProfileIntA("hfr", "fullscreen_refresh", 0, ini);
     cfg.enemy_interp = GetPrivateProfileIntA("hfr", "enemy_interp", 1, ini);
     cfg.replay_trace = GetPrivateProfileIntA("hfr", "replay_trace", 0, ini);
+    cfg.replay_trace_from = GetPrivateProfileIntA("hfr", "replay_trace_from", 0, ini);
+    cfg.replay_trace_to   = GetPrivateProfileIntA("hfr", "replay_trace_to", 0, ini);
     cfg.debug = GetPrivateProfileIntA("hfr", "debug", 0, ini); g_log_lazy = cfg.debug >= 3;
     cfg.subtick_input = GetPrivateProfileIntA("hfr", "subtick_input", 1, ini);
     cfg.d3d9ex = GetPrivateProfileIntA("hfr", "d3d9ex", 1, ini);

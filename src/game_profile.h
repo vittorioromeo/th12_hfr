@@ -171,6 +171,10 @@ struct GameProfile {
        actually diverges, and a hash of them per frame turns "it desynced somewhere" into a frame
        number. out[0] bullets, out[1] enemies, out[2] a live-bullet count. */
     void (*trace_state)(uint32_t out[3]);
+    /* Debug only: everything the fingerprint hashed, spelled out, for the handful of frames either
+       side of the one the fingerprints part on. Bounded by `replay_trace_from`/`_to` because it is
+       one line per live bullet per frame. */
+    void (*trace_dump)(void);
 };
 static const struct GameProfile* g_game;
 #define g_classes (g_game->classes)

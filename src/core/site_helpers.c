@@ -130,7 +130,9 @@ static void replay_trace_frame(void) {
     if (!rm || !pl) return;
     const int32_t* p = (const int32_t*)(pl + g_game->layout.player_pos);
     uint32_t st[3] = { 0, 0, 0 };
+    int f = *(int*)(rm + g_game->layout.replay_frame);
     if (g_game->trace_state) g_game->trace_state(st);
-    LOG("trace f=%d x=%d y=%d b=%08x e=%08x n=%u",
-        *(int*)(rm + g_game->layout.replay_frame), p[0], p[1], st[0], st[1], st[2]);
+    LOG("trace f=%d x=%d y=%d b=%08x e=%08x n=%u", f, p[0], p[1], st[0], st[1], st[2]);
+    if (g_game->trace_dump && cfg.replay_trace_to &&
+        f >= cfg.replay_trace_from && f <= cfg.replay_trace_to) g_game->trace_dump();
 }

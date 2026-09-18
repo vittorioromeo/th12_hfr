@@ -559,6 +559,29 @@ static void th14_trace_state(uint32_t out[3]) {
     out[0] = hb; out[1] = he; out[2] = live;
 }
 
+/* The fingerprint says which frame and which system; this says which bullet and which field.
+
+   One line per live slot, raw hex throughout, for the frames between `replay_trace_from` and
+   `replay_trace_to`. The slot index is part of the line because it is stable: the array is indexed,
+   not allocated, so slot 37 in one run is slot 37 in the other as long as the runs have agreed up
+   to that point -- which, by construction, is exactly the situation the window is opened in. Diff
+   the two logs over the window and the lines that differ name the bullet, and the column that
+   differs names the field. */
+static void th14_trace_dump(void) {
+    uint8_t* bm = *(uint8_t**)0x4db530;
+    if (!bm) return;
+    uint8_t* b = bm + 0x8c;
+    for (int i = 0; i < 0x7d1; ++i, b += 0x13f4) {
+        uint32_t st = *(const uint32_t*)(b + 0x20);
+        if (!st) continue;
+        const uint32_t* w = (const uint32_t*)(b + 0x24);
+        LOG("bd i=%d s=%08x t=%08x p=%08x,%08x,%08x v=%08x,%08x,%08x m=%08x,%08x,%08x,%08x"
+            " g=%08x c1=%d c2=%d",
+            i, st, w[0], w[1], w[2], w[3], w[4], w[5], w[6], w[7], w[8], w[9], w[10],
+            *(const uint32_t*)(b + 0xc04), *(const int*)(b + 0x10ac), *(const int*)(b + 0x12ec));
+    }
+}
+
 /* Which of the update list's callbacks may run more than once a frame.
 
    Only the two sprite-manager passes do, and that is a deliberate stopping point rather than a
@@ -696,7 +719,7 @@ static const struct GameProfile th14_profile = {
        the priority and the rules. The sprite VM draw is not described yet either, so the
        per-VM rules stay inert; dimming.c already treats both as optional. */
     .install_sites = th14_install_sites, .place_enemy = th14_place_enemy, .place_options = th14_place_options,
-    .trace_state = th14_trace_state,
+    .trace_state = th14_trace_state, .trace_dump = th14_trace_dump,
     .anm_get_vm_ecx = 1,
     .speed_sites = th14_speed_sites, .speed_site_count = sizeof th14_speed_sites / sizeof *th14_speed_sites,
     .classes = th14_classes, .class_count = sizeof th14_classes / sizeof *th14_classes,
