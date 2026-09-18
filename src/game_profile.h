@@ -74,6 +74,8 @@ struct GameProfile {
         uint32_t replay_stage;
         uint32_t replay_frame;
         uint32_t replay_stages;
+        /* Two adjacent fixed-point int32s: where the player is. Only used by the desync trace. */
+        uint32_t player_pos;
         uint32_t player_timer;
         uint32_t enemy_flags;
         uint32_t enemy_position;

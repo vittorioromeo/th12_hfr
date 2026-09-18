@@ -115,3 +115,18 @@ static void site_census_report(void) {
     if (any) LOG("site census, per game frame over %u frames: %s", g_site_census_frames, line);
     g_site_census_frames = 0;
 }
+
+/* One line a game frame, for finding where two runs of the same replay stop agreeing. Print the
+   replay's own frame number and the player's fixed-point position: two playbacks of one file
+   diff cleanly, and the first line that differs is the frame the simulation diverged on, which is
+   worth more than any amount of reasoning about which system it was. Debug-only and off by
+   default, because it is 60 lines a second. */
+static void replay_trace_frame(void) {
+    if (!cfg.debug || !cfg.replay_trace) return;
+    if (!g_game->addr.replay_manager || !g_game->addr.player || !g_game->layout.player_pos) return;
+    uint8_t* rm = *(uint8_t**)g_game->addr.replay_manager;
+    uint8_t* pl = *(uint8_t**)g_game->addr.player;
+    if (!rm || !pl) return;
+    const int32_t* p = (const int32_t*)(pl + g_game->layout.player_pos);
+    LOG("trace f=%d x=%d y=%d", *(int*)(rm + g_game->layout.replay_frame), p[0], p[1]);
+}

@@ -630,6 +630,7 @@ static const struct GameProfile th14_profile = {
            the same three offsets TH13 has, and read here rather than copied: 0x455f7f stores the
            index at +0x218 and indexes the array at +0x20 with it in the very next instruction. */
         .replay_stage = 0x218, .replay_frame = 0x210, .replay_stages = 0x20,
+        .player_pos = 0x5ec,
     },
     .critical_flag_mask = 0xff,
     .runner_return8_ends = 1,

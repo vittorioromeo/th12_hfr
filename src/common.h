@@ -44,6 +44,7 @@ static struct {
     int warn_wrapper;   /* say so when something else is presenting and settings are inert */
     int enemy_interp;
     int debug;
+    int replay_trace;   /* debug: keep the logic rate across playback, and trace state per frame */
     int subtick_input;      /* poll the keyboard/joystick every tick and feed movement/focus to the player */
     int d3d9ex;             /* create the device through Direct3D9Ex */
     int external_renderer;  /* -1 auto, 0 never, 1 always: leave the picture to another
@@ -78,7 +79,7 @@ static struct {
 } cfg = {
     .fps = 0, .vsync = 1, .substep = 1, .log = 1,
     .fullscreen_refresh = 0, .show_stats = 0, .warn_wrapper = 1,
-    .enemy_interp = 1, .debug = 0, .subtick_input = 1, .d3d9ex = 1,
+    .enemy_interp = 1, .debug = 0, .replay_trace = 0, .subtick_input = 1, .d3d9ex = 1,
     .max_frame_latency = 1, .flipex = 0,
     .scaling = 1, .filter = FILTER_SHARP, .filter_name = "", .sharpen_name = "none", .sharpen = -1, .sharpen_strength = 50, .cursor = 2,
     .resizable = 1, .window_scale = 0, .snap_aspect = 0, .fullscreen_mode = 1,

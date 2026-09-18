@@ -46,7 +46,13 @@ static void replay_check(void) {
             LOG("Applied recorded simulation settings (revision %u)",HFR_SIMULATION_REVISION);
         } else if(!playing) restore_replay_settings();
         g_replay_playing = playing;
+        /* A replay with no recorded rate is a stock replay, so playback drops to 60 and runs the
+           simulation the file was made with. That is right -- and it is also why "record a stock
+           replay, play it back with sub-stepping on" proves nothing: this line quietly turns the
+           sub-stepping off again, so the test compared stock with stock. `replay_trace` keeps the
+           current rate instead, which is what makes that test say something. */
         int want = playing ? (g_replay_rate ? g_replay_rate : 60) : g_refresh;
+        if (playing && cfg.replay_trace) want = g_logic_rate;
         if (cfg.fps > 0 && !playing) want = cfg.fps;
         LOG("replay playback %s -> logic rate %d", playing ? "started" : "ended", want);
         set_logic_rate(want);

@@ -668,6 +668,33 @@ deliberately samples input more often than the replay format records -- which is
 replay extension exists to handle, and the reason it has to come before sub-tick input rather
 than after.
 
+### 16c. The determinism test was not testing determinism
+
+A replay recorded at 360 Hz with sub-stepping on desynchronised when played back, and chasing
+that turned up something worse than the desynchronisation: **the test in §16b proved nothing.**
+
+`replay_check` sets the logic rate on playback from the rate recorded in the file. A replay with
+no HFR chunk -- which is every TH14 replay, because the extension is not installed -- has no
+recorded rate, so playback drops to 60. That is the right default: a stock replay should play in
+the simulation that made it. But it means "record a stock replay, play it back with sub-stepping
+on" silently turned the sub-stepping back off. The test compared stock with stock and could only
+ever have passed.
+
+So what is actually known is the opposite of what § 16b claimed. The one real experiment -- record
+*with* sub-stepping, play back at the forced 60 -- **desynchronised**. The sub-stepped simulation
+and the stock one are not the same simulation, somewhere. Everything §16b concluded is withdrawn,
+and the "player does slightly more damage" report is open again, with no evidence against it.
+
+`replay_trace` (debug only, off by default) is what makes the test real: it keeps the current
+logic rate across playback instead of dropping to 60, and writes one line a game frame with the
+replay's frame number and the player's fixed-point position. Play one file back twice -- once
+stock, once genuinely sub-stepped -- and diff the two logs. The first line that differs is the
+frame the simulation diverged on, which localises the bug to a frame instead of to a system.
+
+The lesson is not about replays. It is that a test which cannot fail is worse than no test,
+because it is reported as evidence. This one passed for a reason that had nothing to do with what
+it claimed to measure, and it was believed for three exchanges.
+
 ### The two rates nothing was scaling, found by someone playing
 
 Reported, not measured by a test: the player felt like she was doing slightly more damage than the
