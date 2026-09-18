@@ -92,6 +92,11 @@
   "description": "the script instruction that sets the speed"
  },
  {
+  "address": "0x45101a",
+  "bytes": "6a 0e e8 ff 33 fc ff",
+  "description": "the shot cycle's rewind"
+ },
+ {
   "address": "0x41686a",
   "bytes": "83 be d4 04 00 00 00",
   "description": "debug: the promotion gate"

@@ -380,6 +380,34 @@ static void th14_install_sites(void) {
     E(0xb8); E32((uint32_t)(uintptr_t)&g_logical);  /* mov eax,&g_logical -- one frame's worth */
     EJMP(0x44e096); site_hook(0x44e08d, 13);
 
+    /* --- The shot cycle, and why Reimu stopped firing while the button was held.
+
+           The player's shooting is one timer at [+0x18338] (prev/int/float/rate), driven by
+           0x450fb0. Pressing shoot starts it at 0, every integer it passes through fires that
+           step of the pattern (0x450ed0 takes the integer as its argument), and when it reaches
+           14 with the button still held the cycle is rewound by 14 and starts again.
+
+           The rewind is `timer_rewind` at 0x414420, and it multiplies the amount by the timer's
+           rate before subtracting it -- `mulss xmm1, xmm2` with xmm1 the rate and xmm2 the
+           negated count. The rate is the game speed, which sub-stepped is a sixth. So the cycle
+           did not rewind by 14, it rewound by 14/6: the timer fell from 14 to about 11.7 and
+           climbed straight back, and the only pattern steps that ever came round again were 12
+           and 13. Releasing and pressing the button sets the timer to -1 and then to 0, which is
+           why tapping fired a burst and holding fired one or two shots and then nothing.
+
+           A rewind is a discrete reset of a cycle, not a frame's worth of anything, so it takes
+           the logical speed and not the sub-step fraction. Swap the timer's rate pointer for the
+           duration of the call and put it back: 0x414420 has exactly one caller in the game, so
+           there is nothing else to think about, and at 60 Hz g_logical is what the rate already
+           holds, which makes the site bit-identical with sub-stepping off. --- */
+    STUB_BEGIN();
+    E(0xff, 0x76, 0x0c);                            /* push dword [esi+0xc]  (the rate pointer) */
+    E(0xc7, 0x46, 0x0c); E32((uint32_t)(uintptr_t)&g_logical);   /* mov [esi+0xc],&g_logical */
+    E(0x6a, 0x0e);                                  /* push 0xe */
+    ECALL(0x414420);                                /* timer_rewind, which pops its own argument */
+    E(0x8f, 0x46, 0x0c);                            /* pop dword [esi+0xc]   (put it back) */
+    EJMP(0x451021); site_hook(0x45101a, 7);
+
     /* --- The player's weapons (0x100 of them at player+0x6c8, walked by 0x451380, each updated
            by 0x4510b0 which calls its type's update and then ticks its own timer at 0x45131b).
            That timer's integer is what every weapon type's update asks "did it change, and is it

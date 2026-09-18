@@ -21,6 +21,17 @@ fi
 for f in "$@"; do
     echo "--- $f"
     $RUN ./build/tests/test_hfr.exe "$f" "build/tests/$(basename "$f")"
+    # The emitted machine code, run for real. test.ps1 has always done this; test.sh had not,
+    # which meant the stub tests only ran on Windows and a Linux-side change could break one
+    # without anything saying so. Skipped, with a line, when unicorn is not installed.
+    g=$(python3 tools/verify_game.py "$f") || { echo "Executable identification failed"; exit 1; }
+    if [ -f "tools/test_th${g}_stubs.py" ]; then
+        if python3 -c 'import unicorn' 2>/dev/null; then
+            PYTHONPATH=tools python3 "tools/test_th${g}_stubs.py" "build/tests/$(basename "$f")"
+        else
+            echo "    (tools/test_th${g}_stubs.py skipped: unicorn is not installed)"
+        fi
+    fi
 done
 
 echo "--- documentation links"
