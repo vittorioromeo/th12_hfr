@@ -8,6 +8,7 @@
  * the menu to sliders, combo boxes and check boxes means the game can go on running
  * underneath without its input being intercepted.
  */
+#include "../version.h"
 #include "ui_api.h"
 #include "../../third_party/imgui/imgui.h"
 #include "menu_renderer.h"
@@ -479,7 +480,10 @@ void draw_window(void) {
     ImGui::SetNextWindowSizeConstraints(ImVec2(400 * k, 240 * k), io.DisplaySize);
     /* No close button: the menu key is the only way in and out, so the menu can never be
        left in a state where that key looks like it has stopped working. */
-    if (ImGui::Begin("Touhou HFR", nullptr, ImGuiWindowFlags_NoCollapse)) {
+    /* The title carries the version so a screenshot identifies the build; "###hfr" keeps the
+       window's identity stable across releases, so a version bump does not reset its
+       position and size. */
+    if (ImGui::Begin("Touhou HFR v" HFR_VERSION "###hfr", nullptr, ImGuiWindowFlags_NoCollapse)) {
         /* ImGui's own clamping only keeps a window's title bar on screen, which still leaves
            almost all of it outside a viewport that has just shrunk a long way. Put the whole
            window back inside. */

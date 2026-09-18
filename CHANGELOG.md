@@ -4,6 +4,27 @@ Newest first. Versions are the release archive names; `-test` means what it says
 Full release notes for each version are on the
 [releases page](https://github.com/vittorioromeo/th12_hfr/releases).
 
+## v0.5.5-test
+
+Touhou 14 gameplay runs at the display's refresh rate.
+
+- **TH14: bullets, the player, items and lasers move between 60 Hz frames**, with collision,
+  culling and grazing tested every tick. Enemy sprites and the player's options are interpolated
+  between their 60 Hz positions instead, because enemy logic is a script interpreter and the
+  options chase the player by a proportion of the remaining distance.
+- **TH14 replays are not rate-aware yet.** A replay records and plays back, but always at 60 Hz,
+  so a run played with sub-stepping on may not reproduce. Measured, not assumed: bullet delay
+  timers start a frame early under sub-stepping. Enemy and script behaviour is bit-identical
+  across rates. Play with `substep=0` if a run matters.
+- **The version in the log is no longer hard-coded** and had been stale since v0.5.3-test. The
+  F11 menu's title carries it now as well.
+- **The crash reporter keeps a slot per faulting address** instead of a budget of four, which
+  harmless startup exceptions used to exhaust before the title screen.
+- `replay_trace`, `replay_trace_from` and `replay_trace_to`: debugging aids, off by default,
+  active only with `debug=1`.
+- `docs/FIXED_STEP_RESEARCH.md` and `tools/research/`: an audit of fixed-rate simulation. No
+  runtime change.
+
 ## v0.5.4-test
 
 New Classic: sub-stepped projectiles behave, and the patch loads on Proton.

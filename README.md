@@ -43,8 +43,20 @@ sprites are interpolated between their 60 Hz positions the way they are on TH10�
 *logic* stays at 60 Hz on every game, because it is a script interpreter and running it faster
 would be a different game. The player's options are interpolated the same way,
 because they chase her by a proportion of the distance each frame and sub-stepping that would
-change how far they trail. There is no replay extension or sub-tick input yet. Only the Japanese `th14.exe` is recognised so far; the English and Steam builds
-still have to be checked.
+change how far they trail. Sub-tick input is not wired up yet, so the player samples input once per 60 Hz frame on TH14
+where TH10–13 sample it every tick.
+
+**Replays on TH14 are not rate-aware yet.** The other games stamp the recording's tick rate into
+the file and play it back at that rate; TH14 does not, so a replay it records is played back at
+60 Hz and a run that was played sub-stepped will not reproduce. The divergence is real and has
+been measured: bullet delay timers start a frame early under sub-stepping, which is enough to
+change a pattern and, in one traced case, to kill the player at a frame she survived in the
+recording. Enemy and script behaviour is bit-identical across rates, so this is confined to
+bullets. Recording and watching replays works and nothing is corrupted — what you watch is
+simply not always what you played. If you care about a run, verify it at `substep=0`.
+
+Only the Japanese `th14.exe` is recognised so far; the English and Steam builds still have to be
+checked.
 
 Japanese and English executables are both supported for TH10–13, and so are the Steam releases. Other
 versions, other games, and the `th06c.exe` (Classic) executable bundled with New Classic are
