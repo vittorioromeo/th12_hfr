@@ -912,10 +912,35 @@ filename, push ECX, call a stdcall C function, and `ret 4` because that is the g
 epilogue. Both were checked by disassembling the compiled runtime, which is now the habit for
 anything where a calling convention is being bridged.
 
-**What this changes about the files on disk.** Every replay TH14 saves now carries an extra `USER`
-chunk appended after the game's own data. TH10-13 have done this for several releases and the
-format tolerates it, but TH14 is a different build of the loader and that is an assumption until
-someone saves a replay and loads it again.
+### It is not installed, and why
+
+Pressing "save replay" took the game down, and the log says what happened before it did: the
+wrapper ran twenty-five times in a row, once for `th14_01.rpy` through `th14_25.rpy`.
+
+The four call sites that reach `0x455c20` are not four ways of starting a replay. At least one of
+them -- `0x45ee0f`, inside the function that globs `th14_ud????.rpy` -- is the menu **reading every
+file's header to build its list**. Hooking that means `restore_replay_settings()` and a chunk read
+for each file the moment the menu opens, which is wrong on its face and fatal in practice. The
+same doubt applies to the save sites: three of the four are inside the two functions that build
+the `th14_%.2d.rpy` filename, which is what a *menu* does.
+
+So the hooks are backed out and the addresses stay, frozen and checked. They identify the build
+just as well unwritten. What is missing is not an address, it is a distinction the call sites do
+not make on their face -- "play this replay" against "look at this replay" -- and that has to be
+read before anything is hooked again. The obvious next step is to read `0x455c20`'s own body for a
+parameter or a manager field that separates the two, rather than to find a fifth call site and
+hope.
+
+**And the diagnosis cost more than it should have.** The crash produced no exception report at
+all. The reporter had a budget of four, and TH14 raises four harmless first-chance access
+violations inside KERNEL32 before the title screen, so the budget was spent before anything went
+wrong. It now reports once per *distinct* address with twelve slots, which is the behaviour it
+should always have had: a budget exists to stop one failing instruction filling the log, not to
+stop the log ever mentioning a second place.
+
+**Still unverified, for when the hooks go back in:** every replay TH14 saves would carry an extra
+`USER` chunk after the game's own data. TH10-13 have done this for several releases and the format
+tolerates it, but TH14 is a different build of the loader.
 
 ### The input path, read from the same function
 

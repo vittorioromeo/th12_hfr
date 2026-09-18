@@ -10,13 +10,24 @@ static int select_game(const uint8_t* image, size_t size) {
    a windowed process is otherwise silent, and the patch's log is the only thing a tester
    can send back. Purely diagnostic: the exception is always passed on unchanged. */
 static LONG CALLBACK hfr_exception_report(EXCEPTION_POINTERS* ep) {
-    static int reported;
+    /* A budget, because a process that is going down can raise the same fault repeatedly and a
+       log full of one address helps nobody. But the budget must not be spendable on *one* place:
+       a game that throws a first-chance access violation somewhere harmless -- TH14 does, four
+       times inside KERNEL32 before the title screen -- would use it up and then be silent about
+       the crash that matters. So each distinct address reports once, and there is room for
+       several. This cost a diagnosis: the replay crash below produced no report at all. */
+    enum { REPORT_SLOTS = 12 };
+    static void* seen[REPORT_SLOTS];
+    static int seen_n;
     DWORD code = ep && ep->ExceptionRecord ? ep->ExceptionRecord->ExceptionCode : 0;
     int fatal = code == EXCEPTION_ACCESS_VIOLATION || code == EXCEPTION_ILLEGAL_INSTRUCTION ||
                 code == EXCEPTION_PRIV_INSTRUCTION || code == EXCEPTION_INT_DIVIDE_BY_ZERO ||
                 code == EXCEPTION_STACK_OVERFLOW || code == EXCEPTION_IN_PAGE_ERROR;
-    if (fatal && reported < 4) {
-        ++reported;
+    if (fatal) {
+        void* at = ep->ExceptionRecord->ExceptionAddress;
+        for (int i = 0; i < seen_n; ++i) if (seen[i] == at) return EXCEPTION_CONTINUE_SEARCH;
+        if (seen_n >= REPORT_SLOTS) return EXCEPTION_CONTINUE_SEARCH;
+        seen[seen_n++] = at;
         void* addr = ep->ExceptionRecord->ExceptionAddress;
         char name[MAX_PATH] = "?";
         HMODULE mod = NULL;

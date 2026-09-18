@@ -103,7 +103,8 @@ static const struct DimRule th14_dim_rules[] = {
     { -1, -1, "effect.anm",  -1, -1, -1, -1, DIM_EFFECTS },
 };
 
-/* The replay extension's two ends. TH14 moved both conventions again: the save is stdcall with
+/* The replay extension's two ends -- built, checked, and not installed yet (see the site list in
+   th14_install_sites). TH14 moved both conventions again: the save is stdcall with
    four stack arguments where TH13's is fastcall with one, and the load is thiscall -- the manager
    in ECX, the filename pushed -- with four call sites where the profile has a single slot. Rather
    than teach the shared installer two more shapes for one game, both get a wrapper here, which is
@@ -294,11 +295,13 @@ static void th14_install_sites(void) {
     EJCC(0x8c, 0x44db3d);                           /* jl: the game's own branch */
     EJMP(0x44d9aa); site_hook(0x44d9a1, 9);
 
-    /* --- The replay file: four sites that save one and four that load one. --- */
-    { static const uintptr_t saves[] = { 0x449a29, 0x44aa5c, 0x44b973, 0x4617b8 };
-      static const uintptr_t loads[] = { 0x4549bc, 0x454b40, 0x454fd3, 0x45ee0f };
-      for (int i = 0; i < 4; ++i) site_call(saves[i], (void*)th14_replay_save_c);
-      for (int i = 0; i < 4; ++i) site_call(loads[i], (void*)th14_replay_load_entry); }
+    /* --- The replay file. NOT HOOKED: see TH14_DEVNOTES § 17. The four call sites that reach
+           the loader are not four ways of starting a replay -- at least one of them is the menu
+           reading every file's header to build its list, which fired the wrapper twenty-five
+           times in a row and took the game down. The addresses stay in the profile because they
+           are read and checked; the hooks come back when each site has been identified as
+           "play this replay" or "look at this replay", which is a distinction the call sites do
+           not make on their face. --- */
 
     /* --- The player's shot array carries two rates the update applies itself, outside the
            MotionState and outside any timer: `[-0x64] += [-0x60]` and `[-0x5c] += [-0x58]` from

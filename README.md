@@ -43,7 +43,7 @@ sprites are interpolated between their 60 Hz positions the way they are on TH10â
 *logic* stays at 60 Hz on every game, because it is a script interpreter and running it faster
 would be a different game. The player's options are interpolated the same way,
 because they chase her by a proportion of the distance each frame and sub-stepping that would
-change how far they trail. There is no sub-tick input yet. Only the Japanese `th14.exe` is recognised so far; the English and Steam builds
+change how far they trail. There is no replay extension or sub-tick input yet. Only the Japanese `th14.exe` is recognised so far; the English and Steam builds
 still have to be checked.
 
 Japanese and English executables are both supported for TH10â€“13, and so are the Steam releases. Other
