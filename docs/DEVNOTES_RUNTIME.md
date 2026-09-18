@@ -1017,33 +1017,29 @@ that does not matter.
 
 ### The same question for New Classic, where the answer is the other one
 
-The section above is about `timing.c`, the x86 scheduler. New Classic runs on `substep.h`, and
-there the worry is correct.
+The section above is about `timing.c`, the x86 scheduler. New Classic is a separate case, and the
+concern is live there.
 
-New Classic has no float timers of its own -- this runtime decides when the 60 Hz logic runs -- so
-a tick that straddled a frame boundary would apply part of the next frame's motion before that
-frame's logic had run. To stop that, the partition is nested: a Bresenham deals the ticks of a
-second out to the 60 frames, and then a second one deals *that frame's* 256 units out to *that
-frame's* ticks. A tick therefore never crosses a boundary, and a frame that gets two ticks gets
-two halves of a frame:
+**A correction, because the first version of this section got it wrong.** It analysed
+`substep.h`'s nested Bresenham and reported steps of 0.5 and 0.332 frames at 144Hz. `substep.h` is
+not called by the live New Classic loop: its only callers are in `tools/test_fixed.c`. Production
+uses `fixed_clock_step()` for the frame clock and `subtick_slice()` for the slices, and
+`subtick_slice` is not a Bresenham at all -- it returns whatever wall-clock time has elapsed since
+the last slice, expressed in frames. Measuring dead code and reporting it as the shipped behaviour
+is a worse mistake than the one it was correcting, and the check that would have caught it is one
+grep for the function's callers.
 
-| rate | ticks per frame | step lengths | spread |
-|---|---|---|---|
-| 144 | 2 or 3 | `0.5 0.5` / `0.336 0.332 0.332` | 51% |
-| 165 | 2 or 3 | the same two sizes | 51% |
-| 240 | 4, always | `0.25` x 4 | 0 |
-| 360 | 6, always | `0.168` x 4, `0.164` x 2 | 2% |
+`FIXED_STEP_RESEARCH.md` models the live call order and reports a projectile slice ranging from
+1.389 ms to 12.5 ms at 144Hz -- a twelfth of a frame to three quarters of one. The asymmetry comes
+from `update_first()`: on a major tick it finishes the outgoing frame with
+`projectiles_slice(ticks + 1.0)` so the 60Hz pass reads exactly the positions the unmodified game
+would, then runs the native logic and moves the *player* to the new phase with
+`subtick_move(ticks + phase)` -- but does not advance the projectiles to that phase. The
+projectiles' `moved_to` is left on the frame boundary while the phase has already moved on, so the
+next minor slice carries the extra.
 
-So on New Classic at 144 or 165 Hz a bullet really does travel half a frame between collision
-tests on some frames and a third on others, and the worst case really is the bound. This is not a
-defect in the Bresenham: at a ratio that is not an integer you cannot have both "no tick crosses a
-frame boundary" and "every tick is the same length", and New Classic needs the first.
+That asymmetry is deliberate for the player (the native pass must see stock positions) and looks
+unintended for the projectiles. It is worth a bounded investigation on its own terms, ahead of any
+larger scheduling work: check the player/projectile collision order, the frame transition, native
+fast-forward and replay behaviour before changing it.
 
-The way out is to stop taking the tick rate from the display. Snap it to the nearest multiple of
-60 at or above the refresh -- 144 and 165 both go to 180, 240 and 360 stay -- and present whenever
-the panel is ready. Every step is then an equal share of a frame, nothing straddles, and the
-simulation stops depending on the panel at all. The cost is the one the x86 section names: a
-present no longer coincides with a tick, so anything sub-stepped has to be interpolated between
-the two ticks around it to be drawn. On x86 that trade is bad because the spacing is already
-uniform to within one part in a hundred; on New Classic it is worth it, because the spacing is
-not, and because that runtime already owns the 60 Hz decision.
