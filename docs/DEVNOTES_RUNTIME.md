@@ -1014,3 +1014,36 @@ stops a presented frame coinciding with a tick, so every sub-stepped object woul
 interpolating to draw. The current arrangement gets uniform spacing and exact 60 Hz boundaries
 at the cost of a count that is only constant when the rate divides 60, and the count is the part
 that does not matter.
+
+### The same question for New Classic, where the answer is the other one
+
+The section above is about `timing.c`, the x86 scheduler. New Classic runs on `substep.h`, and
+there the worry is correct.
+
+New Classic has no float timers of its own -- this runtime decides when the 60 Hz logic runs -- so
+a tick that straddled a frame boundary would apply part of the next frame's motion before that
+frame's logic had run. To stop that, the partition is nested: a Bresenham deals the ticks of a
+second out to the 60 frames, and then a second one deals *that frame's* 256 units out to *that
+frame's* ticks. A tick therefore never crosses a boundary, and a frame that gets two ticks gets
+two halves of a frame:
+
+| rate | ticks per frame | step lengths | spread |
+|---|---|---|---|
+| 144 | 2 or 3 | `0.5 0.5` / `0.336 0.332 0.332` | 51% |
+| 165 | 2 or 3 | the same two sizes | 51% |
+| 240 | 4, always | `0.25` x 4 | 0 |
+| 360 | 6, always | `0.168` x 4, `0.164` x 2 | 2% |
+
+So on New Classic at 144 or 165 Hz a bullet really does travel half a frame between collision
+tests on some frames and a third on others, and the worst case really is the bound. This is not a
+defect in the Bresenham: at a ratio that is not an integer you cannot have both "no tick crosses a
+frame boundary" and "every tick is the same length", and New Classic needs the first.
+
+The way out is to stop taking the tick rate from the display. Snap it to the nearest multiple of
+60 at or above the refresh -- 144 and 165 both go to 180, 240 and 360 stay -- and present whenever
+the panel is ready. Every step is then an equal share of a frame, nothing straddles, and the
+simulation stops depending on the panel at all. The cost is the one the x86 section names: a
+present no longer coincides with a tick, so anything sub-stepped has to be interpolated between
+the two ticks around it to be drawn. On x86 that trade is bad because the spacing is already
+uniform to within one part in a hundred; on New Classic it is worth it, because the spacing is
+not, and because that runtime already owns the 60 Hz decision.
