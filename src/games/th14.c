@@ -181,6 +181,27 @@ static void th14_install_sites(void) {
     EJCC(0x84, 0x416bd9);                           /* the same frame again: motion only */
     EJMP(0x416b24); site_hook(0x416b0f, 21);
 
+    /* --- A bullet in state 2 is still "entering"; the handler at 0x4167e4 promotes it to state 1
+           at 0x416877 and falls straight through into the state-1 body, so the frame it is
+           promoted on is the frame its delay countdown takes its first step. The promotion is
+           gated on a word at [esi+0x4d4], which the bullet code never writes -- it comes from the
+           motion state, and it is written later in the frame than the bullet update runs.
+
+           At one tick a frame that write always lands after the check, so the bullet waits a
+           whole frame and is promoted on the next one. Sub-stepped, the check runs another five
+           times before the frame is out, and the second of them sees the write the first one
+           missed: the bullet is promoted in the frame it should have waited through, and stays
+           one frame ahead of stock for the rest of its life. Traced from two playbacks of one
+           replay: every actively counting bullet exactly one frame ahead, nothing else in the
+           object different, and this word reading zero at every frame boundary in both runs --
+           it is only ever non-zero in the middle of a frame.
+
+           That is a read-after-write across the update list, not an arithmetic error, and it does
+           not have an arithmetic fix. Gate the promotion to the frame boundary: the bullet then
+           asks the question exactly once a frame, at the same point in the list stock asks it,
+           and the answer is the one stock gets. --- */
+    gate_block(0x416877, 12, 0x416c40, 0, -1);
+
     /* --- Lasers (the manager's list walk at 0x43a570, behind the callback 0x43a6a0; four laser
            classes whose vtables are at 0x4be2fc, 0x4be364, 0x4be3cc and 0x4be434, updated through
            `[vtable+0x10]`). This system needed almost nothing: every laser's motion multiplies by

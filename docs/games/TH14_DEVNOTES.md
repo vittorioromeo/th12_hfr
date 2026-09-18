@@ -1281,3 +1281,74 @@ So dump the motion state. For bullets in state 2 only -- which is exactly the se
 the dump now prints `+0x28` through `+0x610` as 32 dwords a line with the offset in front. Diffing
 two runs over the window localises the difference to a 128-byte chunk and then to a single dword,
 and a dword at a known offset in a known object is an address to look up rather than another guess.
+
+## 22. It was a read-after-write across the update list
+
+The motion-state dump, diffed over frames 369-374 for the bullets in state 2 in both runs:
+
+```
+differing dword offsets, counted over every state-2 bullet and frame
+  +0x050 +0x054 +0x058 +0x060   195 each   heap pointers (0x12fbc9d0 vs 0x12da39d0) -- two processes
+  +0x064 +0x068                 195 each   floats
+  +0x520 .. +0x548              195 each   four (x,y) pairs, the draw quad
+  +0x4d4                          0        the gate
+```
+
+Most of that is noise: the pointers differ because these are two runs of the process, and the quad
+is where the bullet is drawn, which under sub-stepping is an interpolated position and *should*
+differ. The line that matters is the one that is not there. `+0x4d4` -- the word the promotion at
+`0x41686a` is gated on -- reads **zero at every frame boundary, in both runs, for every bullet that
+is still in state 2**. It is never observed non-zero, in either run.
+
+That is the answer, and it is not an arithmetic answer.
+
+Nothing in the bullet code writes `+0x4d4`; it belongs to the motion state the bullet carries at
+`+0x28`, and it is written **later in the frame than the bullet update runs**. At one tick a frame
+the write always lands after the check, so the bullet fails the gate, waits, and is promoted on the
+next frame -- and by the time anything looks at the word again, at the next frame's boundary, it
+has been consumed and cleared. Sub-stepped, the check runs another five times before the frame is
+out, and the second of them sees the write the first one missed. The bullet is promoted inside the
+frame it was supposed to wait through, and since the state-2 handler falls through into the
+state-1 body on the same call, its delay countdown takes its first step there too. One frame ahead,
+for the rest of its life.
+
+So it was never the timers. Every timer was exact -- the age float read 10.0, 11.0, 12.0 to the
+bit. It was the *order of operations within a frame*, which sub-stepping changes by construction:
+a system that runs six times a frame can see, five times out of six, state that a system running
+once a frame produces after it.
+
+This is a fourth hazard class, and the one that does not announce itself. The first three are
+arithmetic -- an integer the update moves itself, a block gated on "the timer's integer is N", a
+truncation -- and they can all be found by reading the code that does the arithmetic. This one is
+invisible in the code that reads the value. `cmp dword [esi+0x4d4], 0` is a correct instruction; it
+is correct six times a frame; what is wrong is that it is *asked* six times a frame, and the answer
+changes partway through.
+
+### 22a. The fix
+
+There is no arithmetic fix, because there is no arithmetic. Gate the promotion to the frame
+boundary:
+
+```c
+gate_block(0x416877, 12, 0x416c40, 0, -1);
+```
+
+Twelve bytes -- `mov eax, 1` and `mov word [esi+0xc0e], ax` -- behind the existing frame-boundary
+gate, skipping to `0x416c40` on a tick that is not one. The bullet then asks the question exactly
+once a frame, at the same point in the update list where stock asks it, and gets the answer stock
+gets. The state-2 motion at `0x4167e4` is untouched and still runs every tick, so a bullet that is
+entering still moves smoothly; only the discrete promotion is pinned to the boundary, which is
+where a discrete event belongs.
+
+This is the same shape as the player's state dispatch at `0x44d924` and, for that matter, the
+decision not to sub-step the enemies at all: the continuous part runs at the display rate and the
+decisions run at 60Hz.
+
+### 22b. What to check next
+
+The general question this raises is how many other places read, on a sub-tick, something another
+system writes later in the frame. The census machinery can answer it for a specific suspect but
+cannot find them, and neither can reading -- the read looks correct. The practical test is the one
+that found this: play one replay back in both modes with the fingerprint on and see whether the
+bullet and enemy hashes now agree for its whole length. If they do, there are no others on any
+path that replay exercised, which is a great deal more than reading could establish.
