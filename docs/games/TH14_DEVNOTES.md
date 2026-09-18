@@ -644,6 +644,36 @@ What a rate pointer cannot fix, and so what every hook here is one of:
    Player call (`g_ptf_prev`/`g_ptf_cur`), which is true every tick, so the "multiple of 3" then
    holds for a whole frame as it did. TH13 replaces the identical guard at 0x446888.
 
+### Enemies: interpolated, not sub-stepped
+
+Enemies do not become MODE_SUB, in TH14 or in TH13. Their behaviour is an ECL script, and an
+interpreter stepped six times a frame is not a faster enemy, it is a different game. What moves
+smoothly instead is their *sprites*: `enemy_interp` places them every tick between the last two
+frame positions, which is the same one-frame lag everything sub-stepped already has.
+
+Everything it needs was readable from the game's own placement, `0x424810`, called as
+`lea ecx,[ebx+0x11f0]` from the enemy update at `0x42476b` and `0x4247ef`:
+
+| | |
+|---|---|
+| `addr.enemy_manager` | `0x4db52c` — the manager the shot-versus-enemy test uses at `0x451463` |
+| `layout.enemy_list` | `0xd0`, walked as `{enemy, next}` by the update at `0x422974` |
+| the sprite sub-object | `enemy+0x11f0`: position `+0x44`, 14 VM ids `+0x124`, offsets `+0x164` (three floats each), parent slots `+0x224`, flags `+0x4054` |
+| `layout.enemy_flags` | `0x5244` = `0x11f0 + 0x4054` — and that is exactly the word the manager tests before updating an enemy, which is what makes the whole chain check out |
+| `layout.enemy_position` | `0x1234` = `0x11f0 + 0x44` |
+| `layout.enemy_skip_mask` | `0x02000000`, the manager's own "skip this enemy" bit |
+| absolute-position bit | `0x04000000` in the same word (TH13's is `0x08000000`: the bits shifted by one as well as the offsets) |
+| the VM position | `+0x59c` (TH13: `+0x574`); a parent's contribution at its VM `+0x3c`, the same three words TH13 reads |
+
+The sub-object offset came out the same from two directions, which is the check worth having: the
+placement is reached as `enemy+0x11f0` and the enemy update reaches the id array directly as
+`lea esi,[ebx+0x1314]` — and `0x11f0 + 0x124` is `0x1314`.
+
+One convention had moved again, the sixth: `anm_get_vm` (`0x47f0a0`) takes the manager in **ECX**
+where TH10-13 take it in EDX, so the profile says `anm_get_vm_ecx` and `interpolation.c` picks the
+register. Both forms were checked by disassembling the compiled runtime rather than trusting the
+inline-asm constraints, which is how the two SSE stubs earlier in this port went wrong.
+
 ### Lasers: one line, because the engine already had the mechanism
 
 The laser manager's list walk is `0x43a570`, behind the callback `0x43a6a0`; four laser classes

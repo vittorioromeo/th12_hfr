@@ -362,6 +362,38 @@ static void th14_install_sites(void) {
     LOG("TH14 site patches installed (%u bytes of stubs)", (unsigned)g_stub_used);
 }
 
+/* Enemy sprites, for the render interpolation. Enemies keep stock 60 Hz logic -- their scripts
+   are the game, and stepping an ECL interpreter six times a frame is not a thing to do -- so what
+   moves smoothly is their sprites, placed every tick between the last two frame positions. TH13
+   does the same.
+
+   The enemy keeps a sub-object at +0x11f0 holding the position (+0x44), the 14 ANM VM ids
+   (+0x124), the sprite offsets (+0x164, three floats each) and the parent slot of each sprite
+   (+0x224); flags at +0x4054 (enemy +0x5244), 0x04000000 = the sprite positions are absolute.
+   Read off the game's own placement, which is 0x424810, called as `lea ecx,[ebx+0x11f0]` from the
+   enemy update at 0x42476b and 0x4247ef -- and the id array's address comes out the same from two
+   directions, because that update also reaches it as `lea esi,[ebx+0x1314]`, and 0x11f0 + 0x124
+   is 0x1314. The VM position is at +0x59c (TH13: +0x574) and a parent's contribution is read from
+   its VM at +0x3c, the same three words TH13 uses. */
+static void th14_place_enemy(uint8_t* e, uint8_t* am, uint32_t flags, const float* R) {
+    uint8_t* in = e + 0x11f0;
+    int* ids = (int*)(in + 0x124); float* offs = (float*)(in + 0x164); int* parent = (int*)(in + 0x224);
+    for (int i = 0; i < 14; i++) {
+        if (!ids[i]) continue;
+        float* vm = anm_get_vm(am, ids[i]);
+        if (!vm) continue;
+        float x = R[0], y = R[1], z = R[2];
+        if (!(flags & 0x4000000)) {
+            x += offs[i*3]; y += offs[i*3+1]; z += offs[i*3+2];
+            if (parent[i] >= 0 && parent[i] < 14 && ids[parent[i]]) {
+                float* pvm = anm_get_vm(am, ids[parent[i]]);
+                if (pvm) { x += pvm[0x0f]; y += pvm[0x10]; z += pvm[0x11]; }
+            }
+        }
+        vm[0x167] = x; vm[0x168] = y; vm[0x169] = z;   /* +0x59c */
+    }
+}
+
 /* Which of the update list's callbacks may run more than once a frame.
 
    Only the two sprite-manager passes do, and that is a deliberate stopping point rather than a
@@ -430,8 +462,13 @@ static const struct GameProfile th14_profile = {
         /* The player, and the callback the runner watches so that it can read the state
            timer's float before and after every Player call (layout.player_timer). */
         .player = 0x4db67c, .player_callback = 0x44ec60,
-        /* The sprite/ANM manager, which is also what the batch flush takes. */
-        .anm_manager = 0x4f56cc,
+        /* The sprite/ANM manager, which is also what the batch flush takes, and its "the VM
+           with this id" accessor -- which takes the manager in ECX here, where TH10-13 take it
+           in EDX (`anm_get_vm_ecx`). */
+        .anm_manager = 0x4f56cc, .anm_get_vm = 0x47f0a0,
+        /* The enemy manager, from the shot-versus-enemy test at 0x451463; its enemy list is at
+           +0xd0, walked as {enemy, next} by the update at 0x422974. */
+        .enemy_manager = 0x4db52c,
         /* The replay nodes, from the draw trace's pairing and from where OpenInputLagPatch
            puts its replay speed-control patch (0x455e82, inside the playback one). */
         .record_callback = 0x455e40, .playback_callback = 0x455e60,
@@ -459,6 +496,11 @@ static const struct GameProfile th14_profile = {
            rate pointer at +0x698 -- which the constructor points at the game speed (0x44dd2a),
            so the timer sub-steps by itself. */
         .player_timer = 0x694,
+        /* The enemy list and the two words the interpolation reads off each enemy. The skip mask
+           is the bit the manager itself tests before updating an enemy (0x422995), which is the
+           same word the sprite placement reads its "positions are absolute" bit from. */
+        .enemy_list = 0xd0, .enemy_flags = 0x5244, .enemy_position = 0x1234,
+        .enemy_skip_mask = 0x2000000,
     },
     .critical_flag_mask = 0xff,
     .runner_return8_ends = 1,
@@ -480,7 +522,8 @@ static const struct GameProfile th14_profile = {
        still wrapped, which is what makes the debug draw trace run, which is what will supply
        the priority and the rules. The sprite VM draw is not described yet either, so the
        per-VM rules stay inert; dimming.c already treats both as optional. */
-    .install_sites = th14_install_sites,
+    .install_sites = th14_install_sites, .place_enemy = th14_place_enemy,
+    .anm_get_vm_ecx = 1,
     .speed_sites = th14_speed_sites, .speed_site_count = sizeof th14_speed_sites / sizeof *th14_speed_sites,
     .classes = th14_classes, .class_count = sizeof th14_classes / sizeof *th14_classes,
     .draw = { .dispatch = 0x40141a, .dispatch_len = 8, .node_reg = R_EDI, .prio_off = 0,

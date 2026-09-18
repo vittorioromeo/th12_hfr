@@ -7,7 +7,10 @@
 typedef float* (*GetVmFn)(uint8_t* mgr, int id);
 static float* anm_get_vm(uint8_t* mgr, int id) {
     float* r; uint8_t* m = mgr;
-    __asm__ volatile ("push %2\n\t" "call *%3\n\t" : "=a"(r), "+d"(m) : "r"(id), "r"(g_game->addr.anm_get_vm) : "ecx", "memory", "cc");
+    if (g_game->anm_get_vm_ecx)
+        __asm__ volatile ("push %2\n\t" "call *%3\n\t" : "=a"(r), "+c"(m) : "r"(id), "r"(g_game->addr.anm_get_vm) : "edx", "memory", "cc");
+    else
+        __asm__ volatile ("push %2\n\t" "call *%3\n\t" : "=a"(r), "+d"(m) : "r"(id), "r"(g_game->addr.anm_get_vm) : "ecx", "memory", "cc");
     return r;
 }
 struct EnemyTrack { uint8_t* enemy; float last[3]; float prev[3]; unsigned seen; };

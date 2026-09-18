@@ -108,6 +108,9 @@ struct GameProfile {
     enum RunnerArg { RUNNER_ARG_EBX = 0, RUNNER_ARG_STACK, RUNNER_ARG_ECX } runner_arg;
     /* The three frame callbacks take their context in ECX (thiscall) rather than pushed. */
     int frame_ctx_ecx;
+    /* The ANM manager's "VM for this id" takes its manager in ECX rather than EDX -- the sixth
+       thing TH14's newer compiler moved. */
+    int anm_get_vm_ecx;
     /* The screenshot routine takes the filename pushed (stdcall) rather than in EAX. */
     int screenshot_stack_arg;
     /* The end-of-pass cleanup takes its object in ECX (thiscall) rather than ESI. */
