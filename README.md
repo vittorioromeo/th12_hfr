@@ -41,8 +41,9 @@ title screen, the dialogue portraits and anything else that plays out of an anim
 The bullets, the player, the items and the lasers move at your display's rate too, and enemy
 sprites are interpolated between their 60 Hz positions the way they are on TH10–13 — enemy
 *logic* stays at 60 Hz on every game, because it is a script interpreter and running it faster
-would be a different game. **The player's options** are the one thing still moving in whole
-frames, on purpose, until they can be interpolated too. There is also no replay extension and no
+would be a different game. The player's options are interpolated the same way,
+because they chase her by a proportion of the distance each frame and sub-stepping that would
+change how far they trail. There is also no replay extension and no
 sub-tick input. Only the Japanese `th14.exe` is recognised so far; the English and Steam builds
 still have to be checked.
 

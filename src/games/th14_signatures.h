@@ -68,6 +68,7 @@ static const struct GameSignature th14_signatures[] = {
     /* the laser manager's base timer tick */
     {0x43a603, 13, {0x8b,0x4e,0x24,0x8b,0x46,0x1c,0x89,0x46,0x18,0x85,0xc9,0x74,0x25}},
 
+
     /* read, never written: the runner's epilogue. runner_ret is its last byte, 0x40138a,
        which is where thprac puts its update hook -- freezing the whole epilogue is what
        makes "the pass ends on the game's own instruction" a checked claim. */

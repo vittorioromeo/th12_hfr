@@ -412,9 +412,10 @@ void draw_timing_section(void) {
          ? "Poll movement and focus every tick instead of once per frame.\n"
            "Recorded into replays and reproduced on playback."
          : "This game's input path is not described yet.");
-    toggle("Interpolate enemy sprites", UI_ENEMY_INTERP);
-    help("Enemy scripts run at 60 Hz; this draws their sprites between those\n"
-         "positions so they move as smoothly as everything else.");
+    toggle("Interpolate sprites", UI_ENEMY_INTERP);
+    help("Enemy scripts run at 60 Hz, and so do a few other things that cannot\n"
+         "be sub-stepped without changing them; this draws their sprites between\n"
+         "those positions so they move as smoothly as everything else.");
 
     if (ImGui::TreeNode("Sub-stepped subsystems")) {
         ImGui::TextDisabled("For narrowing down a problem; the defaults are what has been tested.");

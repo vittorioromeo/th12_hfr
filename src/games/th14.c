@@ -394,6 +394,57 @@ static void th14_place_enemy(uint8_t* e, uint8_t* am, uint32_t flags, const floa
     }
 }
 
+/* The player's options, for the same render interpolation as the enemies and for the same
+   reason. They chase her by a fixed proportion of the remaining distance each frame (0x44d9aa,
+   thirty percent), and an exponential approach run six times a frame closes eighty-eight percent
+   of the gap instead of thirty -- the options would sit on her rather than trail her, which is a
+   gameplay difference, not a cosmetic one. So the approach stays on the frame boundary (the hook
+   at 0x44d9a1) and what moves smoothly is the sprites.
+
+   Eight options of 0xe4 at player+0xd6ec: active flag at +0x00, position as fixed point in 1/128
+   of a pixel at +0x5c and +0x60, and the two ANM VM ids at +0xb0 and +0xb4 -- read off the loop's
+   own tail at 0x44db3d, which writes exactly these two VMs' positions from exactly these two
+   integers, scaled by the 1/128 at 0x4c1900, with z zero. The game writes them every tick from
+   the position it last settled on; this runs after the pass and writes the interpolated one. */
+static struct { int32_t last[2], prev[2]; unsigned seen; } th14_opt[8];
+static unsigned th14_opt_frames;
+static void th14_place_options(uint8_t* am, float alpha, int capture) {
+    uint8_t* pl = g_game->addr.player ? *(uint8_t**)g_game->addr.player : NULL;
+    if (!pl) return;
+    if (capture) ++th14_opt_frames;
+    for (int i = 0; i < 8; ++i) {
+        uint8_t* o = pl + 0xd6ec + i * 0xe4;
+        if (!*(const uint32_t*)o) { th14_opt[i].seen = 0; continue; }   /* this one is not out */
+        const int32_t* P = (const int32_t*)(o + 0x5c);
+        if (capture) {
+            /* Seen on the previous frame: last becomes prev. Otherwise it has just appeared and
+               has no motion to show yet. */
+            if (th14_opt[i].seen && th14_opt[i].seen == th14_opt_frames - 1) {
+                th14_opt[i].prev[0] = th14_opt[i].last[0]; th14_opt[i].prev[1] = th14_opt[i].last[1];
+            } else { th14_opt[i].prev[0] = P[0]; th14_opt[i].prev[1] = P[1]; }
+            th14_opt[i].last[0] = P[0]; th14_opt[i].last[1] = P[1];
+            th14_opt[i].seen = th14_opt_frames;
+        } else if (th14_opt[i].seen != th14_opt_frames) {
+            th14_opt[i].prev[0] = th14_opt[i].last[0] = P[0];
+            th14_opt[i].prev[1] = th14_opt[i].last[1] = P[1];
+            th14_opt[i].seen = th14_opt_frames;
+        }
+        float d[2] = { (float)(th14_opt[i].last[0] - th14_opt[i].prev[0]),
+                       (float)(th14_opt[i].last[1] - th14_opt[i].prev[1]) };
+        /* A whole screen in one frame is the game putting an option somewhere, not moving it. */
+        if (d[0] < -6144.0f || d[0] > 6144.0f || d[1] < -6144.0f || d[1] > 6144.0f) d[0] = d[1] = 0;
+        float x = ((float)th14_opt[i].last[0] - d[0] * (1.0f - alpha)) * (1.0f / 128.0f);
+        float y = ((float)th14_opt[i].last[1] - d[1] * (1.0f - alpha)) * (1.0f / 128.0f);
+        for (int k = 0; k < 2; ++k) {
+            int id = *(const int*)(o + 0xb0 + k * 4);
+            if (!id) continue;
+            float* vm = anm_get_vm(am, id);
+            if (!vm) continue;
+            vm[0x167] = x; vm[0x168] = y; vm[0x169] = 0.0f;   /* +0x59c */
+        }
+    }
+}
+
 /* Which of the update list's callbacks may run more than once a frame.
 
    Only the two sprite-manager passes do, and that is a deliberate stopping point rather than a
@@ -522,7 +573,7 @@ static const struct GameProfile th14_profile = {
        still wrapped, which is what makes the debug draw trace run, which is what will supply
        the priority and the rules. The sprite VM draw is not described yet either, so the
        per-VM rules stay inert; dimming.c already treats both as optional. */
-    .install_sites = th14_install_sites, .place_enemy = th14_place_enemy,
+    .install_sites = th14_install_sites, .place_enemy = th14_place_enemy, .place_options = th14_place_options,
     .anm_get_vm_ecx = 1,
     .speed_sites = th14_speed_sites, .speed_site_count = sizeof th14_speed_sites / sizeof *th14_speed_sites,
     .classes = th14_classes, .class_count = sizeof th14_classes / sizeof *th14_classes,

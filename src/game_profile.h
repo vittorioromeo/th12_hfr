@@ -160,6 +160,9 @@ struct GameProfile {
     } draw;
     void (*install_sites)(void);
     void (*place_enemy)(uint8_t* enemy, uint8_t* anm, uint32_t flags, const float* position);
+    /* Optional, and called from the same place: a game's own once-a-frame things whose sprites
+       should be drawn between their frame positions. `capture` is true on the frame boundary. */
+    void (*place_options)(uint8_t* anm, float alpha, int capture);
 };
 static const struct GameProfile* g_game;
 #define g_classes (g_game->classes)

@@ -29,12 +29,25 @@ static struct EnemyTrack* track_find(uint8_t* e) {
     return stale;
 }
 static void enemy_interp(double phase) {
-    if (!cfg.substep || !cfg.enemy_interp || !g_game->place_enemy) return;
-    uint8_t* em = G_ENEMY_MANAGER; uint8_t* am = G_ANM_MANAGER;
-    if (!em || !am) return;
+    if (!cfg.substep || !cfg.enemy_interp) return;
+    if (!g_game->place_enemy && !g_game->place_options) return;
+    /* Both of these read a global through an address the profile may not have -- a game can be
+       described far enough to sub-step and not far enough to find its sprite manager, and the
+       bare-profile fixture is exactly that state. Check the address before the pointer. */
+    if (!g_game->addr.anm_manager) return;
+    uint8_t* am = G_ANM_MANAGER;
+    if (!am) return;
     int capture = g_major && !g_skip_update;
     if (capture) g_major_count++;
     float alpha = (float)(phase + g_dt); if (alpha > 1.0f) alpha = 1.0f;   /* fraction of the frame's motion to show */
+    /* Anything else of this game's that runs its logic once a frame and wants its sprites placed
+       between those positions -- TH14's player options, which chase her by a proportion of the
+       remaining distance each frame and so cannot be sub-stepped without changing how far they
+       trail. The adapter keeps its own tracking; it is a fixed little array, not a list. */
+    if (g_game->place_options) g_game->place_options(am, alpha, capture);
+    if (!g_game->place_enemy || !g_game->addr.enemy_manager) return;
+    uint8_t* em = G_ENEMY_MANAGER;
+    if (!em) return;
     uint32_t list = g_game->layout.enemy_list ? g_game->layout.enemy_list : 0x68;
     for (uint32_t* node = *(uint32_t**)(em + list); node; node = (uint32_t*)node[1]) {
         uint8_t* e = (uint8_t*)node[0];

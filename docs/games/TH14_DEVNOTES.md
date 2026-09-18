@@ -644,6 +644,27 @@ What a rate pointer cannot fix, and so what every hook here is one of:
    Player call (`g_ptf_prev`/`g_ptf_cur`), which is true every tick, so the "multiple of 3" then
    holds for a whole frame as it did. TH13 replaces the identical guard at 0x446888.
 
+### The options: interpolated too, for the reason they were not sub-stepped
+
+The options chase the player by a fixed proportion of the remaining distance each frame, so
+sub-stepping them changes how far they trail (§ above), and the approach was left on the frame
+boundary. That made them the one thing in TH14 still moving in 60 Hz steps. They get the same
+answer the enemies get: the logic stays once a frame and the *sprites* are placed between the two
+frame positions.
+
+Eight options of `0xe4` at `player+0xd6ec`: active flag at `+0x00`, position as fixed point in
+1/128 of a pixel at `+0x5c` and `+0x60`, the two ANM VM ids at `+0xb0` and `+0xb4`. All read off
+the option loop's own tail at `0x44db3d`, which writes exactly those two VMs from exactly those
+two integers, scaled by the 1/128 at `0x4c1900`, with z zero.
+
+`place_options` is a second, optional profile hook called from the same place as `place_enemy`,
+with the frame-boundary flag; the adapter keeps its own tracking, because eight slots is an array
+and not a list. Making the interpolation pass run for a profile that has one hook and not the
+other is what turned up a real gap: it read the sprite manager through `addr.anm_manager` before
+checking that the profile has one. `test_runner_undescribed` -- the fixture that zeroes every
+optional address -- faulted on it immediately, which is the third time that fixture has caught
+exactly this class of thing.
+
 ### Enemies: interpolated, not sub-stepped
 
 Enemies do not become MODE_SUB, in TH14 or in TH13. Their behaviour is an ECL script, and an
