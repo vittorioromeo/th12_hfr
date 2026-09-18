@@ -365,6 +365,15 @@ static void th14_install_sites(void) {
         EJMP(0x45174a);
         EJMP(0x4514d9); site_hook(0x4514ce, 11);
 
+        /* And how many shots are created, at the allocator's commit point: "more damage" is
+           either more hits per shot or more shots, and those are different bugs. */
+        STUB_BEGIN();
+        E_count(6, "spawn");
+        E(0x8b, 0x47, 0x10);                        /* mov eax,[edi+0x10] */
+        E(0x56);                                    /* push esi */
+        E(0x6a, 0x44);                              /* push 0x44 */
+        EJMP(0x4501a5); site_hook(0x45019f, 6);
+
         STUB_BEGIN();
         E(0x85, 0xd2);                              /* test edx,edx */
         E(0x74, 0x0b);                              /* zero: this shot hits */

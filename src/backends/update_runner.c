@@ -110,7 +110,10 @@ restart:
 done:
     crit_leave();
     set_factor(1.0f);
-    if (is_update) { subtick_input_end(); enemy_interp(g_phase); }
+    if (is_update) {
+        if (g_major && !g_skip_update) ++g_site_census_frames;   /* one game frame, for the census */
+        subtick_input_end(); enemy_interp(g_phase);
+    }
     return count;
 }
 /* The replacement runner is entered by a five-byte jump written over the game's runner, so

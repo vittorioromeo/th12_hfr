@@ -82,7 +82,7 @@ static void movement_cvttss(uintptr_t addr, uint8_t src_modrm, uint32_t src_disp
    guards is rejecting, and how often", which is the question left when a system is sub-stepped,
    looks right and quietly does nothing. Debug-only: the counting stubs are installed only when
    the ini asks for them, so a normal build has no extra code in the game's hot loops. */
-enum { SITE_CENSUS = 8 };
+enum { SITE_CENSUS = 12 };
 static unsigned g_site_census[SITE_CENSUS];
 static const char* g_site_census_name[SITE_CENSUS];
 /* emit "inc dword [&g_site_census[i]]" -- 6 bytes, clobbers the flags */
@@ -90,14 +90,21 @@ static void E_count(unsigned i, const char* name) {
     g_site_census_name[i] = name;
     E(0xff, 0x05); E32((uint32_t)(uintptr_t)&g_site_census[i]);
 }
+/* Game frames -- boundary ticks -- since the last report, so the counts can be read as a rate.
+   Without that the numbers are per five seconds and cannot be compared between a run with
+   sub-stepping and a run without, which is the comparison that answers "is this doing more of
+   something than the unmodified game". */
+static unsigned g_site_census_frames;
 static void site_census_report(void) {
-    char line[256]; int n = 0, any = 0;
+    char line[320]; int n = 0, any = 0;
     if (!cfg.debug) return;
+    unsigned f = g_site_census_frames ? g_site_census_frames : 1;
     for (unsigned i = 0; i < SITE_CENSUS; ++i) if (g_site_census_name[i]) {
         any = 1;
-        n += snprintf(line + n, sizeof line - (size_t)n, "%s%s=%u",
-                      n ? " " : "", g_site_census_name[i], g_site_census[i]);
+        n += snprintf(line + n, sizeof line - (size_t)n, "%s%s=%.2f",
+                      n ? " " : "", g_site_census_name[i], (double)g_site_census[i] / f);
         g_site_census[i] = 0;
     }
-    if (any) LOG("site census: %s", line);
+    if (any) LOG("site census, per game frame over %u frames: %s", g_site_census_frames, line);
+    g_site_census_frames = 0;
 }
