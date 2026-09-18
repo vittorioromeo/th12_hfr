@@ -1352,3 +1352,46 @@ cannot find them, and neither can reading -- the read looks correct. The practic
 that found this: play one replay back in both modes with the fingerprint on and see whether the
 bullet and enemy hashes now agree for its whole length. If they do, there are no others on any
 path that replay exercised, which is a great deal more than reading could establish.
+
+## 23. The gate was not it
+
+Two playbacks with the frame-boundary gate in, against the two without it:
+
+```
+                 before the gate                after the gate
+f=372   off b=ac96e06e n=203   on b=46dec4bf n=203      identical
+f=373   off b=9e194c45 n=206   on b=3c0b9623 n=205      identical
+f=374   off b=3d228d2c n=209   on b=3e28b593 n=207      identical
+```
+
+Bit-identical, all 667 frames, both runs. The DLL is the new one -- 64 verified signatures against
+63, 49 patches against 48, 1149 bytes of stubs against 1115 -- so the gate is installed and does
+nothing.
+
+A gate that never fires means **no bullet was ever promoted on a minor tick**. The promotion
+happens on the frame boundary in both modes, at the same point in the update list, and still comes
+out a frame apart. So §22 was wrong: it is not a read-after-write across the list, or at least not
+one that the promotion site can see.
+
+Which leaves something narrower and stranger. At the top of the frame, before any tick runs,
+`+0x4d4` reads zero in both runs. A little later in the same boundary tick, when the bullet update
+reaches `0x41686a`, it reads non-zero under sub-stepping and zero without. Same frame, same tick,
+same point in the list, and something between the two moments differs.
+
+I have a list of things it could be and no reason to prefer one, which is the point at which
+guessing stops paying. So: read the gate.
+
+### 23a. `th14_gate_log`
+
+A debug-only hook on `0x41686a` itself, the `cmp dword [esi+0x4d4], 0`. Every state-2 bullet that
+reaches it inside the trace window writes a line: the replay frame, the slot, `g_major`, the
+sub-tick number, the gate's value as read at that instant, and the state, `k`, `c1` and age
+alongside. XMM is saved around the call for the same reason the speed stubs save it.
+
+That is one line per state-2 bullet per tick -- about 33 x 6 x 6 in the window -- and it answers
+all of it at once: whether the two runs reach the gate on the same tick, what the gate says when
+they do, and on which tick the value turns over. Whatever the mechanism is, it cannot hide from a
+log of the actual comparison.
+
+The boundary gate from §22 stays in for this build. It demonstrably changes nothing, so it cannot
+contaminate the measurement; whether it earns its place gets decided once the mechanism is known.

@@ -150,6 +150,7 @@ extern void th14_replay_load_entry(void);
    Each hook below is one of those, and each is gated on the same question: did this tick cross
    a whole frame? The bullet's own timer answers it -- prev at +0x13c0 against int at +0x13c4,
    which the manager ticks after every update (0x4171b7). */
+void __cdecl th14_gate_log(uint8_t* b);   /* debug: the bullet promotion gate, defined below */
 static void th14_install_sites(void) {
     g_p = stub_begin();
 
@@ -407,6 +408,21 @@ static void th14_install_sites(void) {
            cadence = rejected on its interval, hit = reached the shape test, melee = of those,
            the ones with the swept shape, which is what a focus weapon's damage volume is. --- */
     if (cfg.debug) {
+        /* The promotion gate itself (see th14_gate_log). XMM is saved around the call for the same
+           reason the speed stubs save it: the runtime is built with -mfpmath=sse and the C
+           function is free to use any of it. */
+        STUB_BEGIN();
+        E(0x81, 0xec, 0x80, 0x00, 0x00, 0x00);      /* sub esp,0x80 */
+        for (unsigned n = 0; n < 8; ++n) E(0x0f, 0x11, (uint8_t)(0x44 | (n << 3)), 0x24, (uint8_t)(n * 16));
+        E(0x9c); E(0x60);                           /* pushfd; pushad */
+        E(0x56);                                    /* push esi */
+        ECALL((uintptr_t)th14_gate_log);
+        E(0x83, 0xc4, 0x04);                        /* add esp,4 */
+        E(0x61); E(0x9d);                           /* popad; popfd */
+        for (unsigned n = 0; n < 8; ++n) E(0x0f, 0x10, (uint8_t)(0x44 | (n << 3)), 0x24, (uint8_t)(n * 16));
+        E(0x81, 0xc4, 0x80, 0x00, 0x00, 0x00);      /* add esp,0x80 */
+        ECOPY(0x41686a, 7); EJMP(0x416871); site_hook(0x41686a, 7);
+
         STUB_BEGIN();
         E_count(5, "tests");
         E(0x8b, 0x0d); E32(0x4db52c);               /* mov ecx,[0x4db52c] */
@@ -627,6 +643,30 @@ static void th14_trace_dump(void) {
             LOG("bm i=%d +%03x %s", i, o, line);
         }
     }
+}
+
+/* Debug only: report every time a state-2 bullet reaches the promotion gate at 0x41686a, with the
+   gate's own value, which tick of the frame it is, and whether that tick is a frame boundary.
+
+   This exists because gating the promotion to the frame boundary changed nothing -- two playbacks
+   after the gate went in are bit-identical to the two before it, over all 667 frames. A gate that
+   never fires means no bullet was ever promoted on a minor tick, which kills the read-after-write
+   story: the promotion happens on the boundary tick in both modes, at the same point in the update
+   list, and still comes out differently. So stop modelling and read the gate. */
+void __cdecl th14_gate_log(uint8_t* b) {
+    if (!cfg.debug || !cfg.replay_trace || !cfg.replay_trace_to) return;
+    if (!g_game->addr.replay_manager) return;
+    uint8_t* rm = *(uint8_t**)g_game->addr.replay_manager;
+    if (!rm) return;
+    int f = *(int*)(rm + g_game->layout.replay_frame);
+    if (f < cfg.replay_trace_from || f > cfg.replay_trace_to) return;
+    uint8_t* bm = *(uint8_t**)0x4db530;
+    if (!bm) return;
+    int i = (int)(((size_t)(b - (bm + 0x8c))) / 0x13f4);
+    LOG("bg f=%d i=%d major=%d tick=%u gate=%08x st=%u k=%d c1=%d age=%d",
+        f, i, g_major, g_tick, *(const uint32_t*)(b + 0x4d4),
+        (unsigned)*(const uint16_t*)(b + 0xc0e), *(const int*)(b + 0x13c4),
+        *(const int*)(b + 0x10ac), *(const int*)(b + 0x13d8));
 }
 
 /* Which of the update list's callbacks may run more than once a frame.
