@@ -39,7 +39,12 @@ int __cdecl __attribute__((used)) hfr_runner(uint8_t* runner) {
     if (g_skip_update && runner == G_UPDATE_RUNNER) { enemy_interp(g_phase); return 1; }
     int is_update = runner == G_UPDATE_RUNNER;
     if (is_update) {
-        if (g_major) { g_stop_node = NULL; g_frame_active = 0; }
+        /* The desync trace samples here, before the frame's first tick runs, so it reads the state
+           at a frame boundary in both modes. It used to sample at the end of the pass, which under
+           sub-stepping is one sub-tick -- a sixth of a frame at 360Hz -- into the frame, and that
+           put a constant offset of most of a frame's movement into every comparison and buried the
+           small real differences the trace exists to find. */
+        if (g_major) { g_stop_node = NULL; g_frame_active = 0; replay_trace_frame(); }
         else subtick_input_begin();
     }
     crit_enter();
@@ -111,7 +116,7 @@ done:
     crit_leave();
     set_factor(1.0f);
     if (is_update) {
-        if (g_major && !g_skip_update) { ++g_site_census_frames; replay_trace_frame(); }
+        if (g_major && !g_skip_update) ++g_site_census_frames;
         subtick_input_end(); enemy_interp(g_phase);
     }
     return count;

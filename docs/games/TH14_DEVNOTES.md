@@ -999,3 +999,82 @@ Also outstanding: the English and Steam builds (only `th14.exe` is recognised so
 `vpatch_th14.dll`'s conflict sites, `sprite_round_sites` for internal resolution, the replay
 magic (`t14r` is the obvious guess and nothing reads it yet), and `data_dir` — TH13 needed one
 because it saves replays under `%APPDATA%`, and whether TH14 does has not been checked.
+
+## 18. The first desync trace, and why it pointed at the wrong thing
+
+The user recorded a spell card at 360Hz with sub-stepping on, then played that one file back
+twice with `replay_trace=1` -- once sub-stepped, once stock. Both runs are genuine: the `on` log
+says `replay playback started -> logic rate 360` with `substep=1`, the `off` log says
+`logic rate: 60 ticks/s` and `substep=0`, so `replay_check`'s 60Hz override was really out of the
+way this time.
+
+Lining the two up by the replay's own frame number:
+
+```
+frames 0..633   identical, every one
+f=634           on=(-153, 51993)   off=(-195, 51993)
+f=635           on=( 103, 51993)   off=(-195, 51993)
+...
+f=644           on=(2365, 51993)   off=(-195, 51993)
+off ends at f=666; on runs on to f=1108
+```
+
+The `off` run's player stops dead at the position she held on frame 633 and its trace ends 442
+frames early. That is not a divergence in movement, that is a death: the player froze, the death
+animation played, and the replay ended. So the stock playback of a file recorded sub-stepped kills
+the player at frame 633, and the sub-stepped playback of the same file does not.
+
+Two things follow, and the second is the useful one.
+
+First, the replay is not corrupt and the input stream is not the problem. 633 frames -- ten and a
+half seconds, including plenty of movement -- match *exactly*, to the fixed-point unit. Whatever
+differs between the two simulations is small enough to leave the player's integrated position
+bit-identical for that long.
+
+Second, and this is the part I had backwards for a while: the player position was never going to
+find it. She is a pure function of the recorded inputs. Feed the same button presses to either
+simulation and she traces the same path whether or not the bullets around her agree, right up to
+the frame one of the simulations decides she has been hit. Two runs agreeing on the player says
+nothing at all about whether they agree; the first frame they disagree on is the frame she dies,
+which is the symptom, not the cause. The cause is upstream, in something the trace could not see,
+and it could have been there since frame 1.
+
+### 18a. What the trace samples, and the offset that was not a divergence
+
+An earlier pass over the same logs appeared to show a divergence at frame 18, `on=(94, 51200)`
+against `off=(576, 51200)`, with the `on` run holding a steady ~482 units behind through every
+stretch of movement. 94 is 576/6, and 482 is five sixths of a frame's travel at that speed. That
+was the instrument, not the game: `replay_trace_frame()` ran at the *end* of the update pass, and
+under sub-stepping the pass that carries `g_major` is the frame's first sub-tick -- one sixth of a
+frame at 360Hz. The stock run was being sampled at the end of its frame and the sub-stepped run a
+sixth of the way into it, so every line differed by most of a frame of movement and nothing
+smaller than that was readable.
+
+It now samples at the top of the pass instead, before the frame's first tick runs, which is the
+frame boundary in both modes. (The correct alignment is also why the run above shows 633 exact
+matches where the earlier one showed a difference at frame 18 -- that pass had keyed the two logs
+against the wrong playback segment as well.)
+
+### 18b. Fingerprinting what actually kills her
+
+`trace_state` in the profile, filled for TH14 by `th14_trace_state`, hashes the two systems that
+decide whether the player is hit:
+
+- The bullets. ZUN builds them in one call at `0x416510`:
+  `array_construct(manager+0x8c, stride 0x13f4, count 0x7d1, ctor 0x416070)`, with the manager at
+  `*(void**)0x4db530` and its total allocation `0x9bf6d0` = `0x8c + 2001 * 0x13f4`, which is the
+  arithmetic that confirms the three numbers. State word at `+0x20`, position floats at `+0x28`
+  (the same `lea ecx, [esi+0x28]` the movement code passes around).
+- The enemies, walked exactly as the interpolation walks them.
+
+Every slot is hashed, live or dead. A dead slot still holds the bytes the last bullet to occupy it
+left behind, and those bytes are a function of the run's history too, so a stale slot that differs
+between two runs is a divergence that the live slots have already forgotten. Raw bits are mixed,
+not values: the question is whether two runs are identical, not whether they are close.
+
+The third field is a count of slots with a non-zero state word -- a cruder signal than the hash,
+but one that reads at a glance and that says whether the two runs are even spawning the same
+number of things.
+
+The next pair of logs should show `b=` and `e=` parting company well before frame 633, and the
+frame they part on is the frame to go and read.

@@ -117,7 +117,8 @@ static void site_census_report(void) {
 }
 
 /* One line a game frame, for finding where two runs of the same replay stop agreeing. Print the
-   replay's own frame number and the player's fixed-point position: two playbacks of one file
+   replay's own frame number, the player's fixed-point position and a fingerprint of the bullets
+   and the enemies: two playbacks of one file
    diff cleanly, and the first line that differs is the frame the simulation diverged on, which is
    worth more than any amount of reasoning about which system it was. Debug-only and off by
    default, because it is 60 lines a second. */
@@ -128,5 +129,8 @@ static void replay_trace_frame(void) {
     uint8_t* pl = *(uint8_t**)g_game->addr.player;
     if (!rm || !pl) return;
     const int32_t* p = (const int32_t*)(pl + g_game->layout.player_pos);
-    LOG("trace f=%d x=%d y=%d", *(int*)(rm + g_game->layout.replay_frame), p[0], p[1]);
+    uint32_t st[3] = { 0, 0, 0 };
+    if (g_game->trace_state) g_game->trace_state(st);
+    LOG("trace f=%d x=%d y=%d b=%08x e=%08x n=%u",
+        *(int*)(rm + g_game->layout.replay_frame), p[0], p[1], st[0], st[1], st[2]);
 }

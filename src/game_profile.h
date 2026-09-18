@@ -165,6 +165,12 @@ struct GameProfile {
     /* Optional, and called from the same place: a game's own once-a-frame things whose sprites
        should be drawn between their frame positions. `capture` is true on the frame boundary. */
     void (*place_options)(uint8_t* anm, float alpha, int capture);
+    /* Debug only, for the replay-desync trace: a per-frame fingerprint of the systems the trace
+       cannot see from the player alone. The player is deterministic given the recorded inputs, so
+       two playbacks agreeing on it says nothing; the bullets and the enemies are where a replay
+       actually diverges, and a hash of them per frame turns "it desynced somewhere" into a frame
+       number. out[0] bullets, out[1] enemies, out[2] a live-bullet count. */
+    void (*trace_state)(uint32_t out[3]);
 };
 static const struct GameProfile* g_game;
 #define g_classes (g_game->classes)

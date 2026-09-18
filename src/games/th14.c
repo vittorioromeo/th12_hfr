@@ -516,6 +516,49 @@ static void th14_place_options(uint8_t* am, float alpha, int capture) {
     }
 }
 
+/* A per-frame fingerprint for the replay-desync trace, debug only.
+
+   The player is the wrong thing to watch. She is a pure function of the recorded inputs, so two
+   playbacks of one file will agree on her position right up to the frame she dies -- which is what
+   the first pair of logs showed: 633 identical frames, then one run frozen at the last position it
+   held and its trace ending 442 frames early. That is a death, and a death is the *symptom*; the
+   divergence that caused it happened in something the trace could not see.
+
+   So hash what kills her. The bullets live in a flat array of 2001 slots of 0x13f4 bytes at
+   manager+0x8c -- ZUN constructs it in one call at 0x416510 -- with the state word at +0x20 and
+   the position floats at +0x28. Hashing every slot, live or not, is both cheap and deliberate:
+   a dead slot keeps the bytes the last bullet left in it, which is itself a function of the run's
+   history, so a stale slot that differs is a divergence that has already been overwritten in the
+   live ones. The enemies are the same list the interpolation walks. Raw bits, not values: the
+   question is whether two runs are identical, not whether they are close. */
+static void th14_trace_state(uint32_t out[3]) {
+    uint32_t hb = 2166136261u, he = 2166136261u, live = 0;
+#define MIX(h, v) do { (h) ^= (uint32_t)(v); (h) *= 16777619u; } while (0)
+    uint8_t* bm = *(uint8_t**)0x4db530;
+    if (bm) {
+        uint8_t* b = bm + 0x8c;
+        for (int i = 0; i < 0x7d1; ++i, b += 0x13f4) {
+            uint32_t f = *(const uint32_t*)(b + 0x20);
+            MIX(hb, f);
+            MIX(hb, *(const uint32_t*)(b + 0x28));
+            MIX(hb, *(const uint32_t*)(b + 0x2c));
+            if (f) ++live;
+        }
+    }
+    uint8_t* em = *(uint8_t**)0x4db52c;
+    if (em) {
+        for (uint32_t* node = *(uint32_t**)(em + 0xd0); node; node = (uint32_t*)node[1]) {
+            const uint8_t* e = (const uint8_t*)node[0];
+            if (!e) continue;
+            MIX(he, *(const uint32_t*)(e + 0x5244));
+            MIX(he, *(const uint32_t*)(e + 0x1234));
+            MIX(he, *(const uint32_t*)(e + 0x1238));
+        }
+    }
+#undef MIX
+    out[0] = hb; out[1] = he; out[2] = live;
+}
+
 /* Which of the update list's callbacks may run more than once a frame.
 
    Only the two sprite-manager passes do, and that is a deliberate stopping point rather than a
@@ -653,6 +696,7 @@ static const struct GameProfile th14_profile = {
        the priority and the rules. The sprite VM draw is not described yet either, so the
        per-VM rules stay inert; dimming.c already treats both as optional. */
     .install_sites = th14_install_sites, .place_enemy = th14_place_enemy, .place_options = th14_place_options,
+    .trace_state = th14_trace_state,
     .anm_get_vm_ecx = 1,
     .speed_sites = th14_speed_sites, .speed_site_count = sizeof th14_speed_sites / sizeof *th14_speed_sites,
     .classes = th14_classes, .class_count = sizeof th14_classes / sizeof *th14_classes,
