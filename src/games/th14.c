@@ -566,7 +566,14 @@ static void th14_trace_state(uint32_t out[3]) {
    not allocated, so slot 37 in one run is slot 37 in the other as long as the runs have agreed up
    to that point -- which, by construction, is exactly the situation the window is opened in. Diff
    the two logs over the window and the lines that differ name the bullet, and the column that
-   differs names the field. */
+   differs names the field.
+
+   The second round added `st` (the state word at `+0xc0e`, which the update dispatches on through
+   the jump table at `0x4167dd` and which is 0 for a bullet the update skips entirely), `k`
+   (`+0x13c4`), the bullet's age timer at `+0x13d4`, and all three rate pointers. The rate pointers
+   are there to be looked at rather than reasoned about: a null one is a timer running per tick
+   instead of per frame, and reading it off a live bullet settles in one line what reading the
+   constructors settles only for the paths the constructors are on. */
 static void th14_trace_dump(void) {
     uint8_t* bm = *(uint8_t**)0x4db530;
     if (!bm) return;
@@ -576,9 +583,13 @@ static void th14_trace_dump(void) {
         if (!st) continue;
         const uint32_t* w = (const uint32_t*)(b + 0x24);
         LOG("bd i=%d s=%08x t=%08x p=%08x,%08x,%08x v=%08x,%08x,%08x m=%08x,%08x,%08x,%08x"
-            " g=%08x c1=%d c2=%d",
+            " g=%08x c1=%d c2=%d st=%u k=%d age=%d,%d,%08x r=%08x,%08x,%08x",
             i, st, w[0], w[1], w[2], w[3], w[4], w[5], w[6], w[7], w[8], w[9], w[10],
-            *(const uint32_t*)(b + 0xc04), *(const int*)(b + 0x10ac), *(const int*)(b + 0x12ec));
+            *(const uint32_t*)(b + 0xc04), *(const int*)(b + 0x10ac), *(const int*)(b + 0x12ec),
+            (unsigned)*(const uint16_t*)(b + 0xc0e), *(const int*)(b + 0x13c4),
+            *(const int*)(b + 0x13d4), *(const int*)(b + 0x13d8), *(const uint32_t*)(b + 0x13dc),
+            *(const uint32_t*)(b + 0x13e0), *(const uint32_t*)(b + 0x10b4),
+            *(const uint32_t*)(b + 0x12f4));
     }
 }
 

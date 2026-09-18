@@ -1153,3 +1153,72 @@ allocation, so slot 37 is slot 37 in both runs for as long as the runs have agre
 precisely the situation a window opened just before the first difference is in. Diff the two logs
 across the window: the lines that differ name the bullet, and the column that differs names the
 field that went wrong.
+
+## 20. A delay that starts one frame early
+
+The per-bullet dump over frames 369-374, diffed:
+
+```
+f=372, 203 live slots in both runs
+  c1 (the delay countdown at +0x10ac):  115 slots one lower under sub-stepping, 88 equal
+  every differing row has g=80000000    (the delay flag set)
+  rows differing in anything else:      3
+    i=1811   off s=00000013   on s=00000012
+```
+
+And following individual slots across the window:
+
+```
+slot 1829   f369 60/60   f370 60/60   f371 60/60   f372 60/60   f373 60/59   f374 59/58
+slot 1831   f369 60/60   f370 60/60   f371 60/60   f372 60/59   f373 59/58   f374 58/57
+slot 1833   f369 60/60   f370 60/60   f371 60/59   f372 59/58   f373 58/57   f374 57/56
+```
+
+Two bullets begin counting each frame, in descending slot order -- a stream. The countdown itself
+is fine: once it starts it runs at exactly one a frame in both runs, so nothing is accumulating
+wrong and no float is drifting. What differs is *when it starts*. Under sub-stepping every one of
+them starts exactly one frame early, and stays exactly one frame ahead for the rest of its life.
+
+That is a much better-shaped fact than "the bullets diverge". It is not a rate error, it is a
+single discrete event landing on the wrong frame, 115 times over.
+
+Downstream: at frame 372 three bullets reach the end of that delay a frame early and flip bit 0 of
+their state word (`0x13` to `0x12`), which is the difference the fingerprint caught. From there
+positions differ, bullets that are a little further along cross the off-screen test at `0x416620`
+a frame or two sooner, the live count starts falling behind, and by frame 634 the stock playback
+of a sub-stepped recording is in a thicker pattern than the one that was recorded and the player
+is hit.
+
+Worth saying plainly: the sub-stepped run is not the broken one. It is the one the replay was
+recorded in, and it plays its own recording back correctly. The stock playback is the one being
+fed inputs from a simulation it is not running.
+
+### 20a. What is left to identify
+
+A bullet the update skips entirely is one whose state word at `+0xc0e` is outside 1..5 -- the
+jump table at `0x4167dd` dispatches on it and anything else lands at `0x416c40`, past every timer
+in the function. So a "parked" bullet is one in state 0, and the event that starts its countdown
+is the state word changing. That change is what happens a frame early.
+
+Three timers could plausibly drive it and all three are correctly scaled, which is why the dump is
+the way to settle it rather than more reading:
+
+- the bullet's age timer at `+0x13d4`, rate pointer at `+0x13e0`, set to `&0x4d8f58` at `0x416fdb`
+  and `0x417961`;
+- the delay countdown at `+0x10a8`, rate at `+0x10b4`, set by the helper at `0x408b00`;
+- the second countdown at `+0x12e8`, rate at `+0x12f4`, set at `0x4190bb`.
+
+The dump now carries the state word, `+0x13c4`, the age timer, and all three rate pointers. A null
+rate pointer read off a live bullet is a timer running per tick instead of per frame, and seeing
+it on the bullet settles in one line what reading the constructors only settles for the paths the
+constructors happen to be on.
+
+### 20b. And the fix for the symptom, whatever the cause turns out to be
+
+Even once this is found and fixed, a replay recorded at one rate and played back at another will
+not be bit-identical in general -- sub-stepping changes the order in which things happen inside a
+frame, and some of that is not recoverable. The fix for what the user actually hit is the replay
+extension from §17: stamp the recording's logic rate into the file and play it back at that rate.
+That makes a recording play in the simulation that made it, which is the only thing that can be
+promised. The work here is worth doing anyway, because a sub-stepped game whose bullet delays are
+a frame short is a slightly different game from the one ZUN wrote, replay or no replay.
