@@ -834,7 +834,13 @@ static const struct GameProfile th14_profile = {
     .cleanup_this_ecx = 1,
     .frame_flag_value = 2,
     .remove_node_abi = REMOVE_NODE_RUNNER_THIS,
-    .native_size_cycle = 1,
+    /* TH14 has no F10 of its own. Its window procedure at 0x469e61 handles exactly two system
+       keys -- WM_SYSKEYDOWN with VK_RETURN, which is Alt+Enter, and SC_KEYMENU, which it
+       swallows so F10 does not put the window into keyboard menu mode -- and nothing anywhere
+       reads VK_F10. This was set to 1 because TH11-13 have their own and the profile was
+       written from TH13's, which is a copy nobody checked: F10 simply did nothing. At 0 the
+       patch supplies the size cycle, as it does for TH10. */
+    .native_size_cycle = 0,
     /* The draw path, as far as it is read so far. The dispatch is the draw runner's own
        `mov ecx,[edi+0x24]; mov eax,[edi+8]; call eax` at 0x40141a, the same three instructions
        TH13 has at 0x470c9e with the node in ESI instead. The flush and its manager come off

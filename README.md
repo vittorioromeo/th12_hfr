@@ -127,8 +127,9 @@ settings — internal resolution, texture upscaling and the key bindings — are
 restart; the [settings tables](#settings) say which.
 
 **F10** steps the window through 640x480, 960x720, 1280x960 and borderless fullscreen. TH11, TH12
-and TH13 have their own F10 for this and keep it; the patch only provides one for TH10, whose own
-dialog is stuck at 640x480. Both keys can be rebound or switched off in the INI.
+and TH13 have their own F10 for this and keep it; the patch provides one for TH10, whose own
+dialog is stuck at 640x480, and for TH14, which has no F10 at all. Both keys can be rebound or
+switched off in the INI.
 
 **Is it working?** Open F11 → Timing. It shows the rate it is presenting at and the rate it is
 simulating at, both measured. The first should be your refresh rate (or whatever you set `fps`
