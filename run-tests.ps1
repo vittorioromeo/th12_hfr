@@ -1,0 +1,2 @@
+$games = @('G:\Touhou\TH10 ~ Mountain of Faith\th10.exe','G:\Touhou\TH10 ~ Mountain of Faith\th10j.exe','G:\Touhou\TH11 ~ Subterranean Animism\th11.exe','G:\Touhou\TH11 ~ Subterranean Animism\th11e.exe','G:\Touhou\TH12 ~ Undefined Fantastic Object\th12.exe','G:\Touhou\TH12 ~ Undefined Fantastic Object\th12e.exe','G:\Touhou\TH13 ~ Ten Desires\th13.exe','G:\Touhou\TH13 ~ Ten Desires\th13e.exe')
+.\test.ps1 -GameExe $games -Python 'C:\Python313\python.exe'
