@@ -644,6 +644,31 @@ What a rate pointer cannot fix, and so what every hook here is one of:
    Player call (`g_ptf_prev`/`g_ptf_cur`), which is true every tick, so the "multiple of 3" then
    holds for a whole frame as it did. TH13 replaces the identical guard at 0x446888.
 
+### Lasers: one line, because the engine already had the mechanism
+
+The laser manager's list walk is `0x43a570`, behind the callback `0x43a6a0`; four laser classes
+with vtables at `0x4be2fc`, `0x4be364`, `0x4be3cc` and `0x4be434`, updated through `[vtable+0x10]`
+(`0x440910`, a no-op `0x443c50`, `0x43e040`, `0x43be20`). Everything about them was already
+right: the motion multiplies by the game speed (`0x43bcd3`, `0x43bf8d`, `0x43e0a5`, `0x43e0c8`,
+`0x4426f5` …), every timer inside a laser has a rate pointer aimed at the speed, there is not one
+integer the updates count by hand, and not one "the timer is exactly N" gate. The updates never
+touch the player either, so the question that caught out the shots -- who reads this once a
+frame -- has no bad answer here.
+
+The one thing wrong was the *base* timer the manager ticks for every object it owns (prev
+`+0x18`, integer `+0x1c`, float `+0x20`, rate `+0x24`, ticked at `0x43a603`). The laser classes
+leave that rate pointer null, and the manager's answer to a null rate is to add a whole `1.0` --
+six times a frame, so the phases that compare against it (`0x43e1bd`, `0x43e207`) would each have
+lasted a sixth as long.
+
+The fix is to give it a rate, which is the engine's own mechanism used as intended. Not the game
+speed: that would fold in the slow-motion this particular timer is deliberately not subject to.
+The sub-step fraction alone -- `g_factor` -- and six ticks of a sixth come to exactly the 1.0 a
+frame was worth. With no sub-stepping the fraction is 1.0 and the game's own "within 1% of 1.0,
+call it 1.0" test at `0x43a614` makes the result bit-for-bit what it was. Keeping the *float*
+continuous matters as much as the integer here: one of the laser classes interpolates its width
+from it (`0x43e240`), and a laser growing in 60 Hz steps is a thing you would see.
+
 ### Items: two counters, and nothing else
 
 The item update (`0x438550` behind `0x439750`, EDI = item, stride `0xc18`, timer prev `+0xbc8`,

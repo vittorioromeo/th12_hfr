@@ -154,6 +154,36 @@ static void th14_install_sites(void) {
     EJCC(0x84, 0x416bd9);                           /* the same frame again: motion only */
     EJMP(0x416b24); site_hook(0x416b0f, 21);
 
+    /* --- Lasers (the manager's list walk at 0x43a570, behind the callback 0x43a6a0; four laser
+           classes whose vtables are at 0x4be2fc, 0x4be364, 0x4be3cc and 0x4be434, updated through
+           `[vtable+0x10]`). This system needed almost nothing: every laser's motion multiplies by
+           the game speed, every timer inside a laser has a rate pointer aimed at it, there is not
+           one integer the updates count by hand, and not one "the timer is exactly N" gate. The
+           updates do not touch the player either, so there is no once-a-frame reader to get out
+           of step with.
+
+           The one thing wrong is the *base* timer the manager ticks for every object it owns
+           (prev +0x18, integer +0x1c, float +0x20, rate +0x24, ticked at 0x43a603). The laser
+           classes leave that rate pointer null, and the manager's answer to a null rate is to add
+           a whole 1.0 -- six times a frame, which is six times too fast, and the laser phases
+           that compare against it (0x43e1bd, 0x43e207) would each last a sixth as long.
+
+           So give it a rate. Not the game speed, which would also fold in the game's own
+           slow-motion that this timer is deliberately not subject to, but the sub-step fraction
+           alone: six ticks of a sixth come to exactly the 1.0 a frame was worth. With no
+           sub-stepping the fraction is 1.0 and the game's own "within 1% of 1.0, call it 1.0"
+           test (0x43a614) makes the result bit-for-bit what it was. The float staying continuous
+           matters as well as the integer: one of the laser classes interpolates its width from it
+           (0x43e240), and that is a thing you watch. --- */
+    STUB_BEGIN();
+    E(0x8b, 0x4e, 0x24);                            /* mov ecx,[esi+0x24] */
+    E(0x8b, 0x46, 0x1c);                            /* mov eax,[esi+0x1c] */
+    E(0x89, 0x46, 0x18);                            /* mov [esi+0x18],eax */
+    E(0x85, 0xc9);                                  /* test ecx,ecx */
+    E(0x75, 0x05);                                  /* jne: the object has a rate of its own */
+    E(0xb9); E32((uint32_t)(uintptr_t)&g_factor);   /* mov ecx,&g_factor */
+    EJMP(0x43a610); site_hook(0x43a603, 13);
+
     /* --- Items (0x438550 behind the callback 0x439750, EDI = item, stride 0xc18, timer prev
            +0xbc8 / integer +0xbcc / float +0xbd0 / rate +0xbd4, ticked in the per-item tail at
            0x438d0c). Everything about an item's motion is already right: the velocity is
@@ -365,7 +395,7 @@ static const struct node_class th14_classes[] = {
     /* The rest, named where the dev notes could name them, so that the census has somewhere to
        report against and a later change is an edit to one line rather than a new table. */
     { 0x417610, MODE_SUB,   "BulletManager"   },
-    { 0x43a6a0, MODE_FRAME, "LaserManager?"   },
+    { 0x43a6a0, MODE_SUB,   "LaserManager"    },
     { 0x40b8e0, MODE_FRAME, "Ascii"           },
     { 0x459f30, MODE_FRAME, "Title"           },
     { 0x431a40, MODE_FRAME, "Front"           },
