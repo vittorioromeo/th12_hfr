@@ -644,6 +644,27 @@ What a rate pointer cannot fix, and so what every hook here is one of:
    Player call (`g_ptf_prev`/`g_ptf_cur`), which is true every tick, so the "multiple of 3" then
    holds for a whole frame as it did. TH13 replaces the identical guard at 0x446888.
 
+### The two rates nothing was scaling, found by someone playing
+
+Reported, not measured by a test: the player felt like she was doing slightly more damage than the
+unmodified game. That is a hard symptom to chase, because "slightly more damage" is not a thing
+any one line of code does -- but it is exactly what a shot that *aims better* looks like.
+
+The shot array's update carries two rates it applies itself, outside the MotionState and outside
+any timer: `[-0x64] += [-0x60]` and the angle `[-0x5c] += [-0x58]`, from the loop cursor at
+`0x44e01f` and `0x44e040` (shot `+0x14 += +0x18`, `+0x1c += +0x20`, the second wrapped). Nothing
+multiplies either by the game speed. Sub-stepped, they advanced six times a frame, so a homing
+shot's aim converged six times as fast and landed shots that would have missed. Both increments
+are now scaled by the sub-step fraction. TH13 has the same pair and the same fix at `0x443691`,
+which is the second time in this port that a system TH13 had already solved was missed because
+the search was for a *shape* -- a raw integer counter, a prev/int guard -- and this one is neither:
+it is a float rate hiding among float rates that are correctly scaled.
+
+The lesson to carry to the next game: "is every per-frame quantity scaled?" is not answered by
+finding the counters. A float `a += b` with no speed multiply is as much a per-frame quantity as
+an integer decrement, and it is much harder to see, because the four lines above and below it look
+identical and *are* scaled.
+
 ### The options: interpolated too, for the reason they were not sub-stepped
 
 The options chase the player by a fixed proportion of the remaining distance each frame, so

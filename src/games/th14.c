@@ -268,6 +268,25 @@ static void th14_install_sites(void) {
     EJCC(0x8c, 0x44db3d);                           /* jl: the game's own branch */
     EJMP(0x44d9aa); site_hook(0x44d9a1, 9);
 
+    /* --- The player's shot array carries two rates the update applies itself, outside the
+           MotionState and outside any timer: `[-0x64] += [-0x60]` and `[-0x5c] += [-0x58]` from
+           the loop cursor (shot +0x14 += +0x18, and the angle +0x1c += +0x20, wrapped). Nothing
+           multiplies them by the game speed, so sub-stepped they advance six times a frame -- and
+           for a homing shot that is an aim that converges six times as fast, which lands shots
+           that would have missed. It reads as the player doing slightly more damage, which is
+           how it was noticed. TH13 has the same pair and the same fix at 0x443691. --- */
+    STUB_BEGIN();
+    E(0xf3, 0x0f, 0x10, 0x43, 0xa0);                /* movss xmm0,[ebx-0x60] */
+    E(0xf3, 0x0f, 0x59, 0x05); E32((uint32_t)(uintptr_t)&g_factor);
+    E(0xf3, 0x0f, 0x58, 0x43, 0x9c);                /* addss xmm0,[ebx-0x64] */
+    EJMP(0x44e029); site_hook(0x44e01f, 10);
+
+    STUB_BEGIN();
+    E(0xf3, 0x0f, 0x10, 0x43, 0xa8);                /* movss xmm0,[ebx-0x58] */
+    E(0xf3, 0x0f, 0x59, 0x05); E32((uint32_t)(uintptr_t)&g_factor);
+    E(0xf3, 0x0f, 0x58, 0x43, 0xa4);                /* addss xmm0,[ebx-0x5c] */
+    EJMP(0x44e04a); site_hook(0x44e040, 10);
+
     /* --- Player shots against enemies (0x451400, called by the enemy with its position and
            radius). Two guards in it, and both are the reason a sub-stepped player stops doing
            damage; TH13 has the same pair at 0x446888 and 0x4436b4.
