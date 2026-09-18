@@ -376,7 +376,7 @@ static const struct GameProfile th12_profile = {
         .replay_load = 0x43c350,
         .frame_calls = {0x44f881,0x44f89e,0x44f8aa},
         .replay_saves = {0x433444,0x434459,0x43519b,0x448e4f},
-        .replay_load_call = 0x43b1d2,
+        .replay_load_calls = {0x43b1d2, 0x43b439},   /* play, modes 1 and 2 */
         .runner_fn = 0x4624c0, .runner_ret = 0x4625fb,
         .latency_cmp = 0x450729,
         .screenshot_fn = 0x42fca0, .screenshot_call = 0x450891,
@@ -395,7 +395,12 @@ static const struct GameProfile th12_profile = {
     .critical_flag_mask = 0x8000, .runner_return8_ends = 1,
     .classes = th12_classes, .class_count = sizeof th12_classes / sizeof *th12_classes,
     .mask_minor_player_edges = 0, .d3dx = "d3dx9_40.dll",
-    .native_size_cycle = 1,
+    /* 0 because TH12 has no F10 of its own. Its window procedure handles WM_SYSCOMMAND and
+       swallows SC_KEYMENU so that F10 does not open keyboard menu mode, and nothing in the
+       executable compares anything against VK_F10 or indexes a key array at 0x79. The flag said
+       1 for TH11, TH12, TH13 and TH14 alike; TH14 was found to be wrong when a player pressed
+       F10 and nothing happened, and the same check clears the other three. */
+    .native_size_cycle = 0,
     .draw = { .dispatch = 0x462691, .dispatch_len = 8, .node_reg = R_ESI, .prio_off = 0, .flush_fn = 0x45a3c0, .flush_reg = R_ESI, .flush_this = 0x4ce8cc, .world_prio = 12, .rules = th12_dim_rules, .rule_count = sizeof th12_dim_rules / sizeof *th12_dim_rules, .special_name = NULL,
               .vm_draw = 0x45c900, .vm_draw_len = 6, .vm_reg = R_EAX, .vm_anm_off = 0x3f8, .vm_layer_off = 0x20, .vm_script_off = 0x3ea },
     .install_sites = th12_install_sites,

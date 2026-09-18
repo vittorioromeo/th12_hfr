@@ -240,6 +240,10 @@
   "description": "call 0x436b60"
  },
  {
+  "address": "0x435c2e",
+  "bytes": "e8 2d 0f 00 00"
+ },
+ {
   "address": "0x436420",
   "bytes": "81 ec 1c 01 00 00",
   "description": "sub esp, 0x11c"

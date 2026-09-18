@@ -225,7 +225,12 @@ static int install(void) {
     if (g_game->draw.dispatch) dim_install(); else if (!g_game->install_presentation) LOG("dimming: this game's draw runner is not described; dim_background/dim_items are inert");
     if (sim) {
         for (int i=0;i<4;++i) if (g_game->addr.replay_saves[i]) site_call(g_game->addr.replay_saves[i],hfr_replay_save);
-        if (g_game->addr.replay_load_call) site_call(g_game->addr.replay_load_call,hfr_replay_load);
+        /* Both of the loader's play sites, not just the first. The game dispatches a replay
+           start on a mode of 1 or 2 -- the two differ only in that mode 1 also stores the manager
+           in a global -- and hooking only mode 1 left a replay started the other way playing back
+           without its recorded rate. The loader's remaining call sites build a throwaway manager
+           to read a file's header for the menu list and must not be hooked at all. */
+        for (int i=0;i<2;++i) if (g_game->addr.replay_load_calls[i]) site_call(g_game->addr.replay_load_calls[i],hfr_replay_load);
         if (g_game->addr.latency_cmp) {
             uint8_t latency[7]; memcpy(latency,site_expected(g_game->addr.latency_cmp,7),7);latency[6]=0x7f;
             patch_bytes(g_game->addr.latency_cmp,latency,7,site_expected(g_game->addr.latency_cmp,7));

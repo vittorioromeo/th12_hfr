@@ -46,6 +46,16 @@ Touhou 14 and the TH10-13 sweep:
   not `t14r`, and it keeps its replays under `%APPDATA%\ShanghaiAlice\th14\replay\`.
 - `test.sh` runs the emitted-machine-code tests, which only `test.ps1` did, and there is now a
   TH14 set covering the shot cycle and the weapon timer.
+- **F10 now works on TH11, TH12 and TH13 as well.** All three were marked as having an F10 of
+  their own; none of them does -- like TH14, they handle only `WM_SYSCOMMAND` and never read
+  VK_F10 -- so the key did nothing. The patch supplies the size cycle on every game now.
+- **TH11, TH12 and TH13 hook both of the replay loader's play sites.** A replay start dispatches
+  on a mode of 1 or 2 and only mode 1 was hooked, so a replay started the other way played back
+  at 60 Hz without its recorded rate, silently.
+- **TH10 no longer hooks the replay loader's header-reading site.** That site builds a throwaway
+  manager to read a file's header for the menu's list; hooking it read simulation metadata off
+  every replay on disk when that menu opened, which is the same mistake that crashed TH14 when
+  its replay extension was first installed.
 
 ## v0.5.5-test
 

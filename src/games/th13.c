@@ -42,9 +42,14 @@ extern void th13_replay_load_entry(void);
 
 static void th13_install_sites(void) {
     g_p = stub_begin();
-    /* Replay playback load (mode 1) at 0x447c1b: the manager arrives in EBX, so the shared
-       stdcall hook cannot take the call directly. */
+    /* Replay playback load at 0x447c1b and 0x447d41: the manager arrives in EBX, so the shared
+       stdcall hook cannot take the call directly. Both are play sites -- the game dispatches on a
+       mode of 1 or 2 and the two differ only in that mode 1 also stores the manager in a global.
+       The loader's other three call sites (0x448043, 0x4523de, 0x4524d6) build a throwaway
+       manager and write 2 into its [+0x10] to read a file's header for the menu's list; those
+       must not be hooked, or every replay on disk gets its metadata read when the menu opens. */
     site_call(0x447c1b, th13_replay_load_entry);
+    site_call(0x447d41, th13_replay_load_entry);
     uint8_t FMUL_SPEED[6] = { 0xD8, 0x0D, 0, 0, 0, 0 };
     { uint32_t a = (uint32_t)(uintptr_t)&g_factor; memcpy(FMUL_SPEED + 2, &a, 4); }
 #define FMUL_FACTOR() E(FMUL_SPEED[0], FMUL_SPEED[1], FMUL_SPEED[2], FMUL_SPEED[3], FMUL_SPEED[4], FMUL_SPEED[5])
@@ -314,7 +319,12 @@ static const struct GameProfile th13_profile = {
     .critical_flag_mask = 0xff, .runner_return8_ends = 1, .remove_node_abi = REMOVE_NODE_RUNNER_FIRST,
     .classes = th13_classes, .class_count = sizeof th13_classes / sizeof *th13_classes,
     .mask_minor_player_edges = 0, .d3dx = "d3dx9_43.dll",
-    .native_size_cycle = 1,
+    /* 0 because TH13 has no F10 of its own. Its window procedure handles WM_SYSCOMMAND and
+       swallows SC_KEYMENU so that F10 does not open keyboard menu mode, and nothing in the
+       executable compares anything against VK_F10 or indexes a key array at 0x79. The flag said
+       1 for TH11, TH12, TH13 and TH14 alike; TH14 was found to be wrong when a player pressed
+       F10 and nothing happened, and the same check clears the other three. */
+    .native_size_cycle = 0,
     .sprite_round_sites = th13_sprite_round_sites, .sprite_round_count = 4,
     /* Draw runner 0x470c30: for each node (ESI) `mov ecx,[esi+0x24]; mov edx,[esi+8]; call edx`.
        Sprite batch flush 0x4679a0 wants the AnmManager (pointer at 0x4dc688) in ESI. Draw

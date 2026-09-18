@@ -43,7 +43,11 @@ static void th10_install_sites(void) {
     patch_bytes(0x413508,skip_clock_watchdog,2,site_expected(0x413508,2));
     site_call(0x423f16,th10_replay_save); site_call(0x43399d,th10_replay_save);
     site_call(0x429257,th10_replay_load_entry); site_call(0x42948c,th10_replay_load_entry);
-    site_call(0x429765,th10_replay_load_entry);
+    /* 0x429765 is NOT hooked: it is the menu reading a file's header into a throwaway manager
+       (it writes 2 into [+0x10] first), not a replay starting. Hooking it read simulation
+       metadata off every replay on disk when the list was built, and puts a message box up for
+       any the runtime does not recognise -- which is what took TH14 down when the same mistake
+       was made there. 0x429257 and 0x42948c are the play sites, modes 1 and 2. */
     /* Integer counters use the object's own timer. */
     gate_block(0x406584,5,0x4065a0,R_EBP,0x3f8);
     gate_block(0x425aa9,7,0x425b9d,R_EBP,0x474);

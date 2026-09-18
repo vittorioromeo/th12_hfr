@@ -60,7 +60,7 @@ struct GameProfile {
         uintptr_t cleanup_this;
         uintptr_t replay_save;
         uintptr_t replay_load;
-        uintptr_t frame_calls[3], replay_saves[4], replay_load_call, runner_fn, latency_cmp;
+        uintptr_t frame_calls[3], replay_saves[4], replay_load_calls[2], runner_fn, latency_cmp;
         /* The instruction that ends `runner_fn` -- its `ret`, or `ret 4` where the runner takes
            its argument on the stack. The replacement runner finishes by jumping to it rather
            than returning on its own, so that the last instruction of the function still belongs

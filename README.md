@@ -127,10 +127,10 @@ your current setup is shown disabled with the reason rather than silently ignore
 settings — internal resolution, texture upscaling and the key bindings — are INI-only and need a
 restart; the [settings tables](#settings) say which.
 
-**F10** steps the window through 640x480, 960x720, 1280x960 and borderless fullscreen. TH11, TH12
-and TH13 have their own F10 for this and keep it; the patch provides one for TH10, whose own
-dialog is stuck at 640x480, and for TH14, which has no F10 at all. Both keys can be rebound or
-switched off in the INI.
+**F10** steps the window through 640x480, 960x720, 1280x960 and borderless fullscreen. The patch
+provides it on every game: none of TH10-TH14 has an F10 of its own, which earlier versions of this
+document and of the code assumed three of them did. Both keys can be rebound or switched off in
+the INI.
 
 **Is it working?** Open F11 → Timing. It shows the rate it is presenting at and the rate it is
 simulating at, both measured. The first should be your refresh rate (or whatever you set `fps`

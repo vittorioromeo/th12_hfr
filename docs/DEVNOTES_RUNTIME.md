@@ -1043,3 +1043,75 @@ unintended for the projectiles. It is worth a bounded investigation on its own t
 larger scheduling work: check the player/projectile collision order, the frame transition, native
 fast-forward and replay behaviour before changing it.
 
+
+## Sweeping the TH14 findings back across the other games
+
+Every defect TH14 turned up was checked against TH10-13, because a family of games built on one
+engine will usually have the same mistake in the same place. Three of the five were already
+handled, and two were not.
+
+| what TH14 turned up | TH10 | TH11 | TH12 | TH13 |
+| --- | --- | --- | --- | --- |
+| a cycle rewind multiplied by the game speed | already fixed | already fixed | already fixed | already fixed |
+| `native_size_cycle` claims an F10 the game does not have | correct (0) | **wrong** | **wrong** | **wrong** |
+| only one of the loader's two play sites hooked | correct | **wrong** | **wrong** | **wrong** |
+| the loader's header-reading site hooked as well | **wrong** | correct | correct | correct |
+| replay magic | correct | correct | correct | correct |
+| `data_dir` | correct (none) | correct | correct | correct |
+
+### The rewind was the one thing that was already right everywhere
+
+`Timer::add` with a constant count is scaled by the timer's rate, so sub-stepped a fourteen-frame
+rewind becomes a rewind of 14/6. Every game has it, in the same place -- the player's shot cycle --
+and every one of TH10-13 already patches it, at two sites each:
+
+```
+TH10  0x428243 shot cycle (-15.0)   0x440e3d ANM wait
+TH11  0x4343fc shot cycle (-14.0)   0x4355cd ANM wait
+TH12  0x439ac2 shot cycle (-14.0)   0x43adbd ANM wait
+TH13  0x44647c shot cycle (-14.0)   0x4629ef ANM wait
+TH14  0x45101a shot cycle (14)      -- none --
+```
+
+TH14 was the only game missing it, which is why its Reimu stopped firing. It has no second site:
+of the four rate-aware rewinds in the executable, one is the shot cycle, two are unreferenced
+copies of the helper (`0x4085b0` and `0x411530`, zero direct callers), and the fourth is inlined
+in the dialogue text routine at `0x442d03`, which is frame-locked and therefore runs at a factor
+of one. Found by listing every reference to the `0.99f` guard constant that every rate-aware timer
+operation in the game uses -- ninety of them, of which exactly four rewind.
+
+### F10 was wrong in three more games
+
+TH14's `native_size_cycle = 1` was inherited from TH13's profile and was untrue: nothing in the
+executable reads VK_F10, and its window procedure handles only `WM_SYSCOMMAND` and swallows
+`SC_KEYMENU`. The same two checks clear TH11, TH12 and TH13: none of them compares anything
+against `0x79`, none indexes a key array at `0x79`, and all three window procedures have the same
+`cmp esi, 0x112` / `sub eax, 0xf090` shape TH14 has and nothing else. So F10 did nothing on four
+of the five games, and the README said otherwise. Only TH10 was right, and only because its flag
+was 0 for a different reason -- its own resolution dialog is stuck at 640x480.
+
+### The replay loader's modes
+
+Every game dispatches a replay start on a mode of 1 or 2, and the two branches are the same call
+with the same real manager; mode 1 additionally stores that manager in a global. Both are play
+sites. The loader's remaining call sites build a throwaway manager, write 2 into its `[+0x10]`,
+load a file into it to read the header, and throw it away -- that is the menu building its list.
+
+```
+            play (mode 1)   play (mode 2)   peek
+TH10        0x429257        0x42948c        0x429765
+TH11        0x435a0d        0x435c2e        0x435f74
+TH12        0x43b1d2        0x43b439        0x43b774
+TH13        0x447c1b        0x447d41        0x448043, 0x4523de, 0x4524d6
+TH14        0x4549bc        0x454b40        0x454fd3, 0x45ee0f
+```
+
+TH11, TH12 and TH13 hooked mode 1 and not mode 2, so a replay started the other way played back
+without its recorded rate -- silently, at 60Hz. TH13's adapter even said "(mode 1)" in its comment,
+so the second was known about and never added. `replay_load_call` is now `replay_load_calls[2]`.
+
+TH10 had the opposite mistake and the more serious one: it hooked all three sites, including the
+peek. That is the same thing that took TH14 down when its extension was first installed -- the
+load wrapper reads simulation metadata off the file and puts a message box up for anything it does
+not recognise, so opening a menu that lists replays does that once per file on disk. TH10 has one
+peek site rather than TH14's two, which is presumably why it had not been noticed.
