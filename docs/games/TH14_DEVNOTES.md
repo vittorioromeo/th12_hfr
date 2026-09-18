@@ -882,36 +882,55 @@ fix removed, which is the only thing that makes it a test.
 | the bullet's second timer | prev `+0x13d4`, int `+0x13d8`, ticked by the update itself at entry; rate set at 0x416fdb |
 | the game manager | `0x4db558`, flags at `+0x80` -- the word every update callback's gate tests. Not in the profile yet: the runtime's pause test is written against TH10-13's bit assignments (`0x70`) and TH14's are not those, so it needs reading before it is described. |
 
-## 17. The replay path and the input path, as far as they are read
+## 17. The replay extension
 
-Both remaining features hang off the same code, and the replay extension has to come first: it is
-what records the simulation settings into the file, and without it a replay recorded with sub-tick
-input is a replay nothing can play back. What is established so far:
+What it is for: a replay file that says which rate and which simulation settings recorded it, so
+that playback can restore them -- and so that sub-tick input, which samples input more often than
+the replay format records, has somewhere to put the extra stream. It has to come before sub-tick
+input for that reason, and because the determinism test in §16b is worthless once a replay can be
+recorded that no build but the recording one can play.
+
+TH14 moved both conventions, again:
 
 | | |
 |---|---|
-| save | `0x455490`, `ret 0x10` -- four stack arguments, where TH13's is fastcall with one. Called from `0x449a29`, `0x44aa5c`, `0x44b973`, `0x4617b8` -- exactly the four `replay_saves` slots |
-| load | `0x455c20`, thiscall: the manager in ECX, the filename pushed, `ret 4`. Called from `0x4549bc`, `0x454b40`, `0x454fd3`, `0x45ee0f` -- four sites where the profile has one slot, so these want a game-specific thunk in `install_sites`, as TH13's load already does |
-| `layout.replay_frame` | `0x210`, the counter the record node divides by 30 to decide when to sample the player's position (`0x45509a`) |
-| the replay mode | `+0x10`, which the playback node tests against 1 (`0x455e72`) |
-| the current stage's record | `+0xc0`, a pointer whose `+0x1518` is the write cursor the record node advances by 6 bytes a frame |
+| save | `0x455490`, **stdcall with four stack arguments** (filename, name, two more), `ret 0x10`, where TH13's is fastcall with one. Hooked at `0x449a29`, `0x44aa5c`, `0x44b973`, `0x4617b8` |
+| load | `0x455c20`, **thiscall** -- manager in ECX, filename pushed, `ret 4`. Hooked at `0x4549bc`, `0x454b40`, `0x454fd3`, `0x45ee0f` -- four sites where the profile has one slot |
+| `layout.replay_stage` | `0x218` |
+| `layout.replay_frame` | `0x210` |
+| `layout.replay_stages` | `0x20`, eight stage records |
 
-Still to read: `layout.replay_stage` and the eight-entry `replay_stages` array, which is what the
-extension walks to write one input stream per stage.
+The three offsets are the same numbers TH13 has, and they were read rather than copied: `0x455f7f`
+stores the stage index at `+0x218` and, in the very next instruction, indexes the array at `+0x20`
+with it. Copying TH13's numbers would have got the same answer and proved nothing.
 
-**And the input path falls out of the same function.** The record node at `0x455040` is where the
-game latches its input for the frame, and it names everything the profile has been missing:
+Both wrappers live in `th14.c` rather than becoming two more shapes in the shared installer, which
+is what TH13's load already does. The save needs no assembly at all: giving the wrapper the game
+function's own signature means the call site pushes four arguments and the wrapper pops four, so
+the stack is right by construction. The load needs three instructions -- push the caller's
+filename, push ECX, call a stdcall C function, and `ret 4` because that is the game function's own
+epilogue. Both were checked by disassembling the compiled runtime, which is now the habit for
+anything where a calling convention is being bridged.
+
+**What this changes about the files on disk.** Every replay TH14 saves now carries an extra `USER`
+chunk appended after the game's own data. TH10-13 have done this for several releases and the
+format tolerates it, but TH14 is a different build of the loader and that is an assumption until
+someone saves a replay and loads it again.
+
+### The input path, read from the same function
+
+Sub-tick input's addresses came out of the replay record node at `0x455040`, which is where the
+game latches its input for the frame:
 
 | | |
 |---|---|
 | `addr.poll_input` | `0x41e710`, thiscall with the raw input object `0x4d6878` in ECX |
 | `addr.game_input` | `0x4d6a90` -- the word the record node writes and the player's movement reads at `0x44d33e` |
-| the previous frame's input | `0x4d6a94`, which is where pressed and released are derived from |
-| two more recorded words | `0x4d6a9c` and `0x4d6aa0`, written into the stream alongside it |
+| the previous frame's input | `0x4d6a94`, which pressed and released are derived from |
+| two further recorded words | `0x4d6a9c` and `0x4d6aa0` |
 
-Three things per frame at six bytes is the replay's input format, and sub-tick input has to keep
-producing exactly that while sampling more often -- which is the whole reason the extension stores
-the rate and the settings next to it.
+Three words at six bytes a frame is the replay's input format, and sub-tick input has to keep
+producing exactly that while sampling more often.
 
 ## 16. What a trace still has to supply
 

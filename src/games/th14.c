@@ -103,6 +103,32 @@ static const struct DimRule th14_dim_rules[] = {
     { -1, -1, "effect.anm",  -1, -1, -1, -1, DIM_EFFECTS },
 };
 
+/* The replay extension's two ends. TH14 moved both conventions again: the save is stdcall with
+   four stack arguments where TH13's is fastcall with one, and the load is thiscall -- the manager
+   in ECX, the filename pushed -- with four call sites where the profile has a single slot. Rather
+   than teach the shared installer two more shapes for one game, both get a wrapper here, which is
+   what TH13's load already does.
+
+   The save wrapper needs no assembly: it has the game function's own signature, so the game's
+   call site pushes four arguments and the wrapper pops them, exactly as the original did. */
+typedef void (__stdcall *Th14ReplaySaveFn)(char*, char*, int, int);
+void __stdcall __attribute__((used)) th14_replay_save_c(char* filename, char* name, int p3, int p4) {
+    ((Th14ReplaySaveFn)g_game->addr.replay_save)(filename, name, p3, p4);
+    replay_append_chunk(filename);
+}
+typedef void (__attribute__((thiscall)) *Th14ReplayLoadFn)(void*, char*);
+void __stdcall __attribute__((used)) th14_replay_load_c(void* mgr, char* filename) {
+    restore_replay_settings(); g_replay_playing = 0;
+    ((Th14ReplayLoadFn)g_game->addr.replay_load)(mgr, filename);
+    replay_loaded(filename);
+}
+/* thiscall in, stdcall out: the filename the caller pushed becomes the second argument, ECX the
+   first, and the `ret 4` at the end is the game function's own, so the caller's stack is left
+   exactly as it expects. */
+__asm__(".intel_syntax noprefix\n.globl _th14_replay_load_entry\n_th14_replay_load_entry:\n"
+        "push dword ptr [esp+4]\npush ecx\ncall _th14_replay_load_c@8\nret 4\n.att_syntax\n");
+extern void th14_replay_load_entry(void);
+
 /* ------------------------------------------------------------------ per-frame hooks
 
    A system may only be MODE_SUB once everything it counts in whole frames still counts in
@@ -267,6 +293,12 @@ static void th14_install_sites(void) {
     E(0x83, 0xf8, 0x1e);                            /* cmp eax,0x1e */
     EJCC(0x8c, 0x44db3d);                           /* jl: the game's own branch */
     EJMP(0x44d9aa); site_hook(0x44d9a1, 9);
+
+    /* --- The replay file: four sites that save one and four that load one. --- */
+    { static const uintptr_t saves[] = { 0x449a29, 0x44aa5c, 0x44b973, 0x4617b8 };
+      static const uintptr_t loads[] = { 0x4549bc, 0x454b40, 0x454fd3, 0x45ee0f };
+      for (int i = 0; i < 4; ++i) site_call(saves[i], (void*)th14_replay_save_c);
+      for (int i = 0; i < 4; ++i) site_call(loads[i], (void*)th14_replay_load_entry); }
 
     /* --- The player's shot array carries two rates the update applies itself, outside the
            MotionState and outside any timer: `[-0x64] += [-0x60]` and `[-0x5c] += [-0x58]` from
@@ -559,6 +591,9 @@ static const struct GameProfile th14_profile = {
         /* The replay nodes, from the draw trace's pairing and from where OpenInputLagPatch
            puts its replay speed-control patch (0x455e82, inside the playback one). */
         .record_callback = 0x455e40, .playback_callback = 0x455e60,
+        /* Saving and loading a replay file, both wrapped by th14_install_sites because both
+           moved convention: the save is stdcall with four arguments, the load is thiscall. */
+        .replay_save = 0x455490, .replay_load = 0x455c20,
         .update_runner = 0x4db51c,
         .frame_fn = 0x46a950,
         .remove_node = 0x401630,
@@ -588,6 +623,10 @@ static const struct GameProfile th14_profile = {
            same word the sprite placement reads its "positions are absolute" bit from. */
         .enemy_list = 0xd0, .enemy_flags = 0x5244, .enemy_position = 0x1234,
         .enemy_skip_mask = 0x2000000,
+        /* The replay manager's stage index, its frame counter and its eight stage records --
+           the same three offsets TH13 has, and read here rather than copied: 0x455f7f stores the
+           index at +0x218 and indexes the array at +0x20 with it in the very next instruction. */
+        .replay_stage = 0x218, .replay_frame = 0x210, .replay_stages = 0x20,
     },
     .critical_flag_mask = 0xff,
     .runner_return8_ends = 1,
