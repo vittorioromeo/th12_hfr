@@ -1463,3 +1463,44 @@ So the fingerprint now mixes the fields that decide: the timer at `+0x24`, the f
 `+0xc04`, the state word at `+0xc0e`, both countdowns, `k` and the age. The first frame it reports
 will be the first frame anything about a bullet differs at all, which is the frame worth opening a
 window on -- and it will be earlier than 372.
+
+
+## 25. The replay extension, installed
+
+§17 left the extension built and not installed, after the first attempt took the game down when
+the save menu opened. The wrapper had fired twenty-five times in a row -- once per replay file on
+disk -- because all four calls into the loader at `0x455c20` were hooked, and the four are not
+four ways of starting a replay.
+
+Reading them separates them cleanly, and the separation is structural rather than a guess:
+
+| site | what it does |
+| --- | --- |
+| `0x4549bc` | plays. In the function that owns the game's one replay manager: it stores that manager in `[0x4db688]`, writes the stage into `[+0x218]` and -1 into `[+0x210]`, and dispatches here on mode 1 |
+| `0x454b40` | plays. The same function, mode 2 |
+| `0x454fd3` | peeks. Allocates a fresh `0x320` bytes, memsets it, writes 2 into `[+0x10]`, loads into *that*, calls `0x454b60` to pull the header out, discards it |
+| `0x45ee0f` | peeks. The same shape |
+
+Only the two that play are hooked. The peeking ones must not be, and not because twenty-five
+loads would be slow: the load wrapper reads simulation metadata off the file, and on any file the
+runtime does not recognise it puts a message box up -- inside the game's own loop, twenty-five
+times.
+
+The saver at `0x455490` is stdcall with four stack arguments. The callers push four and do not
+adjust `esp` afterwards, and `0x44aa5c` reaches the same local through `[esp+0x2c]` before the
+call and `[esp+0x20]` after, which is the four words back. All four of its call sites are genuine
+saves. Its first argument is the filename and its second is the label the game shows, copied into
+the manager at `[+0x1c]` a byte at a time from `0x4554d0`.
+
+Two things the profile had wrong and nothing had exercised:
+
+- **The replay magic is `t13r`, not `t14r`.** ZUN reused TH13's. It is in the executable three
+  times, including the loader's own check at `0x455cb7`. Nothing depended on it being right --
+  a wrong magic only costs `replay_read_chunk` the header shortcut and makes it scan for `USER`
+  from the start of the file -- but it was wrong.
+- **`data_dir` was missing.** TH14 keeps its replays under `%APPDATA%\ShanghaiAlice\th14\`,
+  built at startup by `0x46a160` into the global object at `0x4f5a18`: `GetEnvironmentVariableA`
+  with `APPDATA` into `[obj+0x2d]`, then `\ShanghaiAlice`, then `\th14`, then a separator. The
+  buffer is at `0x4f5a45`, which the compiler confirms by folding `esi` back to that constant at
+  `0x46a216`. Without it, `replay_path` would have looked for `th14_01.rpy` beside the
+  executable and found nothing, and every appended chunk would have been silently lost.

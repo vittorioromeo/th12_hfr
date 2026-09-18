@@ -48,7 +48,7 @@ static const struct GameIdentity game_identities[] = {
     [GI_TH13] = {13,0xe9000,"TH13 v1.00c",NULL,"t13r",{"th13e.exe","th13.exe"},th13_signatures,sizeof th13_signatures/sizeof *th13_signatures,th13_conflicts,sizeof th13_conflicts/sizeof *th13_conflicts},
     /* TH14's replay magic is not asserted while the simulation is undescribed: nothing reads
        it until replays are extended, and a wrong four bytes there would be a silent one. */
-    [GI_TH14] = {14,0x101000,"TH14 v1.00b",NULL,"t14r",{"th14e.exe","th14.exe"},th14_signatures,sizeof th14_signatures/sizeof *th14_signatures,th14_conflicts,th14_conflict_count},
+    [GI_TH14] = {14,0x101000,"TH14 v1.00b",NULL,"t13r",{"th14e.exe","th14.exe"},th14_signatures,sizeof th14_signatures/sizeof *th14_signatures,th14_conflicts,th14_conflict_count},
 };
 #define GAME_COUNT (sizeof game_identities / sizeof *game_identities)
 static const IMAGE_NT_HEADERS32* image_header(const uint8_t* image, size_t size) {

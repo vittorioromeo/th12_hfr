@@ -317,13 +317,34 @@ static void th14_install_sites(void) {
     EJCC(0x8c, 0x44db3d);                           /* jl: the game's own branch */
     EJMP(0x44d9aa); site_hook(0x44d9a1, 9);
 
-    /* --- The replay file. NOT HOOKED: see TH14_DEVNOTES § 17. The four call sites that reach
-           the loader are not four ways of starting a replay -- at least one of them is the menu
-           reading every file's header to build its list, which fired the wrapper twenty-five
-           times in a row and took the game down. The addresses stay in the profile because they
-           are read and checked; the hooks come back when each site has been identified as
-           "play this replay" or "look at this replay", which is a distinction the call sites do
-           not make on their face. --- */
+    /* --- The replay file. The four call sites that reach the loader at 0x455c20 are not four
+           ways of starting a replay, which is what took the game down the first time this was
+           installed: the wrapper fired twenty-five times when the save menu opened, once per
+           file on disk. Reading the sites settles it, and they separate cleanly.
+
+           The two that play: 0x4549bc and 0x454b40, both in the function that owns the game's
+           one replay manager. It stores that manager in [0x4db688], writes the stage into
+           [+0x218] and -1 into [+0x210] beside them, and dispatches to one or the other on a
+           mode of 1 or 2.
+
+           The two that peek: 0x454fd3 and 0x45ee0f. Each allocates a fresh 0x320 bytes, memsets
+           it, writes 2 into [+0x10] and loads into *that*, then calls 0x454b60 to pull the
+           header fields out and throws it away. That is the menu building its list, and it is
+           the one that must not be hooked -- not because it would be slow, but because it would
+           read simulation metadata off twenty-five unrelated files and, on any of them the
+           runtime does not recognise, put a message box up inside the game's own loop.
+
+           The saver at 0x455490 is stdcall with four stack arguments (the caller pushes four
+           and does not adjust esp afterwards, and 0x44aa5c reaches the same local through
+           [esp+0x2c] before the call and [esp+0x20] after). All four of its call sites are
+           genuine saves. --- */
+    site_call(0x449a29, th14_replay_save_c);
+    site_call(0x44aa5c, th14_replay_save_c);
+    site_call(0x44b973, th14_replay_save_c);
+    site_call(0x4617b8, th14_replay_save_c);
+    site_call(0x4549bc, th14_replay_load_entry);
+    site_call(0x454b40, th14_replay_load_entry);
+
 
     /* --- The player's shot array carries two rates the update applies itself, outside the
            MotionState and outside any timer: `[-0x64] += [-0x60]` and `[-0x5c] += [-0x58]` from
@@ -775,6 +796,14 @@ static const struct GameProfile th14_profile = {
         .raw_input = 0x4d6878,
         .raw_pressed = 0x4d6884,
         .replay_manager = 0x4db688,
+        /* Saving and loading a replay file, both wrapped by th14_install_sites because both
+           moved convention: the save is stdcall with four arguments, the load is thiscall. */
+        .replay_save = 0x455490, .replay_load = 0x455c20,
+        /* "%APPDATA%\\ShanghaiAlice\\th14\\", built at startup into the global object at
+           0x4f5a18 by 0x46a160: GetEnvironmentVariableA("APPDATA") into [obj+0x2d], then
+           "\\ShanghaiAlice", then "\\th14", then a separator. TH14 keeps its replays there
+           as TH13 does, so the bare "th14_01.rpy" the saver is handed is not a path. */
+        .data_dir = 0x4f5a45,
         /* The player, and the callback the runner watches so that it can read the state
            timer's float before and after every Player call (layout.player_timer). */
         .player = 0x4db67c, .player_callback = 0x44ec60,
@@ -788,9 +817,6 @@ static const struct GameProfile th14_profile = {
         /* The replay nodes, from the draw trace's pairing and from where OpenInputLagPatch
            puts its replay speed-control patch (0x455e82, inside the playback one). */
         .record_callback = 0x455e40, .playback_callback = 0x455e60,
-        /* Saving and loading a replay file, both wrapped by th14_install_sites because both
-           moved convention: the save is stdcall with four arguments, the load is thiscall. */
-        .replay_save = 0x455490, .replay_load = 0x455c20,
         .update_runner = 0x4db51c,
         .frame_fn = 0x46a950,
         .remove_node = 0x401630,

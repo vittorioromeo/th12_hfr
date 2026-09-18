@@ -48,15 +48,16 @@ because they chase her by a proportion of the distance each frame and sub-steppi
 change how far they trail. Sub-tick input is not wired up yet, so the player samples input once per 60 Hz frame on TH14
 where TH10–13 sample it every tick.
 
-**Replays on TH14 are not rate-aware yet.** TH10–13 stamp the recording's tick rate into the
-file and play it back at that rate (New Classic has no equivalent, and its own caveat is below);
-TH14 does not, so a replay it records is played back at
-60 Hz and a run that was played sub-stepped will not reproduce. The divergence is real and has
-been measured: bullet delay timers start a frame early under sub-stepping, which is enough to
-change a pattern and, in one traced case, to kill the player at a frame she survived in the
-recording. Enemy and script behaviour is bit-identical across rates, so this is confined to
-bullets. Recording and watching replays works and nothing is corrupted — what you watch is
-simply not always what you played. If you care about a run, verify it at `substep=0`.
+**Replays on TH14 carry their recording rate**, as TH10–13's do: the file records the tick rate
+it was played at and plays back at that rate, so a run recorded at 360 Hz with sub-stepping on is
+watched back the same way. A replay made before this, or one recorded by the unmodified game,
+plays back at 60 Hz as it always did.
+
+That makes a replay reproduce the simulation that recorded it. It does not make sub-stepped and
+60 Hz play identical to each other, and they are not: bullet delay timers start a frame early
+under sub-stepping, which is enough to change a pattern. Enemy behaviour, script execution and
+everything drawing on the random number generator are the same at any rate. If you want a run to
+be watchable in the unmodified game, record it with `substep=0`.
 
 Only the Japanese `th14.exe` is recognised so far; the English and Steam builds still have to be
 checked.

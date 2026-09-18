@@ -92,6 +92,30 @@
   "description": "the script instruction that sets the speed"
  },
  {
+  "address": "0x449a29",
+  "bytes": "e8 62 ba 00 00"
+ },
+ {
+  "address": "0x44aa5c",
+  "bytes": "e8 2f aa 00 00"
+ },
+ {
+  "address": "0x44b973",
+  "bytes": "e8 18 9b 00 00"
+ },
+ {
+  "address": "0x4617b8",
+  "bytes": "e8 d3 3c ff ff"
+ },
+ {
+  "address": "0x4549bc",
+  "bytes": "e8 5f 12 00 00"
+ },
+ {
+  "address": "0x454b40",
+  "bytes": "e8 db 10 00 00"
+ },
+ {
   "address": "0x45101a",
   "bytes": "6a 0e e8 ff 33 fc ff",
   "description": "the shot cycle's rewind"

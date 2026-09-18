@@ -31,6 +31,22 @@ Touhou 8 — Imperishable Night, experimentally, and by a different route.
   holds `Direct3DCreate8` instead of giving up the video path.
 - Fixed: the F11 menu drew into a dead device when a game recreates its device in-process.
 
+Touhou 14 and the TH10-13 sweep:
+
+- **TH14: Reimu's shot no longer stops while the button is held.** The 14-step firing cycle is
+  rewound by `timer_rewind`, which multiplies the amount by the game speed -- sub-stepped it
+  rewound by 14/6, so only the last two steps of the pattern ever came round again. Tapping the
+  button restarted the cycle, which is why tapping worked and holding did not.
+- **TH14: F10 cycles the window size.** The profile claimed TH14 had its own F10; it does not --
+  its window procedure handles only Alt+Enter and swallows the menu key. The patch supplies the
+  cycle now, as it does for TH10.
+- **TH14 replays carry their recording rate.** The four calls into the loader separate into two
+  that play a replay and two that read a header for the menu's list; only the first two are
+  hooked, which is what took the game down when all four were. TH14's replay magic is `t13r`,
+  not `t14r`, and it keeps its replays under `%APPDATA%\ShanghaiAlice\th14\replay\`.
+- `test.sh` runs the emitted-machine-code tests, which only `test.ps1` did, and there is now a
+  TH14 set covering the shot cycle and the weapon timer.
+
 ## v0.5.5-test
 
 Touhou 14 gameplay runs at the display's refresh rate.
