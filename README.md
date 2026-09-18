@@ -46,8 +46,9 @@ because they chase her by a proportion of the distance each frame and sub-steppi
 change how far they trail. Sub-tick input is not wired up yet, so the player samples input once per 60 Hz frame on TH14
 where TH10–13 sample it every tick.
 
-**Replays on TH14 are not rate-aware yet.** The other games stamp the recording's tick rate into
-the file and play it back at that rate; TH14 does not, so a replay it records is played back at
+**Replays on TH14 are not rate-aware yet.** TH10–13 stamp the recording's tick rate into the
+file and play it back at that rate (New Classic has no equivalent, and its own caveat is below);
+TH14 does not, so a replay it records is played back at
 60 Hz and a run that was played sub-stepped will not reproduce. The divergence is real and has
 been measured: bullet delay timers start a frame early under sub-stepping, which is enough to
 change a pattern and, in one traced case, to kill the player at a frame she survived in the

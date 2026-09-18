@@ -25,8 +25,10 @@ a rate pointer cannot fix is a counter the update moves itself, a block gated on
 
 ## Replays on TH14 are not rate-aware yet
 
-The other games stamp the recording's tick rate into the replay and play it back at that rate.
-TH14 does not yet, so a TH14 replay plays back at 60 Hz whatever it was recorded at.
+TH10–13 stamp the recording's tick rate into the replay and play it back at that rate. TH14 does
+not yet, so a TH14 replay plays back at 60 Hz whatever it was recorded at. (New Classic has no
+replay extension either; its own warning about sub-stepping and replays is in the README, and is
+unchanged.)
 
 This is not cosmetic and it is worth being plain about. A run recorded with sub-stepping on and
 watched back at 60 Hz can diverge, and in a traced case the player died at a frame she survived
