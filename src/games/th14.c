@@ -365,14 +365,22 @@ static void th14_install_sites(void) {
         EJMP(0x45174a);
         EJMP(0x4514d9); site_hook(0x4514ce, 11);
 
-        /* And how many shots are created, at the allocator's commit point: "more damage" is
-           either more hits per shot or more shots, and those are different bugs. */
+        /* The two that measure damage rather than opportunity: how many shots get past the
+           geometry, and the total damage applied. The guards above turned out to reject nothing
+           in this game, so counting them was counting the wrong thing. */
         STUB_BEGIN();
-        E_count(6, "spawn");
-        E(0x8b, 0x47, 0x10);                        /* mov eax,[edi+0x10] */
-        E(0x56);                                    /* push esi */
-        E(0x6a, 0x44);                              /* push 0x44 */
-        EJMP(0x4501a5); site_hook(0x45019f, 6);
+        E_count(6, "land");
+        E(0x8b, 0x45, 0x24);                        /* mov eax,[ebp+0x24] */
+        E(0x85, 0xc0);                              /* test eax,eax */
+        E(0x74, 0x05);                              /* je: no token, skip the dedup */
+        EJMP(0x45161f);
+        EJMP(0x45162b); site_hook(0x451618, 7);
+
+        STUB_BEGIN();
+        E(0x8b, 0x4e, 0x10);                        /* mov ecx,[esi+0x10] */
+        E_add_count_ecx(7, "dmg");
+        E(0x01, 0x4e, 0x14);                        /* add [esi+0x14],ecx */
+        EJMP(0x451677); site_hook(0x451671, 6);
 
         STUB_BEGIN();
         E(0x85, 0xd2);                              /* test edx,edx */

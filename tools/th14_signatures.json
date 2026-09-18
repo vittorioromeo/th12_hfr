@@ -172,8 +172,12 @@
   "bytes": "f3 0f 10 43 a8 f3 0f 58 43 a4"
  },
  {
-  "address": "0x45019f",
-  "bytes": "8b 47 10 56 6a 44"
+  "address": "0x451618",
+  "bytes": "8b 45 24 85 c0 74 0c"
+ },
+ {
+  "address": "0x451671",
+  "bytes": "8b 4e 10 01 4e 14"
  },
  {
   "address": "0x401382",

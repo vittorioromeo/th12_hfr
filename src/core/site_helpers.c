@@ -90,6 +90,13 @@ static void E_count(unsigned i, const char* name) {
     g_site_census_name[i] = name;
     E(0xff, 0x05); E32((uint32_t)(uintptr_t)&g_site_census[i]);
 }
+/* emit "add dword [&g_site_census[i]], ecx" -- for totalling a quantity rather than counting
+   events, which is what it takes to answer "is more damage being done" rather than "are more
+   things happening". 6 bytes, clobbers the flags. */
+static void E_add_count_ecx(unsigned i, const char* name) {
+    g_site_census_name[i] = name;
+    E(0x01, 0x0d); E32((uint32_t)(uintptr_t)&g_site_census[i]);
+}
 /* Game frames -- boundary ticks -- since the last report, so the counts can be read as a rate.
    Without that the numbers are per five seconds and cannot be compared between a run with
    sub-stepping and a run without, which is the comparison that answers "is this doing more of
