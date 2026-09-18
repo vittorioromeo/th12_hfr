@@ -1222,3 +1222,62 @@ extension from §17: stamp the recording's logic rate into the file and play it 
 That makes a recording play in the simulation that made it, which is the only thing that can be
 promised. The work here is worth doing anyway, because a sub-stepped game whose bullet delays are
 a frame short is a slightly different game from the one ZUN wrote, replay or no replay.
+
+## 21. It is the state word, and the gate is `+0x4d4`
+
+Fourth pair of logs, with the state word and all three rate pointers in the dump. Following one of
+the transitioning bullets:
+
+```
+       off                                              on
+f369   c1=60 st=2 k=10 age=9,10,41200000               c1=60 st=2 k=10 age=9,10,41200000
+f370   c1=60 st=2 k=11 age=10,11,41300000              c1=60 st=2 k=11 age=10,11,41300000
+f371   c1=60 st=2 k=12 age=11,12,41400000              c1=60 st=2 k=12 age=11,12,41400000
+f372   c1=60 st=2 k=13 age=12,13,41500000              c1=60 st=2 k=13 age=12,13,41500000
+f373   c1=60 st=2 k=14 age=13,14,41600000              c1=59 st=1 k=14 age=13,14,41600000
+f374   c1=59 st=1 k=15 age=14,15,41700000              c1=58 st=1 k=15 age=14,15,41700000
+```
+
+Everything countable is identical. The age timer's float is `0x41200000`, `0x41300000`,
+`0x41400000` -- exactly 10.0, 11.0, 12.0 -- in both runs, every frame, so the dyadic sub-step
+sequence is doing its job and the accumulation is bit-exact. `k` is identical. The rate pointers
+read `004d8f58, 004d8f58, 00000000`: the two timers that are in use both carry the game speed, and
+the null one belongs to the second countdown, which this bullet never starts.
+
+The only thing that differs is `st`, the state word at `+0xc0e`. It goes 2 to 1 one frame early,
+and the countdown starts with it -- which is not a coincidence: the jump table at `0x4167dd` sends
+state 2 to `0x4167e4`, and that handler *falls through* into the state-1 body at `0x416883` on the
+same call it promotes the bullet. So the frame the state changes is the frame the countdown takes
+its first step, and everything after is one frame ahead for good.
+
+### 21a. The gate
+
+`0x4167e4`, the state-2 handler, ends:
+
+```
+41684f  cmp  dword [esi+0x13c4], 8
+416856  jl   0x41686a
+416858  push 0 ; mov ecx,esi ; call 0x416d70    ; did this bullet just hit the player
+416861  cmp  eax, 1
+416864  je   0x416c40                            ; hit -> done with this bullet
+41686a  cmp  dword [esi+0x4d4], 0
+416871  je   0x416c40                            ; still 0 -> stay in state 2
+416877  mov  eax, 1
+41687c  mov  word [esi+0xc0e], ax                ; -> state 1, and fall into the body
+```
+
+`k >= 8` holds from well before the window and `0x416d70` is the player collision test (it calls
+`0x44ee80`/`0x44efa0` and sets state 3 on a hit), so neither of those is it. The gate is
+`[esi+0x4d4]`: while it is zero the bullet stays in state 2, and it becomes non-zero one frame
+early under sub-stepping.
+
+Nothing in the bullet code writes `+0x4d4`. It is written through the motion state the bullet
+carries at `+0x28` -- `+0x4d4` is `motion+0x4ac`, a near neighbour of the `motion+0x4a0` that
+`0x416e3a` sets to 1 on a player hit.
+
+### 21b. The last instrument
+
+So dump the motion state. For bullets in state 2 only -- which is exactly the set in question --
+the dump now prints `+0x28` through `+0x610` as 32 dwords a line with the offset in front. Diffing
+two runs over the window localises the difference to a 128-byte chunk and then to a single dword,
+and a dword at a known offset in a known object is an address to look up rather than another guess.

@@ -590,6 +590,21 @@ static void th14_trace_dump(void) {
             *(const int*)(b + 0x13d4), *(const int*)(b + 0x13d8), *(const uint32_t*)(b + 0x13dc),
             *(const uint32_t*)(b + 0x13e0), *(const uint32_t*)(b + 0x10b4),
             *(const uint32_t*)(b + 0x12f4));
+        /* A bullet in state 2 is the one that matters: it is still "entering", and the gate that
+           lets it out into state 1 at `0x41686a` is a word at `+0x4d4`, which nothing in the bullet
+           code writes -- it is written through the motion state the bullet carries at `+0x28`. So
+           print that whole block for exactly those bullets, 32 dwords a line with the offset in
+           front. Diff two runs over the window and the line that differs localises the field to a
+           128-byte chunk and then to a dword, which is an address to go and look up rather than
+           another guess. */
+        if (*(const uint16_t*)(b + 0xc0e) != 2) continue;
+        for (uint32_t o = 0x28; o < 0x610; o += 0x80) {
+            char line[32 * 9 + 1]; int n = 0;
+            for (uint32_t k = 0; k < 32 && o + k * 4 < 0x610; ++k)
+                n += snprintf(line + n, sizeof line - (size_t)n, "%08x ",
+                              *(const uint32_t*)(b + o + k * 4));
+            LOG("bm i=%d +%03x %s", i, o, line);
+        }
     }
 }
 
