@@ -579,6 +579,19 @@ static void th14_trace_state(uint32_t out[3]) {
             MIX(hb, f);
             MIX(hb, *(const uint32_t*)(b + 0x28));
             MIX(hb, *(const uint32_t*)(b + 0x2c));
+            /* The first three were not enough. They cover the bullet's flags and where it is, and
+               a delay that starts a frame early shows up in neither until it has had time to move
+               something -- so the "first divergence" they reported was 372 when the countdowns had
+               already been a frame apart for longer than the window. Mix in everything that
+               decides: the state word the update dispatches on, both countdowns, the flag word
+               that carries the delay bits, the age and k. */
+            MIX(hb, *(const uint32_t*)(b + 0x24));
+            MIX(hb, *(const uint32_t*)(b + 0xc04));
+            MIX(hb, *(const uint16_t*)(b + 0xc0e));
+            MIX(hb, *(const uint32_t*)(b + 0x10ac));
+            MIX(hb, *(const uint32_t*)(b + 0x12ec));
+            MIX(hb, *(const uint32_t*)(b + 0x13c4));
+            MIX(hb, *(const uint32_t*)(b + 0x13d8));
             if (f) ++live;
         }
     }

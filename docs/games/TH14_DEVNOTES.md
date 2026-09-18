@@ -1395,3 +1395,71 @@ log of the actual comparison.
 
 The boundary gate from §22 stays in for this build. It demonstrably changes nothing, so it cannot
 contaminate the measurement; whether it earns its place gets decided once the mechanism is known.
+
+## 24. A correction, and what the gate log actually says
+
+First the correction. §23 said the boundary gate changed nothing. It is not true, and the mistake
+was mine: I compared frames 370-377 by eye, found them identical, and generalised. Diffing the
+whole logs:
+
+```
+sub-stepped, with the gate against without:   first difference at frame 378
+stock, with against without:                  none, at any frame   (as it should be)
+```
+
+So the gate works, it is inert without sub-stepping, and it changes the sub-stepped run from 378
+onwards. It just does not touch the divergence at 372, which is older than its effect. The lesson
+is the boring one: diff the whole file, every time, and do not let a matching stretch stand in for
+a comparison.
+
+### 24a. The integer arrives at the end of the frame
+
+The gate log, one bullet, at the moment the bullet update reaches `0x41686a`:
+
+```
+off  f=369 major=1 tick=402  gate=0 st=2 k=8 age=9
+on   f=369 major=1 tick=2407 gate=0 st=2 k=8 age=8      <- boundary tick, age one behind
+on   f=369 major=0 tick=2408 gate=0 st=2 k=8 age=8
+on   f=369 major=0 tick=2409 gate=0 st=2 k=8 age=8
+on   f=369 major=0 tick=2410 gate=0 st=2 k=8 age=8
+on   f=369 major=0 tick=2411 gate=0 st=2 k=8 age=8
+on   f=369 major=0 tick=2412 gate=0 st=2 k=8 age=9      <- and catches up on the last sub-tick
+```
+
+This is the thing to understand about the rate-pointer design, and it is not a bug in any one
+site. Stock ticks a timer once: the float goes 8.0 to 9.0 and every line of that frame's update
+sees 9. Sub-stepped, the float goes 8.0 to 8.167 on the boundary tick, and `(int)` of that is 8 --
+so for five sixths of the frame, every decision in the game that reads that integer reads last
+frame's value. The integer is correct at frame boundaries, which is why the boundary trace showed
+the ages agreeing exactly; it is one behind *during* the frame, which no boundary trace can see.
+
+A decreasing timer has the mirror of it: truncation toward zero drops the integer on the *first*
+sub-tick rather than the last, so a countdown's zero arrives five sixths of a frame early.
+
+There is no cheap general fix. Making the integer arrive at the frame's start would mean `ceil`
+where the game truncates, and the game truncates inline in 199 places; biasing the float instead
+would break every interpolation that reads the float (the laser widths in §14, for one). This is
+the cost of the twelve-hook approach, and TH13's three hundred lines of per-site work is what
+buying it off looks like. It is fixed the same way here: per decision, where the decision matters.
+
+### 24b. The fingerprint was looking at the wrong fields
+
+The two bullets that differ at 372 with everything else equal:
+
+```
+i=1811  off  s=00000013 st=2 k=5 age=4,5,40a00000     a bullet five frames old
+        on   s=00000012 st=0 k=0 age=-1,0,00000000    a brand new one in the same slot
+i=1946  off  g=80000000 c1=0 st=1 k=74                delay expired, flag not yet cleared
+        on   g=00000008 c1=0 st=1 k=74                delay expired, flag already cleared
+```
+
+Neither is a first cause. 1946 is the flag being cleared a frame earlier because its countdown ran
+out a frame earlier, and 1811 is a slot being recycled earlier because something in it died
+earlier. Both are the tail of the phenomenon; the head is further back, and the fingerprint could
+not see it, because it hashed only the flags word at `+0x20` and the position at `+0x28`. A delay
+that starts a frame early changes neither until it has had time to move something.
+
+So the fingerprint now mixes the fields that decide: the timer at `+0x24`, the flag word at
+`+0xc04`, the state word at `+0xc0e`, both countdowns, `k` and the age. The first frame it reports
+will be the first frame anything about a bullet differs at all, which is the frame worth opening a
+window on -- and it will be earlier than 372.
