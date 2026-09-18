@@ -644,6 +644,30 @@ What a rate pointer cannot fix, and so what every hook here is one of:
    Player call (`g_ptf_prev`/`g_ptf_cur`), which is true every tick, so the "multiple of 3" then
    holds for a whole frame as it did. TH13 replaces the identical guard at 0x446888.
 
+### Settled by a replay: the sub-stepped simulation is the same simulation
+
+The "player does slightly more damage" report ran for three rounds. Two of them found real bugs
+-- the two unscaled rates in the shot array, and before that the pair of guards that stopped the
+player damaging anything at all -- and neither changed the symptom. The counters eventually said
+why: on the same spell card, with sub-stepping on and off, damage per landed hit was 62.6 and
+62.4, and the hit rate per shot alive varied by about a quarter *within* each condition. The
+scatter between samples of the same condition was larger than anything between the conditions.
+There was nothing to find.
+
+What settled it is a test worth keeping for every game: **record a replay with sub-stepping off,
+play it back with it on.** Touhou replays are deterministic, so if the sub-stepped simulation
+differs anywhere at all -- a timer, an RNG draw, a position -- the run diverges and the player
+dies somewhere she did not. It played through identically, which is a stronger statement than any
+counter: the sub-stepped simulation is not close to the stock one, it *is* the stock one at every
+frame boundary.
+
+That direction matters. A replay recorded under stock conditions is valid by definition and stays
+useful as a regression reference for later builds; one recorded under sub-stepping is only valid
+against the build that made it. And the test means nothing with sub-tick input on, because that
+deliberately samples input more often than the replay format records -- which is exactly what the
+replay extension exists to handle, and the reason it has to come before sub-tick input rather
+than after.
+
 ### The two rates nothing was scaling, found by someone playing
 
 Reported, not measured by a test: the player felt like she was doing slightly more damage than the
