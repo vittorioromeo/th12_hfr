@@ -84,7 +84,7 @@ animation that scales, fades or changes frame is genuinely evaluated at the disp
 Classic interpolates the *result* of a 60 Hz animation step instead, which covers position,
 rotation and scale but cannot cover a colour fade or an animation-frame change. **Sub-stepping
 New Classic's ANM VM update (`0x69b0`) is the closest equivalent and the most promising
-remaining rendering work** — see `TH06NC_DEVNOTES.md` §20.
+remaining rendering work** — see [TH06NC_DEVNOTES.md §10](TH06NC_DEVNOTES.md#10-pose-history-and-sprite-smoothing).
 
 ---
 
@@ -139,7 +139,7 @@ every VM draw for interpolation, so it fades the VM's own colour before the draw
 back after -- no D3D11 work at all, and about a tenth of the code. What it lacks instead is the
 x86 rules' resolution: those match on ANM file, layer and script index, while this one matches
 on the running draw callback, plus address arithmetic for the one class (items) that shares a
-callback with something that must not fade. See [§22](TH06NC_DEVNOTES.md).
+callback with something that must not fade. See [§17](TH06NC_DEVNOTES.md#17-dimming).
 
 ---
 
@@ -157,7 +157,7 @@ stores one input word per 60 Hz frame, which cannot describe a player who moved 
 samples, nor bullets whose collision was tested six times. There is also **no automatic guard**:
 the byte previously believed to mean "a replay is playing" turned out to be set during ordinary play,
 so it cannot mean playback in progress
-([§17](TH06NC_DEVNOTES.md#17-why-neither-feature-had-ever-run-and-what-the-fps-readout-counts-2026-09-13)),
+([§18](TH06NC_DEVNOTES.md#18-replays)),
 so both features must be switched off by hand before watching a replay. Closing this — a sidecar
 carrying the sub-frame input stream, read back on playback — is the next piece of real work, and
 it is what would make any of this usable for a scored run.

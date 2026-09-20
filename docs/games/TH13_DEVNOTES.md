@@ -1,40 +1,43 @@
-# TH13 (Ten Desires) port development notes
+# TH13 (Ten Desires) developer notes
 
-> Per-game record for the unified runtime. The shared design is in
-> [ARCHITECTURE.md](../../ARCHITECTURE.md); what the port taught the runtime is condensed in
-> [DEVNOTES_RUNTIME.md](../DEVNOTES_RUNTIME.md) §7a and §8. This file holds *TH13 addresses,
-> layouts, decisions and their reasons*, in enough detail to port the next game of this engine
-> family (TH14 onward is TH13's engine with more changes of the same kind). The source of truth
-> for every number is `src/games/th13.c` and `src/games/th13_signatures.h`; if they disagree
-> with this file, the code is right and this file needs fixing.
+TH13 addresses, layouts and hook decisions, written as a delta against
+[TH12_DEVNOTES.md](TH12_DEVNOTES.md): TH13 is TH12's engine (the `SpeedSite` design applies
+unchanged) with structural changes absorbed by profile fields. The shared design is in
+[ARCHITECTURE.md](../../ARCHITECTURE.md); what the port taught the runtime is in
+[DEVNOTES_RUNTIME.md](../DEVNOTES_RUNTIME.md) §7a and §8. TH14 onward is this engine with more
+changes of the same kind. The source of truth is `src/games/th13.c` and
+`src/games/th13_signatures.h`; where they disagree with this file, the code is right.
 
 Supported: **TH13 v1.00c**, Japanese `th13.exe` (image size `0xe9000`) and English `th13e.exe`
 (`0xea000`). The English executable is the same code with an appended `.ipatch` section that
 loads `th13e.dll`; every address holds for both and every frozen signature is byte-identical in
-both, so `identify_image` accepts either size for one identity (`image_size_alt`). Build state:
-**supported** since v0.4.0-test; the 360 Hz shot fix is v0.4.1-test (September 2026).
+both, so `identify_image` accepts either size for one identity (`image_size_alt`). Supported
+since v0.4.0-test; the 360 Hz shot fix is v0.4.1-test (September 2026). Identity: magic `t13r`,
+no legacy INI, 101 frozen signatures (`tools/th13_signatures.json`).
 
-## 1. Engine differences from TH12, and what absorbed each
+## 1. Engine differences from TH12
 
-TH13 is TH12's engine (the `SpeedSite` design applied unchanged) with a handful of structural
-changes. Each became a profile field read by the shared code, never a fork.
+Each difference is a profile field read by the shared code; none is a fork.
 
 | Difference | Detail | Absorbed by |
 | --- | --- | --- |
 | `UpdateFunc` grew a field | callback argument at `+0x24` (TH12: `+0x20`) | `layout.node_arg = 0x24` |
 | Runner keeps the next node in itself | `runner+0x50`, re-read after every callback and after every removal (TH12 kept it in a register) | `layout.runner_next = 0x50` (`next_store` / `next_load` in `update_runner.c`) |
-| `remove_node` argument order | `(runner, node)` instead of `(node, runner)` | `remove_node_runner_first = 1` |
+| `remove_node` argument order | `(runner, node)` instead of `(node, runner)` | `remove_node_abi = REMOVE_NODE_RUNNER_FIRST` |
 | Critical section gate | a byte flag at `0x4e49ed` (TH12: `misc_flags & 0x8000`) | `misc_flags = 0x4e49ed`, `critical_flag_mask = 0xff` |
 | Runner ends at `+0x54` | | `layout.runner_ending = 0x54` |
 | Replay load ABI | manager in EBX, filename in ECX, `0x448c40` | `th13_replay_load_entry` adapter (`push ecx; push ebx; call th13_replay_load_c@8`) |
 | Replays and scores live in `%APPDATA%` | the game chdirs into `%APPDATA%\ShanghaiAlice\th13\` around every save/load; the string is at `0x4dd0d1` (game dir string at `0x4de0d1`) | `addr.data_dir = 0x4dd0d1`; `replay_path()` prefers it when non-empty |
-| `MotionState` split into pre-step and step | pre-step (`0x4736a0`) recomputes velocity from speed/angle **times the game speed**; step (`0x473780`) adds it | **no hook** (TH12 hooked its step; here that double-scales — see §6) |
+| `MotionState` split into pre-step and step | pre-step (`0x4736a0`) recomputes velocity from speed/angle **times the game speed**; step (`0x473780`) adds it | **no hook** (TH12 hooks its step; here that double-scales, §6) |
 | Enemy struct reorganised | position/ids/flags in a sub-object at `+0x11ec`; every flag bit two places higher than TH12's | `th13_place_enemy`, `layout.enemy_*` (§5) |
 | EnemyManager list head | `+0xb0` (TH12 `+0x68`) | `layout.enemy_list = 0xb0` |
-| Timers are 16 bytes | `prev, int, float, speed*` — the speed pointer at `+0xc` as in TH10; `Timer::tick 0x401400`, `Timer::add 0x4732c0` | nothing new; the inline tick pattern is how every per-object timer below was found |
-| Own F10 size cycle | TH13 cycles 640/960/1280/fullscreen itself | `native_size_cycle = 1` |
+| Timers are 16 bytes | `prev, int, float, speed*` — the speed pointer at `+0xc` as in TH10; `Timer::tick 0x401400`, `Timer::add 0x4732c0` | nothing; the inline tick pattern (§5) finds every per-object timer |
 | D3DX | ships `d3dx9_43.dll` | `d3dx = "d3dx9_43.dll"` |
-| Laser vtables grew two slots | update at slot 4 (TH12: slot 2) | nothing; noted so the next port does not match by vtable index |
+| Laser vtables grew two slots | update at slot 4 (TH12: slot 2) | nothing; do not match by vtable index |
+
+`native_size_cycle = 0`, as in TH12: TH13 has no F10 handling of its own (its window procedure
+swallows `SC_KEYMENU`; nothing in the executable tests `VK_F10`). The four sizes
+640/960/1280/fullscreen are chosen in the game's startup dialog (§8).
 
 ## 2. Engine map
 
@@ -60,11 +63,12 @@ All addresses are absolute for v1.00c. Fields named as in `GameProfile`.
 | GameManager pointer / callback | `0x4c2194` / `0x42cb90`; pause flags `+0x60` |
 | Player pointer / callback | `0x4c22c4` / `0x443de0` (priority `0x12`) |
 | EnemyManager pointer / callback | `0x4c2188` / `0x418ef0` (priority `0x15`); list `+0xb0`; boss/current enemy `+0x5c`; manager timer `+0x98/+0x9c/+0xa0` |
-| AnmManager pointer / get-VM-by-id | `0x4dc688` / `0x46fb90` (`push id; edx = manager`) ; `AnmVm::update 0x462450` |
+| AnmManager pointer / get-VM-by-id | `0x4dc688` / `0x46fb90` (`push id; edx = manager`); `AnmVm::update 0x462450` |
 | ReplayManager pointer | `0x4c22c8`; mode `+0x10`, stage pointers `+0x20 + 4*s`, stage frame `+0x210`, stage number `+0x218` |
 | Replay record / playback node | `0x448e30` / `0x448e40` |
 | Replay save (native) | `0x4484d0`, `fastcall(filename, name)` + `push 1`; call sites `0x43f26b`, `0x440280`, `0x4412e0`, `0x454e15` |
-| Replay load (native) | `0x448c40`, EBX = manager, ECX = filename; playback call site `0x447c1b` |
+| Replay load (native) | `0x448c40`, EBX = manager, ECX = filename; playback call sites `0x447c1b` and `0x447d41` (modes 1 and 2; mode 1 also stores the manager in a global) |
+| Replay load, header-only callers | `0x448043`, `0x4523de`, `0x4524d6` (§6) |
 | Screenshot routine / call site | `0x43a950` / `0x45d856` (filename in EAX) |
 | ftol / angle normalise / polar | `0x4971f0` / `0x472f30` / `0x474f00` |
 | Player-vs-hitbox test / graze | `0x444260` (returns 1 hit, 2 graze) / `0x445900` |
@@ -72,8 +76,6 @@ All addresses are absolute for v1.00c. Fields named as in `GameProfile`.
 | ECL variable getters | int `0x420380`, float `0x420d00` (jump table at `0x420a04`, index = id + 10000) |
 | Score / difficulty | `0x4be7c0` / `0x4be7c4` |
 | Data directory / game directory strings | `0x4dd0d1` / `0x4de0d1` |
-
-Identity: magic `t13r`, no legacy INI, 101 frozen signatures (`tools/th13_signatures.json`).
 
 ### vpatch conflict sites (`src/games/th13_conflicts.h`)
 
@@ -110,17 +112,21 @@ catches it as well.
 | `0x403d60` | `4` | FRAME | Effects |
 | `0x42cb90` | | FRAME | GameManager |
 
-Player (`0x12`) runs before EnemyManager (`0x15`), which matters for every guard in §6.
+Player (`0x12`) runs before EnemyManager (`0x15`); every guard in §6 depends on that order.
 
-### Draw callbacks (the other list; from a `debug=1` trace, see DEVNOTES_RUNTIME §3b)
+### Draw callbacks (from a `debug=1` trace, see DEVNOTES_RUNTIME §3b)
 
-The draw runner is `0x470c30` (list at manager+0x40, dispatch `0x470c9e`), the sprite batch
-flush `0x4679a0` (ESI = AnmManager), the sprite VM draw `0x46a700` (VM in EAX; loaded-ANM
-pointer at VM+0x30, `slot << 16 | sprite` at +0x34, layer at +0x24, script index at +0x4aa; ANM slots: 0 text, 5
-front, 7 bullet, 8 effect, 9 the player, 10 enemy, 25 astral). Priorities are decimal here. `L n` is the AnmManager's
-layer thunk for sprite layer *n*; only free-standing VMs live in those lists — the managers
-below draw their own VMs (24 callers of the VM draw `0x46a700`), which is why "bullets are
-layer 15" is true of the scripts and useless for attributing draw calls.
+| Item | Value |
+| --- | --- |
+| Draw runner | `0x470c30` (list at manager+0x40, dispatch `0x470c9e`) |
+| Sprite batch flush | `0x4679a0` (ESI = AnmManager) |
+| Sprite VM draw | `0x46a700` (VM in EAX), 24 callers |
+| ANM slots | 0 text, 5 front, 7 bullet, 8 effect, 9 the player, 10 enemy, 25 astral |
+
+VM fields: loaded-ANM pointer at VM+0x30, `slot << 16 | sprite` at +0x34, layer at +0x24, script
+index at +0x4aa. Priorities below are decimal. `L n` is the AnmManager's layer thunk for sprite layer *n*. Only
+free-standing VMs live in those lists; the managers draw their own VMs through `0x46a700`.
+"Bullets are layer 15" is true of the scripts and does not attribute draw calls.
 
 | Prio | Callback | What |
 | --- | --- | --- |
@@ -143,20 +149,28 @@ layer 15" is true of the scripts and useless for attributing draw calls.
 | 38..42 | `0x43c6a0` `0x43c920` `0x43c740` `0x43c9d0` | Stage: world → stage target → world (effects), fullscreen copies |
 | 44..71 | | interface, into the back buffer (`0x43c7e0`/`0x43ca50` at 52/53 do the final copy) |
 
+The rule table is `th13_dim_rules` in `th13.c` (player shots: `pl*.anm` layers 10..13).
+
 ## 5. Object layouts
 
 **Player** (`0x4c22c4`): position `+0x5b8/+0x5bc`, state `+0x65c`, state timer
 `+0x664/+0x668/+0x66c` (speed pointer `+0x670` → game speed; ticked inline at `0x443a8d` at the
-end of the update, on every path), flags `+0x14698`, option gather counter `+0x1469c`,
-option array `+0xa318` (8 entries), shot array `+0xaa5c`, 256 entries of `0x9c` bytes.
+end of the update, on every path), flags `+0x14698`, option gather counter `+0x1469c`, option
+array `+0xa318` (8 entries). Two shot arrays describe the same shots, each 256 entries of `0x9c`
+bytes: the behaviour side at `+0x6a0` and the hit-test side at `+0xaa5c`.
 
-**Player shot entry** (`E` = entry; the update loop keeps `EDI = E + 0x68`): flags `+0` (bit 0
-active, bit 1 circular hitbox, bit 2 "counts for the bomb/graze flag"), rate pair `+4 += +8`,
-angle `+0xc += +0x10` (normalised), `MotionState` at `+0x1c` (position `+0x1c`, speed `+0x34`,
-angle `+0x38`, velocity `+0x50`, mode bits `+0x5c`), countdown timer `+0x60/+0x64/+0x68` with
-speed pointer `+0x6c`, damage `+0x74`, damage dealt `+0x78`, damage cap `+0x7c`, hit interval `+0x80`, hit callback `+0x88`.
-Motion is the pre-step/step pair; the rate pair and angle are scaled by the factor
-(`0x443691`); the countdown timer is ticked once per frame (`0x4436b4`, §6).
+**Shot entry, behaviour side** (`+0x6a0`, per-shot update `0x4464d0`): timer `+0x18/+0x1c/+0x20`
+with speed pointer `+0x24`, `MotionState` `+0x2c`, state `+0x70`, shot-type data `+0x94`, link to
+the hit entry `+0x98`.
+
+**Shot entry, hit-test side** (`+0xaa5c`; `E` = entry, the update loop keeps `EDI = E + 0x68`):
+flags `+0` (bit 0 active, bit 1 circular hitbox, bit 2 "counts for the bomb/graze flag"), rate
+pair `+4 += +8`, angle `+0xc += +0x10` (normalised), `MotionState` at `+0x1c` (position `+0x1c`,
+speed `+0x34`, angle `+0x38`, velocity `+0x50`, mode bits `+0x5c`), countdown timer
+`+0x60/+0x64/+0x68` with speed pointer `+0x6c`, damage `+0x74`, damage dealt `+0x78`, damage cap
+`+0x7c`, hit interval `+0x80`, hit callback `+0x88`. Motion is the pre-step/step pair; the rate
+pair and angle are scaled by the factor (`0x443691`); the countdown timer is ticked once per
+frame (`0x4436b4`, §6).
 
 **Bullet** (`0x40db10`, EBX): flags `+0x20`, wait counter `+0x24`, ANM VM `+0x28`, second
 counter `+0xbac`, timer `+0x133c/+0x1340/+0x1344`.
@@ -176,19 +190,19 @@ graze timer `+0x28/+0x2c` (line and curve), ex-wait counter `+0x5b4`, flags `+0x
 with position `in+0x44` (= enemy `+0x1230`), VM ids `in+0x120` (14 slots), sprite offsets
 `in+0x168` (float triples), parent slot of each sprite `in+0x220`, flags `in+0x4030` (= enemy
 `+0x521c`; `0x04000000` being deleted, `0x08000000` sprites positioned absolutely), hp
-`+0x5138`. The ECL variable getter (`0x420380`) is the quickest way to this table: each case is
-one field. Sprite placement (`0x41a8a0`) is `vm.pos(+0x574) = pos + offset[i] (+ parent
-vm+0x3c)` with **no** (224,16) playfield offset — TH13 keeps enemies in playfield coordinates.
+`+0x5138`. Each case of the ECL variable getter (`0x420380`) is one field of this table. Sprite
+placement (`0x41a8a0`) is `vm.pos(+0x574) = pos + offset[i] (+ parent vm+0x3c)` with **no**
+(224,16) playfield offset: TH13 keeps enemies in playfield coordinates.
 
 **AnmManager sprite quad builder** (`0x467350`, `this` = AnmManager, EAX = VM, stack arg =
-mode): adds the VM position to the four corner vertices at `0x4e47d8..0x4e4830`, and when the
-mode argument has bit 0 (`0x467d80`, the plain 2D draw — nearly every sprite) rounds each corner
+mode): adds the VM position to the four corner vertices at `0x4e47d8..0x4e4830`. When the mode
+argument has bit 0 (`0x467d80`, the plain 2D draw — nearly every sprite) it rounds each corner
 with `frndint` at `0x4673f9`, `0x467407`, `0x467415`, `0x467423` before subtracting the half
 texel. The AnmVm draw dispatch (`0x46a700`) selects the builder by `flags >> 25 & 0x1f`; modes
-that pass 0 or 2 (rotated, 3D) never round; the vertex-list mode (`0x46a8b0`, lasers and
-meshes) draws a strip from `vm+0x58c` with `vm+0x4ac` quads. Batches flush through
-`0x4679a0` as a `DrawPrimitiveUP` triangle list, stride `0x1c` (`XYZRHW|DIFFUSE|TEX1`). These
-are the `sprite_round_sites` for `video.internal_scale` (DEVNOTES_RUNTIME §3a).
+that pass 0 or 2 (rotated, 3D) never round; the vertex-list mode (`0x46a8b0`, lasers and meshes)
+draws a strip from `vm+0x58c` with `vm+0x4ac` quads. Batches flush through `0x4679a0` as a
+`DrawPrimitiveUP` triangle list, stride `0x1c` (`XYZRHW|DIFFUSE|TEX1`). The four `frndint`
+addresses are the `sprite_round_sites` for `video.internal_scale` (DEVNOTES_RUNTIME §3a).
 
 **Timer** (16 bytes): `prev, int, float, speed*`. The inline tick is
 `mov edx,[+4]; mov ecx,[+0xc]; mov [+0],edx; fld [ecx]; fcomp 0.99; ...; fcomp 1.01; ...` —
@@ -197,61 +211,51 @@ int = ftol(float)`. Grep for that shape to find every per-object timer.
 
 ## 6. Per-object hooks (`th13_install_sites`), with the reasons
 
-- **Replay load adapter** at `0x447c1b` (EBX/ECX ABI, §1).
-- **Shot array rates** `0x443691` (16 bytes): `+4 += +8` and the normalised angle
-  `+0xc += +0x10` are per-frame rates outside the `MotionState`; scaled by the factor.
-- **Shot countdown timer** `0x4436b4` (9 bytes): ticked by the logical speed on the boundary
-  tick, untouched on minor ticks. This is the 360 Hz fix. The enemy hit test counts a shot only
-  when this timer's integer changed on the last tick and `int % interval == 0`; the enemy code
-  runs on the boundary tick only; a sub-stepped timer's integer changes on whichever tick the
-  float crosses a whole number, and at rates where `dt` is inexact in float32 (`1/6` at 360 Hz)
-  that was never the boundary tick. At 120/240 Hz (`dt` exact) it aligned by luck, which is why
-  the rig passed. TH12's test is the inverse (it *skips* on that tick), so TH11/TH12 do not
-  need this.
-- **Enemy hit-test guard** `0x446888`: "player state timer unchanged → no damage" replaced by
-  the runner's float comparison across the last Player update (`g_ptf_prev` / `g_ptf_cur`),
-  as in every game.
-- **Movement residual** `movement_ftol(0x442d9b / 0x442dae, ftol 0x4971f0)`.
-- **Death particles** `0x44341c` (`cmp [esi+0x668],3`): once per frame on the player's timer.
-- **Option gather counter** `0x442f34` (`inc [edi+0x1469c]`): once per frame on the player's timer.
-- **Bullet wait counters** `0x40e1fa`: both decrements once per frame on the bullet's timer.
-- **Item gravity** `0x42e6fc`, `0x42e7be`: `+0.2` per frame → `+0.2 × speed`.
-- **Item state-5 countdown** `0x42e3dd`: once per frame on the boundary (state-5 items do not
-  tick their timer). The five `fstp` after it do not touch flags; `cmp esi,esi` leaves SF clear
-  for the game's `jns`.
-- **Laser ex-wait** `0x431728` (line, EDI), `0x435761` (curve, ESI), `0x4334c6` (beam, EDI):
-  once per frame on the laser's `+0x14/+0x18` timer.
-- **Line laser graze** `0x431a01`: once per frame on the graze timer `+0x28/+0x2c`. The curve
-  laser computes the same `% 3` test and then does nothing with it; the beam has no graze
-  branch; neither is hooked.
-- **Player shot behaviours** `0x446cb0` (homing), `0x447590` (`speed += 1` per call), `0x447510`
-  (`speed *= 0.8` per call), from the shot-type table `0x4bb4d8` and called with EDX = the shot
-  by the per-shot update `0x4464d0` (the shot array is 256 × `0x9c` at player `+0x6a0`:
-  timer `+0x18/+0x1c/+0x20` with speed pointer `+0x24`, `MotionState` `+0x2c`, state `+0x70`,
-  shot-type data `+0x94`, link to the hit entry `+0x98`; the `+0xaa5c` array described above
-  is the hit-test side of the same shots): once per frame on the shot's timer, as TH11/TH12.
-  `0x446f20` anchors an option's laser every tick and stays unguarded (DEVNOTES §5.5). The
-  curved laser needs nothing here: its nodes are computed from a float timer (`+0x44`) through
-  the laser's motion segments (`0x4362f0`), not integrated per call as TH12's are.
-- **Stage distortion** `0x4067e4` (14 bytes) and its frame counter `0x406d6f` (11 bytes): the
-  effect consumes RNG every frame; run on frame ticks only.
-- **Constant `Timer::add` sites** `0x44647c` (player shot cycle `-14`) and `0x4629ef` (the ANM
-  `wait N`, inlined into `AnmVm::update` — TH12 had a helper): `value × logical` instead of
-  `value × logical × dt`. The other 18 `Timer::add` callers pass `-1.0` (rates) and are left alone.
-- **Sprite corner rounding** `0x4673f9`/`0x467407`/`0x467415`/`0x467423` (`frndint` → NOP, only
-  with `internal_scale > 1`): lets sprites sit on sub-pixel positions at the higher internal
-  resolution. Screen captures go through `D3DXLoadSurfaceFromSurface` with a 640x480 source
-  rect, scaled by the D3DX import hook.
-- **Enemy death ring** `0x415e59`: shrink/fade once per frame on the effect's `+0xc/+0x10` timer.
-- **Scrolling mesh VM callback** `0x46b9d0`: UV scroll once per frame on the VM's `+0x538/+0x53c`.
+The mechanisms (scale, gate on the object's timer, constant `Timer::add`) are TH12's
+([TH12_DEVNOTES.md](TH12_DEVNOTES.md) §5). "Once per frame on X" means gated on the integer
+change of timer X.
 
-**Not hooked, deliberately.** `MotionState::step` — the pre-step already multiplies the
-velocity by the game speed; the port's first version scaled the step too and moved every shot
-and bullet at `dt²`. The player's `state_timer % 60` block (gone in TH13); the new every-3-frames
-block at `0x443792` is guarded by the game itself (`int != prev && int % 3 == 0`, evaluated
-inside the sub-stepped Player, where a once-per-frame integer change is exactly right). The UFO
-attraction hook (no UFOs). The `0x40deac` bullet counter inside the script-wait loop (TH12 left
-its equivalent alone too).
+| Hook | Site | What |
+| --- | --- | --- |
+| Replay load adapter | `0x447c1b`, `0x447d41` | EBX/ECX ABI (§1). The three header-only callers (`0x448043`, `0x4523de`, `0x4524d6`) build a throwaway manager with 2 in `[+0x10]` to list files in the menu; hooking them would read every replay's metadata when the menu opens |
+| Shot array rates | `0x443691` (16 bytes) | `+4 += +8` and the normalised angle `+0xc += +0x10` are per-frame rates outside the `MotionState`; scaled by the factor |
+| Shot countdown timer | `0x4436b4` (9 bytes) | ticked by the logical speed on the boundary tick, untouched on minor ticks (below) |
+| Enemy hit-test guard | `0x446888` | "player state timer unchanged → no damage" replaced by the runner's float comparison across the last Player update (`g_ptf_prev` / `g_ptf_cur`), as in every game |
+| Movement residual | `movement_ftol(0x442d9b / 0x442dae, ftol 0x4971f0)` | carries the fixed-point truncation across sub-steps |
+| Death particles | `0x44341c` (`cmp [esi+0x668],3`) | once per frame on the player's timer |
+| Option gather counter | `0x442f34` (`inc [edi+0x1469c]`) | once per frame on the player's timer |
+| Bullet wait counters | `0x40e1fa` | both decrements once per frame on the bullet's timer |
+| Item gravity | `0x42e6fc`, `0x42e7be` | `+0.2` per frame → `+0.2 × speed` |
+| Item state-5 countdown | `0x42e3dd` | once per frame on the boundary (state-5 items do not tick their timer). The five `fstp` after it do not touch flags; `cmp esi,esi` leaves SF clear for the game's `jns` |
+| Laser ex-wait | `0x431728` (line, EDI), `0x435761` (curve, ESI), `0x4334c6` (beam, EDI) | once per frame on the laser's `+0x14/+0x18` timer |
+| Line laser graze | `0x431a01` | once per frame on the graze timer `+0x28/+0x2c`. The curve laser computes the same `% 3` test and does nothing with it; the beam has no graze branch; neither is hooked |
+| Player shot behaviours | `0x446cb0` (homing), `0x447590` (`speed += 1` per call), `0x447510` (`speed *= 0.8` per call) | from the shot-type table `0x4bb4d8`, called with EDX = the shot by `0x4464d0`: once per frame on the shot's timer `+0x18/+0x1c`, as TH11/TH12. `0x446f20` anchors an option's laser every tick and stays unguarded (TH12_DEVNOTES §5.2); `0x4474a0` does nothing |
+| Stage distortion | `0x4067e4` (14 bytes), frame counter `0x406d6f` (11 bytes) | the effect consumes RNG every frame; run on frame ticks only |
+| Constant `Timer::add` sites | `0x44647c` (player shot cycle `-14`), `0x4629ef` (the ANM `wait N`, inlined into `AnmVm::update` — TH12 had a helper) | `value × logical` instead of `value × logical × dt`. The other 18 `Timer::add` callers pass `-1.0` (rates) and are left alone |
+| Sprite corner rounding | `0x4673f9`/`0x467407`/`0x467415`/`0x467423` | `frndint` → NOP, only with `internal_scale > 1`: sprites can sit on sub-pixel positions at the higher internal resolution. Screen captures go through `D3DXLoadSurfaceFromSurface` with a 640x480 source rect, scaled by the D3DX import hook |
+| Enemy death ring | `0x415e59` | shrink/fade once per frame on the effect's `+0xc/+0x10` timer |
+| Scrolling mesh VM callback | `0x46b9d0` | UV scroll once per frame on the VM's `+0x538/+0x53c` |
+
+**The shot countdown timer (the 360 Hz fix, v0.4.1).** The enemy hit test (`0x446870`) counts a
+shot only when that shot's countdown timer's integer changed on the last tick and
+`int % interval == 0`. The enemy code runs on the boundary tick only. A sub-stepped timer's
+integer changes on whichever tick the float crosses a whole number, and at rates where `dt` is
+inexact in float32 (`1/6` at 360 Hz) that was never the boundary tick, so no shot hit. At
+120/240 Hz `dt` is exact and the crossing aligned by luck, which is why the rig passed: test at a
+rate whose `dt` is not a power of two. TH12's test is the inverse (it *skips* on that tick), so
+TH11/TH12 do not need this.
+
+**Not hooked, deliberately.**
+
+- `MotionState::step`: the pre-step already multiplies the velocity by the game speed. Scaling
+  the step too moves every shot and bullet at `dt²`.
+- The player's `state_timer % 60` block is gone in TH13. The new every-3-frames block at
+  `0x443792` is guarded by the game itself (`int != prev && int % 3 == 0`, evaluated inside the
+  sub-stepped Player, where a once-per-frame integer change is exactly right).
+- The UFO attraction hook (no UFOs).
+- The `0x40deac` bullet counter inside the script-wait loop (TH12 leaves its equivalent alone).
+- The curved laser: its nodes are computed from a float timer (`+0x44`) through the laser's
+  motion segments (`0x4362f0`), not integrated per call as TH12's are.
 
 ## 7. How the addresses were found (for TH14 and later)
 
@@ -261,13 +265,12 @@ Tooling is in `tools/porting/` with a README. What worked, in order of usefulnes
    with the `mov ebx, prio` and callback store before it. Cross-check with `new` sizes and the
    global each constructor stores into.
 2. **The ECL variable getter** for the enemy layout, and the equivalent switch for the player
-   (`-9991`/`-9990` read the player position) — one table, no guessing.
+   (`-9991`/`-9990` read the player position).
 3. **The inline `Timer::tick` shape** for every per-object timer, and `Timer::add` callers
    for the constant-argument sites.
 4. **Reading the TH12 hook's meaning** (object, field, gating timer) and finding the same
-   operation in the decompiled TH13 function, rather than matching bytes. Instruction-sequence
-   matching (`match.py`) found thunks and small helpers; decompiled-body similarity
-   (`dmatch.py`) only narrowed the function.
+   operation in the decompiled TH13 function. Instruction-sequence matching (`match.py`) found
+   thunks and small helpers; decompiled-body similarity (`dmatch.py`) only narrowed the function.
 5. **Ghidra headless** (11.3.2) for a full decompilation dump (`decomp13.c`), then `grep`.
 
 What did not work: matching hook sites by byte shape across the two games; assuming a struct
@@ -281,7 +284,7 @@ two *bits*); assuming an old hook still has a counterpart (§6's "not hooked" li
   `th13e.dat` and `th13e.dll`. The game's own dialog picks the window size (radio buttons at
   x=566, y≈498/510/522/534 for the four sizes at the rig's dialog placement; OK at 636,583).
   The rig renders at 25–35 presents/s; every present slot then runs one tick plus one catch-up
-  tick, so sub-stepping *is* exercised (dt as configured) but wall-clock is ~0.6× real time.
+  tick, so sub-stepping is exercised (dt as configured) but wall-clock is ~0.6× real time.
   Replays under the rig land in `/tmp/wp/drive_c/users/root/AppData/Roaming/ShanghaiAlice/th13/`.
 - Harness: `./test.sh th13.exe` and `th13e.exe` — 101 signatures, 52 patches, no overlaps;
   TH10/TH11/TH12 unchanged by the runner generalisation (the `INTERNAL ERROR: missing

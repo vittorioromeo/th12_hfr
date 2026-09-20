@@ -19,7 +19,7 @@ static int g_log_lazy;   /* debug>=3: flushed once per frame instead of per line
 static int g_frame_seen; /* the game has drawn at least one frame: everything that loads has loaded */
 static void logf_(const char* fmt, ...) {
     if (!g_log) return;
-    /* Direct3D 9 leaves the game's thread in 24-bit x87 precision (see DEVNOTES_RUNTIME §3b,
+    /* Direct3D 9 leaves the game's thread in 24-bit x87 precision (see DEVNOTES_RUNTIME §4,
        "the clock that lied"); our arithmetic is SSE, but the C runtime's number formatting is
        not, so format at full precision and put the game's setting back. */
     unsigned cw = _controlfp(0, 0); _controlfp(_PC_53, _MCW_PC);

@@ -2,7 +2,8 @@
 
 inspect_pe.py's `xrefs` decodes executable sections linearly from the section start. That
 misaligns wherever data or padding sits between functions, so it both invents references
-(TH06NC_DEVNOTES §17: three convincing "replay" functions that nothing calls) and misses
+(TH06NC_DEVNOTES §3 and §18: readers of a byte that do not exist, and live "replay"
+callbacks reported as having no callers) and misses
 real ones. This decodes each .pdata function from its own BeginAddress, which is always an
 instruction boundary, and reports whether each hit is a read or a write.
 

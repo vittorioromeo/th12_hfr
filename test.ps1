@@ -20,6 +20,8 @@ try {
     if($LASTEXITCODE){throw 'tools/th*_signatures.json no longer matches src/games/th*_signatures.h'}
     & $pythonPath tools/check_docs.py
     if($LASTEXITCODE){throw 'Documentation links failed'}
+    & $pythonPath tools/check_game_differences.py
+    if($LASTEXITCODE){throw 'docs/GAME_DIFFERENCES.md is behind the source'}
     for($i=0;$i -lt $fixtures.Count;++$i) {
         $prefix="build/tests/fixture$i"
         & ./build/tests/test_hfr.exe $fixtures[$i] $prefix

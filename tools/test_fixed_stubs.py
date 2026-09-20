@@ -158,7 +158,7 @@ for px, vx in ((16777216.0, 1.0), (0.1, 0.2), (-3.4e18, 5.6e18), (1e-40, 1e-40))
 # into the generic motion. Every other live state moves the bullet itself, at a fraction of
 # its velocity, and leaves the loop body early -- so on a sub-step pass those must reach the
 # age update (0x11562) and not the motion (0x11021), or they get a whole extra frame of
-# full-speed travel every frame. That is the section 26 bug, and this is the test for it.
+# full-speed travel every frame. That is the TH06NC_DEVNOTES section 13 state-switch bug, and this is the test for it.
 for minor in (0, 1):
     for state in (1, 2, 3, 4, 5, 9):
         uc, _ = projectile_machine(minor)

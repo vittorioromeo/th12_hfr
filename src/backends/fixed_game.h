@@ -50,9 +50,9 @@ struct FixedGame {
     uint32_t player_motion, player_motion_resume;
     unsigned player_motion_size;
     uint32_t player, bounds, input_poll;
-    /* Recorded in section 14 as "non-zero while a replay drives the input word". That came
-       from three leaf functions nothing in the binary calls, so it is not trustworthy and
-       no longer gates anything (section 17); it is logged so a run can identify it. */
+    /* Once believed to be "non-zero while a replay drives the input word". That came from a
+       linear xref scan; the byte is non-zero throughout ordinary play, so it no longer gates
+       anything (TH06NC_DEVNOTES section 18); it is logged so a run can identify it. */
     uint32_t replay_suspect;
     unsigned pl_position, pl_scale, pl_speed_straight, pl_speed_diagonal;
     /* Sub-stepped projectiles. One callback updates bullets and lasers; on a sub-step pass
@@ -67,7 +67,7 @@ struct FixedGame {
        the bullet by a fraction of its velocity inside its own arm and then leaves the loop
        body early, bypassing the motion, the cull and the collision. Skipping the switch
        wholesale therefore gave those states a full extra frame of full-speed motion per
-       frame, on top of their own (section 26). So the minor branch re-reads the state:
+       frame, on top of their own (TH06NC_DEVNOTES section 13). So the minor branch re-reads the state:
        `proj_states_skip` is where it continues when the state is the ordinary one, and
        `proj_states_other` where it continues for all the rest -- the age update, which is
        itself gated, so they are left exactly where the 60 Hz pass put them. */
@@ -82,13 +82,13 @@ struct FixedGame {
        touches a single bullet: `item_call` is that call and `item_update` its target. Item
        motion is a whole-frame step -- fall speed accumulates toward a terminal velocity and
        the collection tests read the stepped position -- so a sub-step pass must not make it,
-       or items fall at the tick rate instead of at 60 Hz (section 22). */
+       or items fall at the tick rate instead of at 60 Hz (section 15). */
     uint32_t item_call, item_update;
     /* Every bullet carries a sprite VM at +0x50, and the callback steps it one frame at the
        tail of the per-bullet loop -- four instructions before the age it does gate. A script
        step is a whole frame: it is what plays the cancel bursts, and a script that offsets
        its sprite moves it once per step, so on a sub-step pass the step has to be held back
-       or those animations run at the tick rate (section 25). The laser loop's identical step
+       or those animations run at the tick rate (section 13). The laser loop's identical step
        is already inside `proj_laser_timer`'s skip. This one cannot be relocated -- the block
        it sits in reads the manager through a RIP-relative operand -- so the call is
        redirected instead: `proj_sprite_call` is that call and `proj_sprite_step` its target. */

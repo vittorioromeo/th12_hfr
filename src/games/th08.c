@@ -1,5 +1,6 @@
 /* TH08 1.00d: D3D8, native 60 Hz Chain ABI, interpolated 2D drawing.
- * See docs/games/TH08_DEVNOTES.md. No gameplay callbacks are sub-stepped. */
+ * See docs/games/TH08_DEVNOTES.md. Nothing in gameplay is sub-stepped by default; [fixed60]
+ * subtick and substep slice the player and the projectiles, and are off unless asked for. */
 #include "../backends/fixed_clock.h"
 #include "../backends/fixed_history.h"
 
@@ -266,7 +267,7 @@ static int th08_projectiles_pass(struct Th08Elem* e) {
         memcpy(th08_vel_scaled[i], v, 12);
     }
     TH08_MULTIPLIER = m * f;
-    /* Debug: TH08_TEST_LASTTICK makes the four player-collision tests answer "nothing" on every
+    /* Debug: TH08_TEST_LASTTICK makes the three hooked player-collision tests answer "nothing" on every
        tick but the frame's last, which is when a whole-frame move would have been tested. With that the sliced
        projectiles have to reproduce the stock game's trace exactly; without it they are
        allowed to differ, and only by what testing more often finds. */

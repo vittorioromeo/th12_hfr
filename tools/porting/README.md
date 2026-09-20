@@ -36,10 +36,10 @@ See [TH06NC_DEVNOTES.md](../../docs/games/TH06NC_DEVNOTES.md) for the investigat
   silently disabled two features for several builds. Worse, when the same linear scan was
   then used to look for *callers* of those functions and found none, three live node
   callbacks were written up as dead code -- an absence of references found by a linear
-  decode is exactly as worthless as a reference found by one (TH06NC_DEVNOTES §17). This one walks `.pdata`, starts each function at its own
+  decode is exactly as worthless as a reference found by one (TH06NC_DEVNOTES §3, §18). This one walks `.pdata`, starts each function at its own
   `BeginAddress`, and says whether each hit is a read or a write. It cannot see accesses made
   through a register (`[rbx+0x774c]` on an object pointer), which is the other way an address
-  scan lies — §16 and §18 were both bitten by that. **A reference found by a scan is a
+  scan lies — the bullet hit test and the dying-state write were both missed that way (§3). **A reference found by a scan is a
   candidate; something reachable has to read it before you build on it.**
 - `disasm.py <exe> <start> <end>` — disassemble a code range straight from the executable
   (objdump on the raw bytes, VA-adjusted). The everyday tool.

@@ -57,6 +57,19 @@ Touhou 14 and the TH10-13 sweep:
   every replay on disk when that menu opened, which is the same mistake that crashed TH14 when
   its replay extension was first installed.
 
+Tests and documentation:
+
+- `test-games.ps1` gains `-Matrix` (one short launch per INI setting: frame cap, sub-stepping
+  off, plain Direct3D 9, every shader filter, sharpening, internal resolution, texture
+  upscaling, the launcher route) and `-Drive` (starts a stage with injected keys, holds fire,
+  checks the simulation rate and TH14's shot cycle). It now covers TH08, checks that the F11
+  menu is actually drawn, compares the installed DLLs with the build, restores each game's INI,
+  and keeps every launch's log and screenshots.
+- `docs/GAME_DIFFERENCES.md`: every game-specific behaviour side by side, with abstraction
+  candidates; `tools/check_game_differences.py` keeps it current from both test suites.
+- The README is half its length; mod compatibility, replays, upgrading, building and credits
+  moved to `docs/`. The developer notes were rewritten as reference rather than diary.
+
 ## v0.5.5-test
 
 Touhou 14 gameplay runs at the display's refresh rate.

@@ -6,10 +6,13 @@ The two documents a newcomer needs are at the repository root:
 
 | Document | What it is |
 | --- | --- |
-| [DEVNOTES_RUNTIME.md](DEVNOTES_RUNTIME.md) | The findings: what was learned taking one runtime to four games, why each design decision went the way it did, and the bugs that shaped it. The file to read second, and the file to append to. |
+| [DEVNOTES_RUNTIME.md](DEVNOTES_RUNTIME.md) | Cross-game findings for the shared x86 runtime: design decisions with their reasons, and the traps. |
 | [RESOLUTION.md](RESOLUTION.md) | The picture: output scaling, the filter chain, internal resolution, texture upscaling, the window, the menu, and the presentation path. |
 | [MOD_COMPATIBILITY.md](MOD_COMPATIBILITY.md) | Coexisting with THRotator, thprac and thcrap: the source audits, the confirmed conflicts, what shipped and what is still open. |
+| [GAME_DIFFERENCES.md](GAME_DIFFERENCES.md) | Every game-specific behaviour, side by side, and what could be abstracted. Kept current by `tools/check_game_differences.py`. |
+| [BUILDING.md](BUILDING.md) | Toolchains and build commands. |
 | [TESTING.md](TESTING.md) | What the two test suites cover, how they differ, and what still has to be checked by hand. |
+| [OTHER_MODS.md](OTHER_MODS.md), [REPLAYS.md](REPLAYS.md), [UPGRADING.md](UPGRADING.md), [CREDITS.md](CREDITS.md) | User-facing detail moved out of the README. |
 | [FIXED_STEP_RESEARCH.md](FIXED_STEP_RESEARCH.md) | Separating simulation from presentation: the current timing paths, measured step sizes, implementation scope, replay/input risks and a staged migration plan. |
 
 ## Per-game records
@@ -27,13 +30,8 @@ patch site is and why, and the bugs met on the way.
 | Touhou 14 — Double Dealing Character | [games/TH14_DEVNOTES.md](games/TH14_DEVNOTES.md) |
 | Touhou Koumakyou: New Classic | [games/TH06NC_DEVNOTES.md](games/TH06NC_DEVNOTES.md) |
 
-TH12's record is also the oldest document in the tree: the patch began as `th12_hfr`, so it
-carries the original design rationale alongside its address map. TH11 and TH12 were the first
-two games in the shared runtime; TH10 came next and needed its own speed model, because it
-predates the single game-speed float the later engines hang their sub-stepping off; TH13 is
-TH12's engine with a handful of structural changes, each named by a profile field; TH14 is
-TH13's engine rebuilt with a newer compiler, which changed four calling conventions and is the
-first game to need backend variants rather than only profile fields.
+TH12's record also carries the original design rationale: the patch began as `th12_hfr`. TH13 is
+written as a delta against TH12, and TH14 against TH13.
 
 New Classic is a different engine entirely — 64-bit, Direct3D 11, its own backend and a smaller
 feature set. [games/TH06NC_VS_TH10_13.md](games/TH06NC_VS_TH10_13.md) is the side-by-side.

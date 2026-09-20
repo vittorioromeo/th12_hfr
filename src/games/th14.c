@@ -18,7 +18,7 @@
    and says why. */
 #include "../game_profile.h"
 
-/* Dimming (DEVNOTES_RUNTIME 3b, TH14_DEVNOTES 12). Written from a stage trace, and
+/* Dimming (DEVNOTES_RUNTIME 3b, TH14_DEVNOTES 6). Written from a stage trace, and
    deliberately short: every line below is something the trace actually showed, and the classes
    it cannot yet place are left unclaimed rather than guessed at. `hfr_ui_get(UI_DIM_CLASSES)`
    reports which classes a profile really has, so the menu offers these and not the rest.
@@ -38,7 +38,7 @@
    the runtime stores `logical * factor` there -- so every one of the game's stores has to say
    what it meant in game-frame units, or the next store puts the game back to one frame per
    tick and the sub-steps become six frames of motion. There are twenty-five stores. Twelve are
-   described here; the other thirteen are correct untouched, and § of the dev notes says why
+   described here; the other thirteen are correct untouched, and TH14_DEVNOTES 7 says why
    each one is. The short version: a store of a value *derived from the current speed* composes
    with the factor by itself, and so does a store of zero.
 

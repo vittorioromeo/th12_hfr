@@ -1,87 +1,44 @@
 # Touhou HFR
 
-**Touhou, running at your monitor's refresh rate.** These games were built around 60 frames a
-second. On a 144, 240 or 360 Hz display this patch draws — and moves the player, the bullets and
-your shots — that many times a second instead, while keeping the game's own logic on its exact
+Runs Touhou at your monitor's refresh rate. On a 144, 240 or 360 Hz display the game is drawn —
+and the player, bullets and shots move — that many times a second, while game logic keeps its
 60 Hz schedule.
 
-It also gives you a window you can resize, decent upscaling filters instead of whatever your
-driver picks, optional dimming so bullets stand out against the background, and a settings menu
-on **F11** that applies changes as you make them.
+Also: a resizable window, borderless fullscreen, pixel-art upscaling filters, optional dimming
+of backgrounds and effects, and an in-game settings menu on **F11**.
 
-Nothing is installed and no game file is modified: you add four files to the game's folder, and
-you remove the patch by deleting them again.
+No game file is modified. You add four files to the game's folder and delete them to uninstall.
 
-**[Download the latest release](https://github.com/vittorioromeo/th12_hfr/releases)** — [what changed](CHANGELOG.md)
+**[Download the latest release](https://github.com/vittorioromeo/th12_hfr/releases)** · [Changelog](CHANGELOG.md)
 
 | [![Touhou HFR — v0.4 showcase](https://img.youtube.com/vi/EmfJLZxlHZI/hqdefault.jpg)](https://www.youtube.com/watch?v=EmfJLZxlHZI) | [![Touhou HFR — High Framerate and Refresh Rate Patch](https://img.youtube.com/vi/H7FcMXPgPFQ/hqdefault.jpg)](https://www.youtube.com/watch?v=H7FcMXPgPFQ) |
 | :---: | :---: |
 | **[v0.4 showcase](https://www.youtube.com/watch?v=EmfJLZxlHZI)** | **[High Framerate and Refresh Rate Patch](https://www.youtube.com/watch?v=H7FcMXPgPFQ)** |
 
-**Contents** — [Does it work with my game?](#does-it-work-with-my-game) ·
-[Install](#install) · [Using it](#using-it) · [Settings](#settings) ·
-[Other mods](#other-mods) · [Limitations](#limitations) ·
-[Imperishable Night](#imperishable-night) · [New Classic](#new-classic) ·
-[Troubleshooting](#troubleshooting) ·
-[For developers](#for-developers) · [Credits](#credits-tools-and-resources)
 
-## Does it work with my game?
+## Supported games
 
 | Game | Version | Executables | State |
 | --- | --- | --- | --- |
-| Touhou 8 — Imperishable Night | v1.00d | `th08.exe` | **experimental**, a different approach — [details](#imperishable-night) |
+| Touhou 8 — Imperishable Night | v1.00d | `th08.exe` | experimental — [notes](#imperishable-night) |
 | Touhou 10 — Mountain of Faith | v1.00a | `th10.exe`, `th10e.exe` | supported |
 | Touhou 11 — Subterranean Animism | v1.00a | `th11.exe`, `th11e.exe` | supported |
 | Touhou 12 — Undefined Fantastic Object | v1.00b | `th12.exe`, `th12e.exe` | supported |
 | Touhou 13 — Ten Desires | v1.00c | `th13.exe`, `th13e.exe` | supported |
-| Touhou 14 — Double Dealing Character | v1.00b | `th14.exe` | **partial** — see below |
-| Touhou Koumakyou: New Classic | see [notes](docs/games/TH06NC_DEVNOTES.md#2-product-and-inspected-build) | `th06nc.exe` | **experimental**, smaller feature set — [details](#new-classic) |
+| Touhou 14 — Double Dealing Character | v1.00b | `th14.exe` | partial — [notes](#touhou-14) |
+| Touhou Koumakyou: New Classic | [see notes](docs/games/TH06NC_DEVNOTES.md#2-product-and-inspected-build) | `th06nc.exe` | experimental — [notes](#new-classic) |
 
-TH14 is new and still only part described. The picture is all there: resizing, scaling,
-filters, borderless, dimming and the F11 menu. So is sprite animation — the menus, the HUD, the
-title screen, the dialogue portraits and anything else that plays out of an animation script.
-The bullets, the player, the items and the lasers move at your display's rate too, and enemy
-sprites are interpolated between their 60 Hz positions the way they are on TH10–13 — enemy
-*logic* stays at 60 Hz on every game, because it is a script interpreter and running it faster
-would be a different game. The player's options are interpolated the same way,
-because they chase her by a proportion of the distance each frame and sub-stepping that would
-change how far they trail. Sub-tick input is not wired up yet, so the player samples input once per 60 Hz frame on TH14
-where TH10–13 sample it every tick.
-
-**Replays on TH14 carry their recording rate**, as TH10–13's do: the file records the tick rate
-it was played at and plays back at that rate, so a run recorded at 360 Hz with sub-stepping on is
-watched back the same way. A replay made before this, or one recorded by the unmodified game,
-plays back at 60 Hz as it always did.
-
-That makes a replay reproduce the simulation that recorded it. It does not make sub-stepped and
-60 Hz play identical to each other, and they are not: bullet delay timers start a frame early
-under sub-stepping, which is enough to change a pattern. Enemy behaviour, script execution and
-everything drawing on the random number generator are the same at any rate. If you want a run to
-be watchable in the unmodified game, record it with `substep=0`.
-
-Only the Japanese `th14.exe` is recognised so far; the English and Steam builds still have to be
-checked.
-
-Japanese and English executables are both supported for TH10–13, and so are the Steam releases. Other
-versions, other games, and the `th06c.exe` (Classic) executable bundled with New Classic are
-not: the patch verifies the executable's code before touching anything and declines to install
-if it does not recognise it.
-
-You need Windows and a display that runs above 60 Hz. On a 60 Hz display the patch installs and
-behaves, but there is nothing for it to do — the extra frames are the point.
-
-**On Steam, start the game from Steam.** A Steam copy of TH10–13 is the same game inside a DRM
-wrapper that keeps its code encrypted until the game itself starts, so `touhou_hfr.exe` cannot
-check it or launch it and will tell you so. `dinput8.dll` does not care: put the four files in
-the folder, press Play, and the patch installs itself once the game is running.
-
-**Other mods** — THRotator, thprac and thcrap all work alongside this patch;
-[see below](#other-mods) for the one setting each combination needs.
+- Requires Windows and a display above 60 Hz. On a 60 Hz display the patch does nothing.
+- Steam releases of TH10–13 are supported. **Start them from Steam**: the Steam executable is
+  encrypted until it runs, so `touhou_hfr.exe` cannot launch it, but `dinput8.dll` still loads
+  the patch.
+- The patch verifies the executable's code and does not install on anything it does not
+  recognise: other versions, other games, pre-patched English executables, or `th06c.exe`.
+- THRotator, thprac and thcrap work alongside it — see [Other mods](#other-mods).
 
 ## Install
 
-Close the game. Download and extract the release archive, then copy these four files next to
-the game's executable:
+Close the game, extract the release, and copy these next to the game's executable:
 
 ```
 dinput8.dll
@@ -90,24 +47,17 @@ touhou_hfr.exe
 touhou_hfr.ini
 ```
 
-That is the whole installation, and `dinput8.dll` loads the patch whenever the game starts. You
-can also run `touhou_hfr.exe`, which finds the game beside it and starts it — except on Steam,
-where you press **Play** instead, for the reason above.
+Start the game as usual; `dinput8.dll` loads the patch. `touhou_hfr.exe` is an alternative
+launcher (not for Steam copies). The same four files work for every game. With several games
+in one folder, set `[launcher] exe=th12.exe` or pass the name to `touhou_hfr.exe`.
 
-The same four files work for every supported game, so you can copy the same folder contents
-into each. If you keep several games in one folder, set `[launcher] exe=th12.exe` in the INI (or
-pass the executable name to `touhou_hfr.exe`) to say which one you mean.
+The `shaders/` folder is optional: the bundled filters are built into the DLL, and the folder is
+only for adding your own `.hlsl` filters.
 
-The bundled filters are compiled into the DLL. The `shaders/` folder in the archive is only
-needed if you want to drop in extra `.hlsl` filters of your own — copy it next to the game and
-the patch will offer whatever is in it.
+**Uninstall:** delete the four files.
 
-**To uninstall**, delete those four files.
-
-### New Classic
-
-New Classic is 64-bit, so it needs different files. Put these in the game's `th06nc` folder —
-the one containing `th06nc.exe` — and start the game from Steam as usual:
+**New Classic** is 64-bit and uses different files. Put these in the folder containing
+`th06nc.exe` and start the game from Steam:
 
 ```
 dxgi.dll
@@ -115,40 +65,30 @@ touhou_hfr64.dll
 touhou_hfr.ini
 ```
 
-**Do not put the 32-bit `dinput8.dll` in this game**; it cannot load. To uninstall, delete those
-three files. One conflict to know about: ReShade also installs as `dxgi.dll`, and only one of
-them can have that name in the folder.
+Do not add the 32-bit `dinput8.dll` there. ReShade also installs as `dxgi.dll`; only one of the
+two can be present.
+
+Upgrading from the old `th11_hfr` / `th12_hfr` patches: see [docs/UPGRADING.md](docs/UPGRADING.md).
 
 ## Using it
 
-**F11** opens the settings menu: four tabs, changes applied as you move the slider, and **Save**
-writes them to `touhou_hfr.ini` so they become the default. Anything that cannot take effect in
-your current setup is shown disabled with the reason rather than silently ignored. A few
-settings — internal resolution, texture upscaling and the key bindings — are INI-only and need a
-restart; the [settings tables](#settings) say which.
+| Key | |
+| --- | --- |
+| **F11** | Settings menu. Changes apply immediately; **Save** writes them to `touhou_hfr.ini`. Options that cannot work in the current setup are disabled, with the reason |
+| **F10** | Cycles the window: 640x480, 960x720, 1280x960, borderless fullscreen |
 
-**F10** steps the window through 640x480, 960x720, 1280x960 and borderless fullscreen. The patch
-provides it on every game: none of TH10-TH14 has an F10 of its own, which earlier versions of this
-document and of the code assumed three of them did. Both keys can be rebound or switched off in
-the INI.
+Both keys can be rebound or disabled in the INI.
 
-**Is it working?** Open F11 → Timing. It shows the rate it is presenting at and the rate it is
-simulating at, both measured. The first should be your refresh rate (or whatever you set `fps`
-to) and the second should sit at 60. The game's own on-screen FPS readout counts presented
-frames, so it should agree with the first number.
+To check that it works, open F11 → Timing: the presented rate should be your refresh rate (or
+`fps`), and the simulated rate 60. The game's own FPS counter shows the presented rate.
 
-The patch writes `touhou_hfr.log` next to the game: which game it recognised, every setting it
-read, what it patched, every non-Windows module in the process, and the measured rates once a
-second. If you report a problem, that file is what to send.
+`touhou_hfr.log`, next to the game, records what was recognised, patched and measured. Attach
+it to any bug report.
 
 ## Settings
 
-To edit by hand, open `touhou_hfr.ini` beside the game and restart. The file itself carries a
-comment for every setting; the tables below are the summary. The defaults detect your display's
-refresh rate and turn on sub-stepping, sub-tick input and D3D9Ex.
-
-Settings marked **INI only** do not appear in the F11 menu; those marked **restart** take effect
-the next time the game starts.
+Edit `touhou_hfr.ini` beside the game and restart; every setting is commented in the file.
+**INI only** settings are not in the F11 menu. **restart** settings apply at the next start.
 
 ### `[launcher]`
 
@@ -166,7 +106,7 @@ the next time the game starts.
 | `subtick_input` | `1` | Sample movement and focus between stock frame inputs |
 | `enemy_interp` | `1` | Interpolate enemy sprites between 60 Hz positions |
 | `d3d9ex` | `1` | Use Direct3D 9Ex when available |
-| `max_frame_latency` | `1` | D3D9Ex queued-frame limit; `0` leaves the driver default. Shortening the queue takes a little delay out of the gap between your input and the screen |
+| `max_frame_latency` | `1` | D3D9Ex queued-frame limit, for lower input lag; `0` leaves the driver default |
 | `fullscreen_refresh` | `0` | Exclusive fullscreen rate; `0` follows automatic/explicit `fps`. **INI only** |
 | `flipex` | `0` | Experimental windowed flip presentation. **INI only, restart** |
 | `log` | `1` | Write `touhou_hfr.log` beside the game. **INI only**; New Classic always logs |
@@ -178,7 +118,7 @@ the next time the game starts.
 | --- | --- | --- |
 | `scaling` | `1` | `0` stretch to fill, `1` fit with letterboxing, `2` whole-number scale only |
 | `filter` | `sharp-bilinear` | `nearest`, `bilinear`, `sharp-bilinear`, `mmpx`, `xbr-lv2`, `super-xbr`, `scalefx`, or any `.hlsl` in `shaders/` |
-| `sharpen` | `none` | Post-filter sharpening over the finished picture: `none`, `cas`, `unsharp-mask`. Reach for this when an awkward window size has left the image soft |
+| `sharpen` | `none` | Sharpening over the finished picture: `none`, `cas`, `unsharp-mask` |
 | `sharpen_strength` | `50` | 0–100 |
 | `resizable` | `1` | Resize border on the window |
 | `window_scale` | `0` | Startup size as a percentage of 640x480 (`200` = 1280x960); `-1` = largest whole multiple that fits the screen; `0` = as the game made it |
@@ -186,11 +126,11 @@ the next time the game starts.
 | `fullscreen_mode` | `1` | `1` the game's fullscreen becomes a borderless window covering the monitor; `0` leave it alone |
 | `cursor` | `2` | Mouse pointer in borderless fullscreen: `0` never, `1` always, `2` while it moves. Always shown while the menu is open |
 | `menu_key` | `122` | Virtual-key code of the in-game menu (F11); `0` disables it. **INI only** |
-| `size_cycle_key` | `121` | Window-size key for a game with none of its own, which means TH10 (F10); `0` = off. **INI only** |
+| `size_cycle_key` | `121` | Virtual-key code of the window-size cycle (F10); `0` disables it. **INI only** |
 | `warn_wrapper` | `1` | Say at startup when a d3d9 wrapper is presenting the game. **INI only** |
 | `external_renderer` | `-1` | Hand the picture to a rotation wrapper such as THRotator: `-1` when one is recognised, `1` always, `0` never. **INI only** |
 | `own_present` | `-1` | Which swap chain reaches the screen; `-1` decides automatically |
-| `internal_scale` | `1` | Draw the game at N times 640x480, 1–4, so sprites land on real sub-pixel positions and the 3D backgrounds gain detail. **INI only, restart** |
+| `internal_scale` | `1` | Render the game at N × 640x480, 1–4: sub-pixel sprite positions and sharper 3D backgrounds. **INI only, restart** |
 | `texture_scale` | `0` | Magnify every loaded texture N times at load time, 2–4 (`0` and `1` are off); pair with `internal_scale`. **INI only, restart** |
 | `texture_filter` | `xbr-lv2` | The filter for that: `xbr-lv2`, `mmpx`, `super-xbr`, `scalefx`, or a `.hlsl` from `shaders/`. **INI only, restart** |
 | `dim_background` | `0` | Fade the stage background towards black by this percentage |
@@ -203,295 +143,116 @@ Dimming never touches enemies, bullets, lasers, the player or the interface.
 
 ### `[fixed60]` — Imperishable Night and New Classic
 
-The two games whose simulation stays at 60 Hz. `[hfr] fps` and `vsync` set the presentation
-rate for them too; `[hfr] substep`, `subtick_input` and `enemy_interp` are not read.
+For the two games whose simulation stays at 60 Hz. `[hfr] fps` and `vsync` still set the
+presentation rate; `[hfr] substep`, `subtick_input` and `enemy_interp` are ignored.
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
 | `interpolate` | `1` | Smooth sprite position, rotation and scale between 60 Hz frames |
-| `predict` | `1` | TH08 only. Show the playfield in the present rather than up to a frame late, and draw the player where the keys held now will put her ([see below](#imperishable-night)). Changes nothing in the game |
-| `subtick` | `0` | Sub-tick player movement. Not replay-safe ([TH08](#imperishable-night), [New Classic](#new-classic)) |
-| `substep` | `0` | Sub-stepped enemy bullets and lasers — and items, on TH08. Experimental, not replay-safe ([TH08](#imperishable-night), [New Classic](#new-classic)) |
-| `d3d9ex` | `0` | TH08 only. Direct3D 9Ex through the Direct3D 8 bridge, for `max_frame_latency` and `flipex`. **INI only, restart**; not yet confirmed on Windows |
-| `vsync` | `0` | D3D11 vsync; separate from `[hfr] vsync` so the D3D9 default is untouched |
-| `diag_seconds` | `0` | Run for N seconds, log the draw and update lists, and quit. Leave at 0 |
+| `predict` | `1` | TH08 only. Extrapolate the playfield and draw the player from live input instead of showing them up to a frame late ([details](#imperishable-night)). Does not change game state |
+| `subtick` | `0` | Sub-tick player movement. Not replay-safe |
+| `substep` | `0` | Sub-stepped enemy bullets and lasers (and items, on TH08). Experimental, not replay-safe |
+| `d3d9ex` | `0` | TH08 only. Direct3D 9Ex through the Direct3D 8 bridge. **INI only, restart**; unconfirmed on Windows |
+| `vsync` | `0` | New Classic only. D3D11 vsync |
+| `diag_seconds` | `0` | New Classic only. Diagnostic: log the draw and update lists for N seconds, then quit |
 
-`[systems]` holds per-system switches for troubleshooting, defaulting to each game's audited
-classification of which systems may run at sub-tick rate. Turning one on removes a system that
-was allowed to sub-step; it cannot promote one the audit classified as frame-only.
+`[systems]` holds per-system sub-stepping switches for troubleshooting. A switch can turn
+sub-stepping off for a system, never on for one the game's profile keeps at 60 Hz.
 
 ## Other mods
 
-| Mod | Works alongside? | What to change |
+| Mod | Works? | What to do |
 | --- | --- | --- |
-| [THRotator](https://github.com/massanoori/THRotator) | Yes, TH10–13 | Nothing. This patch recognises it and hands over the picture |
-| [thprac](https://github.com/touhouworldcup/thprac) | Yes, TH10–13 | Untick *Use VsyncPatch* and *Use OpenInputLagPatch* in its launcher |
-| [thcrap](https://github.com/thpatch/thcrap) | Yes, TH10–13 | Nothing. Start the game through thcrap as usual |
-| vpatch, OpenInputLagPatch | No | Remove them. This patch replaces what they did for these games |
-| Direct3D 9 wrappers (PivotDX9 and the like) | Partly | Nothing, but scaling and borderless fullscreen go to the wrapper |
+| [THRotator](https://github.com/massanoori/THRotator) | Yes, TH10–13 | Nothing. It takes over the picture (scaling, filters, window); this patch keeps timing, and F11 still works |
+| [thprac](https://github.com/touhouworldcup/thprac) | Yes, TH10–13 | Untick *Use VsyncPatch* and *Use OpenInputLagPatch* in its launcher. Keep `internal_scale=1` |
+| [thcrap](https://github.com/thpatch/thcrap) | Yes, TH10–13 | Nothing. For thcrap's own Direct3D extras (translation notes), set `d3d9ex=0` |
+| vpatch, OpenInputLagPatch | No | Remove them; this patch replaces them |
+| Direct3D 9 wrappers (PivotDX9 etc.) | Partly | Scaling and borderless fullscreen are left to the wrapper |
 
-The patch detects the ones it knows and says so, in the log and on screen; it cannot detect
-everything. If something looks wrong, try the game with only this patch installed.
-
-### Rotation and layout wrappers (THRotator)
-
-THRotator and this patch divide the job rather than share it: THRotator owns the picture — the
-render target, the rotation, the HUD layout, the window and the presentation — and this patch
-owns everything upstream of that, which is the frame rate and its pacing, sub-stepping,
-interpolation, dimming, replays and input.
-
-Install both as each normally wants; `d3d9.dll` and `dinput8.dll` do not collide, so the game
-loads them both. This patch recognises THRotator when it starts and steps out of the picture by
-itself, logging what each side is doing.
-
-What this patch stops doing in that mode: scaling mode, upscaling filters, sharpening, internal
-resolution, texture upscaling, window sizing and borderless fullscreen. THRotator is doing its
-own version of all of those, in its own coordinate system, and two programs composing one image
-is how you get a picture nobody can explain. Configure them in THRotator.
-
-`external_renderer` under `[video]` decides this: `-1` (the default) recognises it, `1` forces the
-same treatment for another renderer this patch does not know by name, and `0` keeps composing
-the picture here.
-
-**F11 works here too**, drawn onto the image THRotator presents, and re-acquired after every
-rotation. Confirmed on TH12 with THRotator 2.1.0 at 360 Hz.
-
-### Practice tools (thprac)
-
-thprac owns the practice menu, the stage and section jumps and the replay tools; this patch owns
-the frame loop underneath them. Their patch sites do not touch anywhere. Install both as each
-normally wants and launch from thprac's launcher, or attach thprac to a running game.
-
-**One thing to change in thprac's launcher: untick "Use VsyncPatch (if avaliable)" and "Use
-OpenInputLagPatch (if avaliable)".** Both are on by default, and thprac will load either one it
-finds sitting in the game's folder — an old `vpatch_th12.dll` you have not thought about in
-years is enough. Those patches replace the game's frame limiter, which is the one job this patch
-cannot share, so it refuses to install beside them and tells you which box to untick.
-
-Two smaller things. The practice menu updates at the display rate rather than at 60 Hz, which is
-what keeps it in step with the drawing — hotkeys are unaffected, but anything you hold down to
-repeat repeats proportionally faster. And leave `internal_scale` at 1 while using thprac if you
-can: thprac sizes its interface from the back buffer at startup, where it agrees with this
-patch, but from the presentation parameters again after a device reset, where it does not once
-the internal resolution is higher. The first launch looks right; the first window resize or
-Alt-Tab after that can leave its menu the wrong size.
-
-Needs v0.5.3-test or newer. Confirmed on TH12 with thprac 2.3.1.1 at 360 Hz, and on TH10, TH11
-and TH13 against a stand-in reproducing thprac's hook mechanism. Running thprac and THRotator
-together with this patch has not been tried.
-
-### Translation patches (thcrap)
-
-thcrap replaces text, fonts and images; this patch replaces the frame loop and the renderer. They
-do not write over each other anywhere. Install both and start the game through thcrap's shortcut
-as usual; `dinput8.dll` loads this patch on that launch like any other. Install order does not
-matter, and neither modifies the other's files — this patch never changes the executable on disk,
-so thcrap still identifies the game by hash exactly as it expects.
-
-One thing to know: **thcrap's own Direct3D features do not engage while `d3d9ex=1`** (the
-default). This patch creates the Direct3D object through 9Ex, which steps over whoever else is in
-that chain, so thcrap's translation notes and its device-lost handling are skipped. Everything
-thcrap does to text, fonts, images and files is unaffected — that is where the translation
-actually lives. If you want those extras, set `d3d9ex=0`, at the cost of `max_frame_latency`.
-
-Needs v0.5.2-test or newer; earlier builds were silently switched off by thcrap.
-
-The one combination that does not work is an **executable that has already been translated** —
-the old pre-thcrap English patches that ship a modified `th10e.exe` and friends. Those rewrite
-the game's code, so this patch no longer recognises it and declines. thcrap is the supported way
-to play in English; it translates at run time and leaves the executable alone.
+Known conflicts are reported in the log and on screen. If something looks wrong, test with
+only this patch installed. Details: [docs/OTHER_MODS.md](docs/OTHER_MODS.md).
 
 ## Limitations
 
-**Replays are the big one.** A replay recorded with this patch carries extra metadata — the logic
-rate, the per-tick input stream, the game and simulation revision, and the gameplay settings —
-appended to the game's own untouched payload. That means:
+- **Replays.** A replay recorded with the patch stores its tick rate and per-tick input after
+  the game's own data, and plays back at that rate. It may not play back correctly in the
+  unmodified game or in another build of this patch. To record a replay the stock game can
+  play, set `substep=0`. Replays recorded without the patch play normally.
+- **Scores are not comparable** with the unmodified game. Do not submit them to leaderboards.
+- **Sub-stepping can change outcomes.** Collision is tested several times per frame, so a
+  bullet that would skip past the hitbox between two 60 Hz frames can now hit. Some timers
+  also start a frame early. Patterns may differ slightly from 60 Hz play.
+- Replay parity against the stock game has not been verified over full runs.
+- Internal resolution is complete on TH13 only; other games lack sprite-snapping support.
+- `dim_special` only affects TH13 (divine spirits).
 
-- **A replay recorded with the patch is not guaranteed to play back correctly in the unmodified
-  game, or in a different build of this patch.** The native payload is still there, but the
-  patch's own simulation produced the run. Keep the build you recorded with if a replay matters.
-- **Replays recorded *before* the patch play back fine**, at 60 Hz logic, presented at your
-  display rate.
-- Replays from older HFR versions keep their rate and input data, but their exact simulation
-  revision is unknown and playback may desynchronise. You are warned on screen when a replay
-  carries metadata this build does not understand.
-- TH13 keeps its replays in `%APPDATA%\ShanghaiAlice\th13\replay\`; the others keep them beside
-  the executable.
+More on replays: [docs/REPLAYS.md](docs/REPLAYS.md).
 
-**Scores are not comparable.** Do not submit scores set with this patch to leaderboards that
-expect an unmodified game, and do not assume a replay of one proves anything to anyone else.
+## Touhou 14
 
-**Sub-stepping can change outcomes, and usually makes the game harder.** Testing collision
-several times per frame means a bullet that would have jumped clean past you between two 60 Hz
-frames can now hit you. That is more *correct*, not more forgiving, but a pattern you have
-practised at 60 Hz may not behave identically.
+Working: the full video path, the F11 menu, sprite animation, and display-rate movement for
+bullets, the player, items and lasers. Enemy sprites and the player's options are interpolated.
+Replays carry their recording rate.
 
-**Full-run replay parity has not been tested.** Every supported game has been played on this
-build and the automated tests cover the scheduler, the patch transaction and the emitted code,
-but nobody has yet played identical replays through the stock game and the patched game and
-compared them frame by frame.
-
-**Per-game gaps.**
-
-- Internal resolution is fully supported on TH13; the other games get the sharper rasterisation
-  but their sprite snapping is not yet mapped.
-- `dim_special` only does something in TH13 (divine spirits); TH10–TH12 have no fifth class.
-- TH10 has no native window-size dialog beyond 640x480, so use `window_scale` or F10 there.
+Missing: sub-tick input (input is sampled once per 60 Hz frame), and the English and Steam
+executables, which are unverified.
 
 ## Imperishable Night
 
-TH08 is from the older engine family — Direct3D 8, and a simulation written to run at one
-speed — so it gets the high frame rate a different way from TH10–14. **Its simulation stays at
-60 Hz, exactly as shipped, and the picture is drawn at your display's rate from it.** The four
-files and the install are the same; Direct3D 8 is translated to Direct3D 9 inside the patch, so
-scaling, filters, borderless fullscreen, internal resolution, dimming, screenshots and the F11
-menu all work.
+TH08 uses an older engine (Direct3D 8, a simulation built for one speed), so the approach
+differs: **the simulation stays at 60 Hz, unchanged, and is drawn at the display's rate.**
+Direct3D 8 is translated to 9 inside the patch, so the video features and the F11 menu work.
 
-- **The playfield is shown in the present, not a frame late.** Smoothing a 60 Hz game normally
-  means drawing between its last two states, which is up to 16 ms behind — input lag the stock
-  game does not have. Here bullets, enemies, shots and the stage are instead carried *forward*
-  along their last step, and the player is drawn where the keys you are holding right now will
-  put her at the next 60 Hz tick, so she answers within the frame you press. A sprite that
-  turns sharply is wrong for one frame; a direction pressed part way through a frame moves her
-  by that fraction of a frame at once. Menus and the interface are interpolated, where being a
-  frame late costs nothing. `predict=0` interpolates everything.
-- **Nothing in the game changes.** Positions, collisions, grazes, random numbers and replays
-  are the stock game's — checked frame by frame against the unpatched simulation — so replays
-  record and play back as they always did, in both directions.
-- **Sub-tick player movement** (`subtick=1`, off) really moves her between 60 Hz ticks from
-  freshly polled input, as New Classic's does. It changes where she is when bullets are tested
-  against her, so a replay recorded with it on will not play back; it switches itself off while
-  a replay plays.
-- **Sub-stepped projectiles** (`substep=1`, off, experimental) advance enemy bullets, lasers
-  and items a fraction of a frame at a time and test grazing and collision at every step, so a
-  bullet that would have jumped past you between two 60 Hz frames can hit you. Bullets are
-  still where the stock game puts them at every 60 Hz boundary — checked against it, slot by
-  slot — but when they hit is not, so it is not replay-safe either, and it too switches
-  itself off while a replay plays. Lasers and items have had less checking than bullets;
-  [the notes](docs/games/TH08_DEVNOTES.md#9-sub-stepped-projectiles-fixed60-substep1-off-by-default-experimental) say what was measured.
-- Only the Japanese `th08.exe` v1.00d is recognised. thprac and vpatch have not been tried with
-  it. Texture upscaling and `d3d9ex` have not been confirmed on Windows.
+- **Prediction** (`predict=1`, default). Interpolating between the last two 60 Hz states would
+  show the game up to a frame late. Instead, bullets, enemies and the stage are extrapolated
+  along their last step, and the player is drawn from the keys held right now. A sprite that
+  turns sharply is off for one frame. Menus and the HUD are interpolated. `predict=0`
+  interpolates everything.
+- **Game state is untouched**, verified frame by frame against the unpatched game. Replays work
+  in both directions.
+- `subtick=1` (off): real sub-tick player movement. Not replay-safe; disabled during playback.
+- `substep=1` (off, experimental): sub-stepped bullets, lasers and items with collision at every
+  step. Not replay-safe; disabled during playback.
+  [Measurements](docs/games/TH08_DEVNOTES.md#9-sub-stepped-projectiles-fixed60-substep1-off-by-default-experimental).
+- Only the Japanese `th08.exe` v1.00d. Untested: thprac, vpatch, texture upscaling, `d3d9ex`.
 
 ## New Classic
 
-New Classic is a modern 64-bit remake, so nothing from the x86 runtime transfers. It has its own
-backend and a smaller feature set:
+A 64-bit Direct3D 11 remake with its own backend and fewer features:
 
-- The simulation stays at **60 Hz** and is presented at the display rate, with sprite position,
-  rotation and scale smoothed between native frames — including on the menus and title screen.
-- **Dimming works** (background, items, effects, your own shots). Scaling, filters, sharpening,
-  internal resolution and window management do not exist here; use the game's own display
-  settings.
-- Two settings, **both off by default**, take parts of the simulation to the display rate.
-  *Sub-tick player movement* polls input and moves the player once per drawn frame, so a
-  direction change takes effect within the frame you make it; holding a direction still covers
-  the stock distance per frame. *Sub-stepped projectiles* advance enemy bullets and lasers a
-  fraction of a frame at a time, running culling, grazing and collision at every step.
-- Enemies, the player's own shots, items and every script stay at 60 Hz. That is deliberate:
-  their discrete effects (enemy damage above all) are applied once per 60 Hz frame, so
-  sub-stepping their motion could not change an outcome. See
-  [§18](docs/games/TH06NC_DEVNOTES.md#18-lasers-and-where-the-parity-with-th10-13-actually-is-2026-09-13)
-  and [§22](docs/games/TH06NC_DEVNOTES.md#22-items-fell-at-the-tick-rate-and-the-finished-dimming-map-2026-09-13).
-- **Neither setting is safe for replays, and nothing turns them off for you.** New Classic's
-  replay format stores one input word per 60 Hz frame, which cannot describe a player who moved
-  from six input samples. Turn both off by hand before recording or watching a replay.
+- The simulation stays at 60 Hz; sprites are interpolated to the display rate, menus included.
+- Dimming works. Scaling, filters, internal resolution and window management do not; use the
+  game's own display settings.
+- `subtick=1` (off): input polled and the player moved every drawn frame.
+- `substep=1` (off): enemy bullets and lasers sub-stepped, with culling, grazing and collision
+  at every step. Enemies, player shots, items and scripts stay at 60 Hz
+  ([why](docs/games/TH06NC_DEVNOTES.md#16-systems-left-at-60-hz)).
+- **Neither setting is replay-safe, and neither turns itself off.** Disable both before
+  recording or watching a replay.
 
-[What New Classic has that TH10–13 do not, and the other way round](docs/games/TH06NC_VS_TH10_13.md)
-is the full comparison.
+[Feature comparison with TH10–13](docs/games/TH06NC_VS_TH10_13.md).
 
 ## Troubleshooting
 
-If the game does not start, or starts unpatched, the usual causes are an executable version the
-patch does not recognise, another `dinput8.dll` already in the folder, or a second patch. Try the
-game with only this patch installed before anything else, and read `touhou_hfr.log` — it says
-which game it recognised, or why it declined.
+If the game does not start, or starts unpatched: check for an unsupported executable version,
+another `dinput8.dll`, or a second patch. Test with only this patch installed and read
+`touhou_hfr.log`, which says what was recognised or why the patch declined.
 
-Two things the patch will tell you on screen. If another patch has taken over the game's frame
-loop you get a conflict message; this patch replaces what vpatch did for these games, so you
-should not need both. If a Direct3D 9 wrapper is presenting the game you get a warning that
-scaling and borderless fullscreen cannot work — the filters still do.
-
-### Upgrading from th11_hfr or th12_hfr
-
-If you have one of the two original per-game patches installed, from PowerShell:
-
-```powershell
-.\install.ps1 -GameDirectory 'G:\Touhou\TH11 ~ Subterranean Animism'
-```
-
-The script knows TH11 and TH12 only, which is all the old patches covered; for TH10, TH13 and
-New Classic there is nothing to upgrade *from*, so use the plain install above. It verifies the
-target, backs the folder up to `hfr-backups/<timestamp>/`, installs the new files and repoints the
-old `th11_hfr.dll` / `th12_hfr.dll` aliases so existing shortcuts keep working and no old patch
-loads alongside the new one. Your existing `touhou_hfr.ini` is kept; otherwise the legacy INI is
-carried over. To undo it, restore the timestamped backup and delete the files its `manifest.json`
-lists with `existed: false`.
-
-Doing it by hand: replace any `th11_hfr.dll` / `th12_hfr.dll` with a copy of the new
-`touhou_hfr.dll`, replace the old launcher, and keep your settings in the common INI. If some
-*unrelated* `dinput8.dll` proxy is already in the folder, do not simply overwrite it — two
-proxies need deliberate handling.
+On-screen messages: a **conflict** message means another patch (such as vpatch) owns the frame
+loop — remove it. A **wrapper** warning means a Direct3D 9 wrapper is presenting the game, so
+scaling and borderless fullscreen are unavailable; filters still work.
 
 ## For developers
 
-[ARCHITECTURE.md](ARCHITECTURE.md) is the source map, the replay format and the validation
-scope, and [ADDING_A_GAME.md](ADDING_A_GAME.md) is what a new game needs. Everything else is
-under [docs/](docs/README.md): what was learned taking the patch to four games, how the scaler
-and menu work, the compatibility audits, the per-game reverse-engineering records, and how to
-build and test.
+[ARCHITECTURE.md](ARCHITECTURE.md) is the source map; [ADDING_A_GAME.md](ADDING_A_GAME.md) is
+the porting procedure; [docs/](docs/README.md) has everything else, including
+[building](docs/BUILDING.md), [testing](docs/TESTING.md) and
+[what differs per game](docs/GAME_DIFFERENCES.md).
 
-### Build and test
+## Credits
 
-Windows needs a **32-bit MinGW-w64 GCC** (default `C:\msys64\mingw32\bin\gcc.exe`; pass
-`-Compiler` to override):
-
-```powershell
-.\build.ps1
-.\test.ps1 -GameExe 'G:\Touhou\TH11 ~ Subterranean Animism\th11.exe','G:\Touhou\TH12 ~ Undefined Fantastic Object\th12.exe','G:\Touhou\TH13 ~ Ten Desires\th13.exe' -Python 'C:\Python313\python.exe'
-.\package.ps1
-```
-
-For New Classic, also install **64-bit MinGW-w64 GCC/G++** (default
-`C:\msys64\mingw64\bin\gcc.exe`), run `build.ps1` first, then:
-
-```powershell
-.\build64.ps1
-.\test64.ps1 -GameExe 'C:\Program Files (x86)\Steam\steamapps\common\th06nc\'
-.\package.ps1 -IncludeExperimental64
-```
-
-`build.sh`, `build64.sh`, `test.sh`, `test64.sh` and `package.sh` do the same jobs in a shell with
-`i686-w64-mingw32-gcc`, `x86_64-w64-mingw32-gcc` and `zip`, running the Windows binaries under
-Wine. [docs/TESTING.md](docs/TESTING.md) says what each suite covers, where the two differ, and
-what to check by hand before a release.
-
-## Credits, tools and resources
-
-Developed by Vittorio Romeo with AI assistance — the original TH12 patch and the shared
-multi-game runtime with OpenAI's ChatGPT, everything from the scaler onward with Anthropic's
-Claude. Each commit names its co-author, and the record of what found what is in the git history
-and the per-game devnotes.
-
-**Reverse engineering.** [Ghidra](https://github.com/NationalSecurityAgency/ghidra) 11.3.2,
-headless, with the two scripts in `tools/` (`FixFuncs.java` recovers the functions ZUN's MSVC
-builds hide behind vtables and `int3` padding; `ExportAll.java` decompiles everything into one
-greppable file). `objdump -d -M intel` for exact instruction bytes; Python with
-[pefile](https://github.com/erocarrera/pefile) and [Capstone](https://www.capstone-engine.org/)
-for the pattern scans in `tools/`, and [Unicorn](https://www.unicorn-engine.org/) to emulate
-the emitted stubs and patched sites in the Python tests. Game data was unpacked and the ECL and
-ANM scripts read with [thtk](https://github.com/thpatch/thtk) (`thdat`, `thecl`, `thanm`) and
-[truth](https://github.com/ExpHP/truth), whose instruction tables name what each script does.
-
-**Existing projects consulted.** [thprac](https://github.com/touhouworldcup/thprac) for its
-large, well-tested sets of TH11 and TH12 addresses and struct offsets, used as an independent
-reference; [OpenInputLagPatch](https://github.com/khang06/OpenInputLagPatch) by khang06 for the
-Direct3D 9Ex approach (managed-pool conversion, `CreateDeviceEx`, `SetMaximumFrameLatency`)
-and its main-loop hook site; vpatch and thcrap for how a `dinput8.dll` proxy is expected to
-coexist with the rest of the ecosystem; PivotDX9 as the wrapper the presentation-path detection
-was written against. The update-runner protocol, the game-speed model, the draw order and
-everything else in the devnotes was reverse-engineered from the binaries.
-
-**Third-party code in the build.**
+Developed by Vittorio Romeo with AI assistance: OpenAI's ChatGPT for the original TH12 patch
+and the shared runtime, Anthropic's Claude from the scaler onward. Commits name their co-author.
 
 | Component | Author | Licence | Used for |
 | --- | --- | --- | --- |
@@ -503,16 +264,8 @@ everything else in the devnotes was reverse-engineered from the binaries.
 | ScaleFX | Sp00kyFox | MIT | `shaders/scalefx.hlsl` |
 | FidelityFX CAS | Advanced Micro Devices | MIT | `shaders/cas.hlsl` |
 
-The filters were ported to Direct3D 9 HLSL from the
-[libretro/slang-shaders](https://github.com/libretro/slang-shaders) and
-[libretro/common-shaders](https://github.com/libretro/common-shaders) versions; the licence
-texts travel at the top of each file, and `shaders/README.md` records what the ports changed
-and which well-known filters (xBRZ, hqx, NNEDI3, FSRCNNX) were left out and why.
 
-**Build and test environment.** MinGW-w64 GCC on Windows and Linux; PowerShell and POSIX shell
-scripts. Development and every automated run happened under [Wine](https://www.winehq.org/) 9 on
-Linux with Xvfb, `xdotool` driving the games and ImageMagick reading the screen; Direct3D
-behaviour was confirmed on Windows in play.
+Tools, references and shader sources: [docs/CREDITS.md](docs/CREDITS.md).
 
 Touhou Project is © Team Shanghai Alice / ZUN. This mod contains no game files and patches the
 games only in memory.

@@ -429,8 +429,8 @@ static int wait_frame(void) {
             (frames-ft)/seconds,(ticks-ut)/seconds,(unsigned long long)frames,(unsigned long long)ticks,
             (unsigned long long)(samples-st),(unsigned long long)(blends-bt),guard_failed?"FAILED":"ok",*(int*)(base+game->graphics_api));
         /* A feature that is switched on but did nothing all window is a bug, not a mode.
-           Say which term is holding it back, and print the byte section 14 believed was the
-           replay flag so a run can finally say what it really does. */
+           Say which term is holding it back, and print the byte once believed to be the
+           replay flag (TH06NC_DEVNOTES section 18) so a run can finally say what it really does. */
         LOG("sprites: %llu calls, %llu off, %llu stack, %llu sampled, %llu blended",
             (unsigned long long)sprite_calls,(unsigned long long)sprite_skipped_off,
             (unsigned long long)sprite_skipped_stack,(unsigned long long)samples,

@@ -36,6 +36,7 @@ done
 
 echo "--- documentation links"
 python3 tools/check_docs.py
+python3 tools/check_game_differences.py
 
 echo "--- generated files"
 python3 tools/gen_signature_json.py --check
