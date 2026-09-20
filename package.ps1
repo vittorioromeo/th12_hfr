@@ -42,7 +42,7 @@ foreach($dir in @('src','tools','third_party','shaders')) {
 }
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'docs') -Destination $source -Recurse
 foreach($file in @('build.ps1','build.sh','build64.ps1','build64.sh','test.ps1','test.sh',
-                   'test64.ps1','test64.sh','package.ps1','package.sh','install.ps1',
+                   'test64.ps1','test64.sh','test-games.ps1','package.ps1','package.sh','install.ps1',
                    'touhou_hfr.ini','README.md','CHANGELOG.md','ARCHITECTURE.md','ADDING_A_GAME.md')) {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination $source
 }

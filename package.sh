@@ -24,6 +24,7 @@ cp -R docs "$R/"
 # ... and the complete source beside it, so a release can be rebuilt from itself.
 cp -R src tools shaders third_party docs "$R/source/"
 cp build.sh build.ps1 build64.sh build64.ps1 test.sh test.ps1 test64.sh test64.ps1 \
+   test-games.ps1 \
    package.sh package.ps1 install.ps1 touhou_hfr.ini \
    README.md CHANGELOG.md ARCHITECTURE.md ADDING_A_GAME.md "$R/source/"
 
