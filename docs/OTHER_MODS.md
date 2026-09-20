@@ -1,7 +1,8 @@
 # Using Touhou HFR with other mods
 
 User-facing notes. The audits behind them are in [MOD_COMPATIBILITY.md](MOD_COMPATIBILITY.md).
-All of this applies to TH10–13; nothing here has been tried on TH08, TH14 or New Classic.
+This applies to TH10–13 unless a section says otherwise. Only thcrap has been tried on TH08;
+nothing here has been tried on TH14 or New Classic.
 
 ## THRotator
 
@@ -49,6 +50,21 @@ Direct3D hooks: its translation notes and device-lost handling are skipped. Text
 and files are unaffected. Set `d3d9ex=0` to get those back, at the cost of `max_frame_latency`.
 
 Needs v0.5.2-test or newer.
+
+**Do not let thcrap install vpatch.** Its setup offers vpatch for the games that have one
+(TH08 and TH10 among them), and then starts the game through `vpatch.exe`. This patch replaces
+vpatch and refuses to install beside it. If it is already there:
+
+1. delete `vpatch.exe` and `vpatch_th*.dll` from the game's folder;
+2. open `config\games.js` in the thcrap folder and point the game's entry at the game itself —
+   `"th08": ".../vpatch.exe"` becomes `"th08": ".../th08.exe"`.
+
+Skipping step 2 leaves thcrap launching a file that no longer exists, which it reports as
+*"Could not identify architecture of target executable"*.
+
+**TH08.** Confirmed with thcrap's English patch at 360 Hz. thcrap hooks `Direct3DCreate8`; this
+patch takes the import back and translates Direct3D 8 itself, so thcrap's own Direct3D 8 hooks
+do not run. Text, images and files are translated as usual.
 
 Not supported: executables that were translated on disk (the pre-thcrap English patches that
 ship a modified `th10e.exe`). Their code differs, so the patch does not recognise them.

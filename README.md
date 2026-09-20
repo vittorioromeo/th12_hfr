@@ -165,7 +165,7 @@ sub-stepping off for a system, never on for one the game's profile keeps at 60 H
 | --- | --- | --- |
 | [THRotator](https://github.com/massanoori/THRotator) | Yes, TH10–13 | Nothing. It takes over the picture (scaling, filters, window); this patch keeps timing, and F11 still works |
 | [thprac](https://github.com/touhouworldcup/thprac) | Yes, TH10–13 | Untick *Use VsyncPatch* and *Use OpenInputLagPatch* in its launcher. Keep `internal_scale=1` |
-| [thcrap](https://github.com/thpatch/thcrap) | Yes, TH10–13 | Nothing. For thcrap's own Direct3D extras (translation notes), set `d3d9ex=0` |
+| [thcrap](https://github.com/thpatch/thcrap) | Yes, TH08 and TH10–13 | Decline vpatch when thcrap offers it. For thcrap's own Direct3D extras (translation notes) on TH10–13, set `d3d9ex=0` |
 | vpatch, OpenInputLagPatch | No | Remove them; this patch replaces them |
 | Direct3D 9 wrappers (PivotDX9 etc.) | Partly | Scaling and borderless fullscreen are left to the wrapper |
 
@@ -214,7 +214,8 @@ Direct3D 8 is translated to 9 inside the patch, so the video features and the F1
 - `substep=1` (off, experimental): sub-stepped bullets, lasers and items with collision at every
   step. Not replay-safe; disabled during playback.
   [Measurements](docs/games/TH08_DEVNOTES.md#9-sub-stepped-projectiles-fixed60-substep1-off-by-default-experimental).
-- Only the Japanese `th08.exe` v1.00d. Untested: thprac, vpatch, texture upscaling, `d3d9ex`.
+- Only the Japanese `th08.exe` v1.00d; for English, use [thcrap](docs/OTHER_MODS.md#thcrap), which
+  works. Untested: thprac, texture upscaling, `d3d9ex`.
 
 ## New Classic
 
