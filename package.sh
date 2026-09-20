@@ -2,7 +2,7 @@
 # Builds a release archive in releases/. HFR64=1 also builds and ships the
 # experimental x64 New Classic runtime.
 set -eu
-V=${1:-0.5.5-test}
+V=${1:-0.6-test}
 case "$V" in *[!A-Za-z0-9.-]*|'') echo 'Invalid version'; exit 1;; esac
 cd "$(dirname "$0")"
 ./build.sh
@@ -19,6 +19,8 @@ cp shaders/*.hlsl shaders/README.md "$R/shaders/"
 # Docs are copied wholesale rather than enumerated: a new document ships without
 # anyone remembering to add it here, and to package.ps1, and to both source lists.
 cp README.md CHANGELOG.md ARCHITECTURE.md ADDING_A_GAME.md "$R/"
+# d3d8to9 is linked into the runtime; BSD-2-Clause wants its licence with the binary.
+cp third_party/d3d8to9/LICENSE.md "$R/D3D8TO9_LICENSE.md"
 cp -R docs "$R/"
 
 # ... and the complete source beside it, so a release can be rebuilt from itself.

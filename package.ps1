@@ -1,4 +1,4 @@
-param([string]$Version='0.5.5-test',[string]$Compiler='C:\msys64\mingw32\bin\gcc.exe',
+param([string]$Version='0.6-test',[string]$Compiler='C:\msys64\mingw32\bin\gcc.exe',
     [switch]$IncludeExperimental64,[string]$Compiler64='C:\msys64\mingw64\bin\gcc.exe')
 $ErrorActionPreference='Stop'
 if($Version -notmatch '^[A-Za-z0-9.-]+$'){throw 'Invalid version'}
@@ -28,6 +28,8 @@ Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'docs') -Destination $package -R
 foreach($file in @('README.md','CHANGELOG.md','ARCHITECTURE.md','ADDING_A_GAME.md','install.ps1')){
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination $package
 }
+# d3d8to9 is linked into the runtime; BSD-2-Clause wants its licence with the binary.
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'third_party/d3d8to9/LICENSE.md') -Destination (Join-Path $package 'D3D8TO9_LICENSE.md')
 
 # ... and the complete source beside it, so a release can be rebuilt from itself.
 foreach($dir in @('src','tools','third_party','shaders')) {

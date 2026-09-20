@@ -4,9 +4,10 @@ Newest first. Versions are the release archive names; `-test` means what it says
 Full release notes for each version are on the
 [releases page](https://github.com/vittorioromeo/th12_hfr/releases).
 
-## Unreleased
+## v0.6-test
 
-Touhou 8 — Imperishable Night, experimentally, and by a different route.
+Touhou 8 — Imperishable Night, experimentally, and by a different route. TH14 fixes, and the
+same fixes swept across TH10–13.
 
 - **TH08 is presented at the display's rate from a simulation that stays at 60 Hz.** Direct3D 8
   is translated to 9 inside the patch, so scaling, filters, borderless fullscreen, internal
