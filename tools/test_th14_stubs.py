@@ -52,3 +52,50 @@ for major in (0, 1):
     assert ri(obj + 0x1c) == (6 if major else 5), f'major={major}: integer {ri(obj + 0x1c)}'
     assert rf(obj + 0x20) == (6.0 if major else 5.0)
 print('PASS: TH14 weapon timer advances a whole frame on the boundary tick only')
+
+# --- The whole function, not just the stub -------------------------------------------------
+# Run the game's real shot-cycle at 0x450fb0 with the shoot button held, once per tick, and
+# count what it fires. This is the reported bug expressed as an assertion: with the rewind
+# scaled by the game speed, the fourteen-step pattern falls from 14 to about 11.7 and climbs
+# back, so only the tail of the pattern ever comes round again and the player appears to stop
+# shooting. It must fire the whole pattern at every rate.
+#
+# 0x450ed0 (fire one step) is replaced with `ret 4` and counted: it spawns shots through state
+# this fixture does not model, and the question here is only which step fires and how often.
+# This runs last because that write stays in the emulated image.
+PLAYER = 0x20050000
+map_region(PLAYER, 0x19000)
+INPUT, FIRE, CYCLE, TIMER = 0x4d6a90, 0x450ed0, 0x450fb0, 0x18338
+u.mem_write(FIRE, b'\xc2\x04\x00')
+fired = []
+def _count(uc, address, size, _):
+    if address == FIRE: fired.append(ri(uc.reg_read(UC_X86_REG_ESP) + 4))
+    if address in ends: uc.emu_stop()
+u.hook_add(UC_HOOK_CODE, _count)
+
+def hold_shoot(frames, ticks_per_frame, factor):
+    del fired[:]
+    u.mem_write(PLAYER, bytes(0x19000))
+    wf(meta['factor'], factor); wf(meta['logical'], 1.0)
+    wf(0x4d8f58, factor)                 # the game speed, as the patch's speed sites write it
+    wi(PLAYER + 0x684, 1)                # the player state the cycle requires
+    wi(PLAYER + TIMER + 4, -1)           # idle; pressing shoot starts the cycle at 0
+    u.mem_write(INPUT, b'\x01')          # shoot held for the whole run
+    for _ in range(frames * ticks_per_frame):
+        u.reg_write(UC_X86_REG_ECX, PLAYER)
+        wi(STACK - 4, BOOT + 128); u.reg_write(UC_X86_REG_ESP, STACK - 4)
+        run(CYCLE, BOOT + 128)
+    return list(fired)
+
+FRAMES = 60
+baseline = hold_shoot(FRAMES, 1, 1.0)
+assert sorted(set(baseline)) == list(range(15)), sorted(set(baseline))
+for label, ticks, factor in (('240 Hz', 4, 0.25), ('360 Hz', 6, 1.0 / 6.0), ('600 Hz', 10, 0.1)):
+    got = hold_shoot(FRAMES, ticks, factor)
+    steady = sorted(set(got[len(got) * 2 // 3:]))     # once the first pass through is over
+    assert steady == list(range(15)), (
+        f'{label}: the pattern collapsed to steps {steady} -- the shot cycle is rewinding by '
+        f'less than a whole cycle, which is what makes the player stop shooting')
+    assert abs(len(got) - len(baseline)) <= len(baseline) // 5, (
+        f'{label}: fired {len(got)} against {len(baseline)} at 60 Hz')
+print('PASS: TH14 fires the whole shot pattern with the button held, at 60, 240, 360 and 600 Hz')
