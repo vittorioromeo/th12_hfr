@@ -25,7 +25,8 @@ No game file is modified. You add four files to the game's folder and delete the
 | Touhou 11 — Subterranean Animism | v1.00a | `th11.exe`, `th11e.exe` | supported |
 | Touhou 12 — Undefined Fantastic Object | v1.00b | `th12.exe`, `th12e.exe` | supported |
 | Touhou 13 — Ten Desires | v1.00c | `th13.exe`, `th13e.exe` | supported |
-| Touhou 14 — Double Dealing Character | v1.00b | `th14.exe` | partial — [notes](#touhou-14) |
+| Touhou 14 — Double Dealing Character | v1.00b | `th14.exe` | partial — [notes](#touhou-14-and-15) |
+| Touhou 15 — Legacy of Lunatic Kingdom | v1.00b | `th15.exe` | partial, new — [notes](#touhou-14-and-15) |
 | Touhou Koumakyou: New Classic | [see notes](docs/games/TH06NC_DEVNOTES.md#2-product-and-inspected-build) | `th06nc.exe` | experimental — [notes](#new-classic) |
 
 - Requires Windows and a display above 60 Hz. On a 60 Hz display the patch does nothing.
@@ -188,7 +189,10 @@ only this patch installed. Details: [docs/OTHER_MODS.md](docs/OTHER_MODS.md).
 
 More on replays: [docs/REPLAYS.md](docs/REPLAYS.md).
 
-## Touhou 14
+## Touhou 14 and 15
+
+The two share an engine and are at the same level. TH15 is new in this build and has had less
+play time.
 
 Working: the full video path, the F11 menu, sprite animation, and display-rate movement for
 bullets, the player, items and lasers. Enemy sprites and the player's options are interpolated.

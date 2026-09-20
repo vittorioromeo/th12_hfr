@@ -4,6 +4,18 @@ Newest first. Versions are the release archive names; `-test` means what it says
 Full release notes for each version are on the
 [releases page](https://github.com/vittorioromeo/th12_hfr/releases).
 
+## Unreleased
+
+- **Touhou 15 — Legacy of Lunatic Kingdom (v1.00b), at TH14's level.** Bullets, lasers, items,
+  the player and sprite animation step at the display's rate; enemies and the player's options
+  are interpolated; replays carry their recording rate; dimming and the whole video path work.
+  No sub-tick input. It is TH14's engine with one structural change (a timer holds an index
+  into a rate table instead of a rate pointer) and one new mechanic (the graze slow-down, whose
+  recovery is now per frame). Tested under Wine only so far.
+- TH14 and TH15 share their enemy and option interpolation (`src/games/th14_family.h`).
+- New profile fields: `layout.replay_mode`, `draw.vm_slot_off`, `draw.anm_table_off`,
+  `draw.anm_slots`.
+
 ## v0.6.1-test
 
 - **Fixed: TH14 crashed on its first frame in v0.6-test.** The compiler merged two calls through

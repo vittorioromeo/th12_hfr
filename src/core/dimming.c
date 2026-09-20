@@ -275,6 +275,10 @@ static void __cdecl __attribute__((force_align_arg_pointer)) dim_vm_enter(uint32
     if (!g_vm || g_draw_prio < 0) return;
     const char* anm = NULL; int layer = -1, script = -1;
     if (g_game->draw.vm_anm_off) { const uint8_t* al = *(const uint8_t* const*)(g_vm + g_game->draw.vm_anm_off); if (al) anm = (const char*)al + 4; }
+    else if (g_game->draw.vm_slot_off && g_game->addr.anm_manager) {   /* TH15: the VM names its ANM by slot, not by pointer */
+        const uint8_t* am = *(const uint8_t* const*)g_game->addr.anm_manager; const uint32_t slot = *(const uint32_t*)(g_vm + g_game->draw.vm_slot_off);
+        if (am && slot < g_game->draw.anm_slots) { const uint8_t* al = *(const uint8_t* const*)(am + g_game->draw.anm_table_off + slot * 4); if (al) anm = (const char*)al + 4; }
+    }
     if (g_game->draw.vm_layer_off) layer = *(const int*)(g_vm + g_game->draw.vm_layer_off);
     if (g_game->draw.vm_script_off) script = *(const uint16_t*)(g_vm + g_game->draw.vm_script_off);
     dim_vm_trace(anm, layer, script); g_frame_vms++;

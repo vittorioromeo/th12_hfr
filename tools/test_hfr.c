@@ -351,7 +351,7 @@ int main(int argc,char**argv) {
     }
     if (g_game->provisional) { g_validate_provisional=1; puts("NOTE: validating a provisional profile's patch plan"); }
     assert(install() && !g_patch_failed);
-    /* the frame hook exists exactly when the profile describes one -- through the TH10-14
+    /* the frame hook exists exactly when the profile describes one -- through the TH10-15
        runner, or through an older engine's own presentation hooks */
     assert(g_frame_hook_installed == (sim || g_game->install_presentation != NULL));
     if (g_game->d3d8) assert(orig_Direct3DCreate8);   /* the bridge resolves Direct3DCreate9 itself, at run time */

@@ -40,7 +40,7 @@ static int replay_parse_metadata(const uint8_t* p,uint32_t size) {
 static void replay_check(void) {
     if (!g_game->addr.replay_manager && !g_game->replay_playing) return;
     uint8_t* rm = g_game->addr.replay_manager ? G_REPLAY_MANAGER : NULL;
-    int playing = g_game->replay_playing ? g_game->replay_playing() : (rm && *(int*)(rm + 0x10) == 1);
+    int playing = g_game->replay_playing ? g_game->replay_playing() : (rm && REPLAY_MODE(rm) == 1);
     if (playing != g_replay_playing) {
         if(playing && g_replay_metadata==1) {
             g_saved_settings=current_settings();apply_settings(g_replay_settings);g_settings_active=1;

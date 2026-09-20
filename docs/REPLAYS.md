@@ -1,6 +1,6 @@
 # Replays
 
-## TH10–14
+## TH10–15
 
 A replay recorded with the patch has extra data appended after the game's own, untouched
 payload: the logic rate, the per-tick input stream, the game and simulation revision, and the
@@ -17,11 +17,13 @@ so a run recorded at 360 Hz with sub-stepping is reproduced at 360 Hz. The forma
 
 Sub-stepped and 60 Hz play are not the same simulation. Collision is tested at every tick, and
 on TH14 bullet delay timers start a frame early under sub-stepping, which is enough to change a
-pattern. Enemy logic, script execution and the random number generator are the same at any
+pattern. An enemy that aims on a frame where the player moves sees her one tick into that
+frame's step, not at the end of it (measured on TH15: 0.006 rad on the first aimed shot of a
+stage). Enemy logic, script execution and the random number generator are the same at any
 rate. Keep the build you recorded with if a replay matters.
 
-Locations: TH13 and TH14 keep replays under `%APPDATA%\ShanghaiAlice\th13\replay\` and
-`...\th14\replay\`; the others keep them beside the executable.
+Locations: TH13, TH14 and TH15 keep replays under `%APPDATA%\ShanghaiAlice\th13\replay\`,
+`...\th14\replay\` and `...\th15\replay\`; the others keep them beside the executable.
 
 Full-run parity between the stock game and the patched game has not been compared frame by
 frame.

@@ -240,7 +240,7 @@ static void limiter_stats(double now) {
             site_census_report();
             uint8_t* rm=g_game->addr.replay_manager ? G_REPLAY_MANAGER : NULL;
             if (rm) LOG("state: stage=%d replay_frame=%d replay_mode=%d input=%08x",
-                *(int*)(rm+g_game->layout.replay_stage),*(int*)(rm+g_game->layout.replay_frame),*(int*)(rm+0x10),(unsigned)G_GAME_INPUT);
+                *(int*)(rm+g_game->layout.replay_stage),*(int*)(rm+g_game->layout.replay_frame),REPLAY_MODE(rm),(unsigned)G_GAME_INPUT);
         }
     }
 }

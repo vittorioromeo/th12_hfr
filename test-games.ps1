@@ -78,6 +78,7 @@ $Traits = @{
     TH12 = @{ Demo = $true;  Stage = $true;  Fixed = $false; Shots = $false }
     TH13 = @{ Demo = $true;  Stage = $true;  Fixed = $false; Shots = $false }
     TH14 = @{ Demo = $true;  Stage = $true;  Fixed = $false; Shots = $true  }
+    TH15 = @{ Demo = $true;  Stage = $true;  Fixed = $false; Shots = $false }
 }
 
 # ------------------------------------------------------------------ the cases

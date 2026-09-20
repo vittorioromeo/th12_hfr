@@ -761,7 +761,7 @@ static int __attribute__((fastcall)) th08_frame_original(void* window) {
 static int th08_frame_original_c(void* window) { return th08_frame_original(window); }
 static void th08_install_presentation(void) {
     /* This engine family keeps its settings where New Classic's are: the defaults have to be
-       the replay-safe ones, and [hfr] substep=1 -- right for TH10-14, which stamp the rate
+       the replay-safe ones, and [hfr] substep=1 -- right for TH10-15, which stamp the rate
        into the replay -- would not be. */
     cfg.enemy_interp = GetPrivateProfileIntA("fixed60", "interpolate", 1, g_ini_path) != 0;
     cfg.predict = GetPrivateProfileIntA("fixed60", "predict", 1, g_ini_path) != 0;
@@ -773,7 +773,7 @@ static void th08_install_presentation(void) {
     if (!th08_history) LOG("TH08: pose history allocation failed; interpolation unavailable");
     th08_render_original = (Th08ThisFn)g_p;
     ECOPY(0x441e70, 6); EJMP(0x441e76); stub_end();
-    /* The shared frame scheduler takes the game's frame function over, as on TH10-14: it
+    /* The shared frame scheduler takes the game's frame function over, as on TH10-15: it
        paces presentation, decides how many logic ticks this slot owes and whether each is a
        frame boundary, and calls back into the original through th08_frame_original. */
     patch_jmp(0x441e70, hfr_frame_ecx, site_expected(0x441e70, 5));

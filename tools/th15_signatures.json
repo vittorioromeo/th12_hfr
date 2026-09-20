@@ -1,0 +1,282 @@
+[
+ {
+  "address": "0x4014f0",
+  "bytes": "55 8b ec 51 80",
+  "description": "the update runner's entry, replaced by a jump to the replacement"
+ },
+ {
+  "address": "0x471a8d",
+  "bytes": "e8 3e 09 00 00",
+  "description": "frame call 1 (0x4723d0, the automatic-latency frame function)"
+ },
+ {
+  "address": "0x471aab",
+  "bytes": "e8 10 0f 00 00",
+  "description": "frame call 2 (0x4729c0, the one this profile describes)"
+ },
+ {
+  "address": "0x471ab7",
+  "bytes": "e8 d4 0c 00 00",
+  "description": "frame call 3 (0x472790, the window manager's fast update)"
+ },
+ {
+  "address": "0x472af0",
+  "bytes": "80 3d c9 79 4e 00 01",
+  "description": "latency_cmp: cmp byte [0x4e79c9],1 -- the last byte becomes 0x7f"
+ },
+ {
+  "address": "0x472c66",
+  "bytes": "e8 85 9f fd ff",
+  "description": "the screenshot call"
+ },
+ {
+  "address": "0x40168a",
+  "bytes": "8b 4f 24 8b 47 08 ff d0",
+  "description": "the draw runner's dispatch"
+ },
+ {
+  "address": "0x4817d0",
+  "bytes": "55 8b ec 83 e4 f8 83 ec 18",
+  "description": "the per-VM sprite draw; the VM is its first stack argument"
+ },
+ {
+  "address": "0x4076ff",
+  "bytes": "c7 05 e8 73 4e 00 00 00 80 3f",
+  "description": "the speed object's initialiser"
+ },
+ {
+  "address": "0x43c08b",
+  "bytes": "c7 05 e8 73 4e 00 00 00 80 3f",
+  "description": "game state change"
+ },
+ {
+  "address": "0x43c6ca",
+  "bytes": "c7 05 e8 73 4e 00 00 00 80 3f",
+  "description": "stage set-up"
+ },
+ {
+  "address": "0x43e139",
+  "bytes": "c7 05 e8 73 4e 00 00 00 80 3f",
+  "description": "stage tear-down"
+ },
+ {
+  "address": "0x44c560",
+  "bytes": "c7 05 e8 73 4e 00 00 00 80 3f",
+  "description": "supervisor reset"
+ },
+ {
+  "address": "0x454d5a",
+  "bytes": "c7 05 e8 73 4e 00 00 00 80 3f",
+  "description": "end-of-stage sequence"
+ },
+ {
+  "address": "0x450f2b",
+  "bytes": "c7 05 e8 73 4e 00 00 00 80 3f",
+  "description": "1.0 while the pause menu is up"
+ },
+ {
+  "address": "0x4510cc",
+  "bytes": "c7 05 e8 73 4e 00 00 00 80 3f",
+  "description": "1.0 while the pause menu is up"
+ },
+ {
+  "address": "0x45126e",
+  "bytes": "c7 05 e8 73 4e 00 00 00 80 3f",
+  "description": "1.0 while the pause menu is up"
+ },
+ {
+  "address": "0x4513f0",
+  "bytes": "c7 05 e8 73 4e 00 00 00 80 3f",
+  "description": "1.0 while the pause menu is up"
+ },
+ {
+  "address": "0x477e46",
+  "bytes": "c7 05 e8 73 4e 00 00 00 80 3f",
+  "description": "1.0 for a sprite \"unaffected by slow-motion\""
+ },
+ {
+  "address": "0x42d768",
+  "bytes": "f3 0f 11 05 e8 73 4e 00",
+  "description": "the script instruction that sets the speed"
+ },
+ {
+  "address": "0x4015f2",
+  "bytes": "5f 8b c6 5e 5b 8b e5 5d c3",
+  "description": "the runner's epilogue; runner_ret is its last byte, 0x4015fa"
+ },
+ {
+  "address": "0x472a0e",
+  "bytes": "e8 dd ea f8 ff",
+  "description": "the frame function's call into the update runner"
+ },
+ {
+  "address": "0x4729d0",
+  "bytes": "68 68 7c 4e 00 c7 05 c0 7e 4e 00 68 7c 4e 00",
+  "description": "the frame context and its value"
+ },
+ {
+  "address": "0x472a04",
+  "bytes": "c7 05 c4 7e 4e 00 02 00 00 00",
+  "description": "the frame flag, 2"
+ },
+ {
+  "address": "0x472a17",
+  "bytes": "b9 70 81 4e 00 e8 0f 15 f9 ff",
+  "description": "the end-of-pass cleanup and its object"
+ },
+ {
+  "address": "0x4729c5",
+  "bytes": "8b 0d 18 3c 50 00 e8 20 ba 00 00",
+  "description": "the sprite batch flush and its manager"
+ },
+ {
+  "address": "0x4018a0",
+  "bytes": "55 8b ec 8b 55 08 56 8b",
+  "description": "remove_node, node on the stack"
+ },
+ {
+  "address": "0x4729c0",
+  "bytes": "51 56 57 8b f9 8b 0d 18 3c 50",
+  "description": "the frame function"
+ },
+ {
+  "address": "0x44cbf0",
+  "bytes": "55 8b ec 83 ec 10 83 3d 48 80",
+  "description": "the screenshot routine"
+ },
+ {
+  "address": "0x472790",
+  "bytes": "56 8b f1 e8 f8 04 00 00 f2 0f",
+  "description": "frame function 3"
+ },
+ {
+  "address": "0x4723d0",
+  "bytes": "f6 05 ec bb 51 00 40 56 8b f1",
+  "description": "frame function 1"
+ },
+ {
+  "address": "0x41966b",
+  "bytes": "8b 46 24 85 c0 74 04 48 89 46 24",
+  "description": "the bullet's wait counter"
+ },
+ {
+  "address": "0x4199e7",
+  "bytes": "8b 46 24 85 c0 74 04 48 89 46 24 8b 86 78 0c 00 00 85 c0 7e 07 48 89 86 78 0c 00 00",
+  "description": "the wait counter and the collision countdown"
+ },
+ {
+  "address": "0x419700",
+  "bytes": "8b 86 6c 14 00 00 83 f8 03 0f 8c be 01 00 00 0f 85 50 01 00 00",
+  "description": "state 5: the cancel effect on \"the integer is 3\""
+ },
+ {
+  "address": "0x419528",
+  "bytes": "b8 01 00 00 00 66 89 86 8a 0c 00 00",
+  "description": "the state 2 -> 1 promotion"
+ },
+ {
+  "address": "0x43f8a3",
+  "bytes": "ff 8f 74 0c 00 00 0f 89 90 08 00 00",
+  "description": "state 5 despawn countdown"
+ },
+ {
+  "address": "0x43f8ca",
+  "bytes": "8b 87 74 0c 00 00 85 c0 7e 21 48 89 87 74 0c 00 00 85 c0 0f 8f 5c 08 00 00",
+  "description": "state 1 wait countdown"
+ },
+ {
+  "address": "0x44017b",
+  "bytes": "f3 0f 58 05 f0 fd 4c 00 f3 0f 11 83 f0 de e5 00",
+  "description": "the graze slow-down's recovery"
+ },
+ {
+  "address": "0x454a96",
+  "bytes": "ff 24 85 50 59 45 00",
+  "description": "the life-state dispatch"
+ },
+ {
+  "address": "0x45455b",
+  "bytes": "f3 0f 2c 87 ac 62 01 00",
+  "description": "fixed-point movement, y"
+ },
+ {
+  "address": "0x454563",
+  "bytes": "f3 0f 2c 8f a8 62 01 00",
+  "description": "fixed-point movement, x"
+ },
+ {
+  "address": "0x454fc8",
+  "bytes": "8b 87 30 06 00 00 3b 87 2c 06 00 00 74 28",
+  "description": "the invincibility blink guard"
+ },
+ {
+  "address": "0x454664",
+  "bytes": "ff 87 cc 62 01 00",
+  "description": "the focus counter"
+ },
+ {
+  "address": "0x4546e9",
+  "bytes": "83 fa 1e 0f 8c d0 00 00 00",
+  "description": "the option approach"
+ },
+ {
+  "address": "0x454e3b",
+  "bytes": "f3 0f 10 47 a0 33 c9 f3 0f 58 47 9c",
+  "description": "shot rate 1"
+ },
+ {
+  "address": "0x454e5c",
+  "bytes": "f3 0f 10 47 a8 f3 0f 58 47 a4",
+  "description": "shot rate 2"
+ },
+ {
+  "address": "0x454ec4",
+  "bytes": "8b 47 fc 89 47 f8 85 c9 74 2c",
+  "description": "the shot's hit-cadence timer"
+ },
+ {
+  "address": "0x4594ff",
+  "bytes": "3b 86 2c 06 00 00 75 0a",
+  "description": "shots against enemies: the state-timer guard"
+ },
+ {
+  "address": "0x44b88f",
+  "bytes": "8b 14 85 20 a6 4c 00",
+  "description": "timer_rewind's rate lookup"
+ },
+ {
+  "address": "0x459156",
+  "bytes": "8b 47 10 89 47 0c 85 c9 74 2a",
+  "description": "the weapon timer's tick"
+ },
+ {
+  "address": "0x4521d3",
+  "bytes": "e8 88 a2 00 00",
+  "description": "save"
+ },
+ {
+  "address": "0x46ac14",
+  "bytes": "e8 47 18 ff ff",
+  "description": "save"
+ },
+ {
+  "address": "0x45b9bc",
+  "bytes": "e8 bf 12 00 00",
+  "description": "load that plays, mode 1"
+ },
+ {
+  "address": "0x45bb46",
+  "bytes": "e8 35 11 00 00",
+  "description": "load that plays, mode 2"
+ },
+ {
+  "address": "0x45bfd3",
+  "bytes": "e8 a8 0c 00 00",
+  "description": "load that peeks: read, never written"
+ },
+ {
+  "address": "0x467e9f",
+  "bytes": "e8 dc 4d ff ff",
+  "description": "load that peeks: read, never written"
+ }
+]

@@ -10,6 +10,9 @@
 #define G_INPUT_PRESSED   (*(uint32_t*)g_game->addr.raw_pressed)
 #define G_REPLAY_MANAGER  (*(uint8_t**)g_game->addr.replay_manager) /* mode at +0x10; frame/stage offsets in profile */
 
+/* The replay manager's mode word: 1 while a replay is playing back. */
+#define REPLAY_MODE(rm) (*(int*)((rm) + (g_game->layout.replay_mode ? g_game->layout.replay_mode : 0x10)))
+
 typedef int (__stdcall *FrameFn)(void* ctx);
 /* Calls into the game with `this` in ECX (TH14 on), written out rather than expressed as a cast
    to a thiscall/fastcall pointer type. GCC merges two calls through the same pointer whose

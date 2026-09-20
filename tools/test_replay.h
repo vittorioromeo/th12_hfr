@@ -37,10 +37,10 @@ static void test_replay_roundtrip(void) {
     for(int s=0;s<8;++s)assert(g_play[s].n==1031 && !memcmp(g_rec[s].d,g_play[s].d,1031));
     cfg.substep=0;cfg.subtick_input=0;g_sub_enabled[0]=0;
     struct ReplaySettings before=current_settings();
-    g_replay_rate=144;g_replay_playing=0;*(int*)(manager+0x10)=1;
+    g_replay_rate=144;g_replay_playing=0;REPLAY_MODE(manager)=1;
     replay_check();assert(cfg.substep && cfg.subtick_input && g_logic_rate==144 && g_sub_enabled[0]);
     recompute_rate(360);assert(g_logic_rate==144);
-    *(int*)(manager+0x10)=0;replay_check();
+    REPLAY_MODE(manager)=0;replay_check();
     assert(!cfg.substep && !cfg.subtick_input && g_logic_rate==60 && !g_sub_enabled[0]);
     struct ReplaySettings after=current_settings();assert(before.flags==after.flags && before.nodes==after.nodes);
     cfg.substep=1;cfg.subtick_input=1;

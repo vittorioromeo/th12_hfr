@@ -4,7 +4,7 @@ Research date: 2026-09-18. Source snapshot:
 `b57f7b115f3da81a5ece8fc4b853be6aff2fc066` (`TH14: sub-step the lasers`).
 
 This is a source audit and scheduling experiment, not an implemented runtime change.
-It covers the committed TH10–14 backend and the separate New Classic backend. Local
+It covers the committed TH10–15 backend and the separate New Classic backend. Local
 unmerged patches and bundles were not applied or evaluated as part of the implementation.
 Some older architecture notes describe earlier feature sets; the source at this commit
 is the authority for the observations below.
@@ -82,7 +82,7 @@ or removes a tick with hysteresis, and large discrepancies reset the wall-clock 
 It is not an accumulator that drains all due fixed steps.
 
 [`src/core/limiter.c`](../src/core/limiter.c) already reproduces the native context and
-cleanup needed for update-only calls. All current TH10–14 profiles supply the five
+cleanup needed for update-only calls. All current TH10–15 profiles supply the five
 addresses that enable this path. That is valuable plumbing, but it does not prove that
 arbitrary batches of updates are equivalent to updates interleaved with drawing. The
 original frame function can also own work outside the replaced update list.

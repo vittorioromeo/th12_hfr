@@ -28,10 +28,11 @@ patch site is and why, and the bugs met on the way.
 | Touhou 12 — Undefined Fantastic Object | [games/TH12_DEVNOTES.md](games/TH12_DEVNOTES.md) |
 | Touhou 13 — Ten Desires | [games/TH13_DEVNOTES.md](games/TH13_DEVNOTES.md) |
 | Touhou 14 — Double Dealing Character | [games/TH14_DEVNOTES.md](games/TH14_DEVNOTES.md) |
+| Touhou 15 — Legacy of Lunatic Kingdom | [games/TH15_DEVNOTES.md](games/TH15_DEVNOTES.md) |
 | Touhou Koumakyou: New Classic | [games/TH06NC_DEVNOTES.md](games/TH06NC_DEVNOTES.md) |
 
 TH12's record also carries the original design rationale: the patch began as `th12_hfr`. TH13 is
-written as a delta against TH12, and TH14 against TH13.
+written as a delta against TH12, TH14 against TH13, and TH15 against TH14.
 
 New Classic is a different engine entirely — 64-bit, Direct3D 11, its own backend and a smaller
 feature set. [games/TH06NC_VS_TH10_13.md](games/TH06NC_VS_TH10_13.md) is the side-by-side.

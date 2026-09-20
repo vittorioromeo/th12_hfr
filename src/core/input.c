@@ -103,7 +103,7 @@ static void tickbuf_push(struct TickBuf* b, uint8_t v) {
 }
 /* called on the frame boundary tick just before the replay record/playback node runs its first frame of a stage */
 static void replay_stage_start(uint8_t* rm) {
-    int stage = *(int*)(rm + g_game->layout.replay_stage); int playing = *(int*)(rm + 0x10) == 1;
+    int stage = *(int*)(rm + g_game->layout.replay_stage); int playing = REPLAY_MODE(rm) == 1;
     schedule_reset_here();
     g_stream_stage = (stage >= 0 && stage < 8) ? stage : -1;
     g_stream_tick = 0;
@@ -121,7 +121,7 @@ static int subtick_active(uint8_t* rm) {
 static void subtick_input_begin(void) {
     uint8_t* rm = G_REPLAY_MANAGER;
     if (!subtick_active(rm)) return;
-    if (*(int*)(rm + 0x10) == 1) {
+    if (REPLAY_MODE(rm) == 1) {
         struct TickBuf* b = &g_play[g_stream_stage];
         if (g_stream_tick < b->n) { set_game_input(merge_subtick_bits(G_GAME_INPUT, bits_decode(b->d[g_stream_tick]), 0)); g_stat_subtick_applied++; }
     } else {
@@ -132,6 +132,6 @@ static void subtick_input_begin(void) {
 static void subtick_input_end(void) {
     uint8_t* rm = G_REPLAY_MANAGER;
     if (!subtick_active(rm)) return;
-    if (*(int*)(rm + 0x10) != 1) tickbuf_push(&g_rec[g_stream_stage], bits_encode(G_GAME_INPUT));
+    if (REPLAY_MODE(rm) != 1) tickbuf_push(&g_rec[g_stream_stage], bits_encode(G_GAME_INPUT));
     g_stream_tick++;
 }

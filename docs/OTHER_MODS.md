@@ -2,7 +2,7 @@
 
 User-facing notes. The audits behind them are in [MOD_COMPATIBILITY.md](MOD_COMPATIBILITY.md).
 This applies to TH10–13 unless a section says otherwise. Only thcrap has been tried on TH08;
-nothing here has been tried on TH14 or New Classic.
+nothing here has been tried on TH14, TH15 or New Classic.
 
 ## THRotator
 

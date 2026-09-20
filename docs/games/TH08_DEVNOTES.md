@@ -2,8 +2,8 @@
 
 TH08 belongs to the older engine family: Direct3D 8 (through a vendored d3d8to9), the TH06-era
 `Chain` of update and draw callbacks, and a simulation written to run at one speed. It shares
-the scheduler, the picture, the window and the menu with TH10–14. It differs in where the
-extra frames come from: TH10–14 run the simulation faster; TH08 keeps the simulation at 60 Hz
+the scheduler, the picture, the window and the menu with TH10–15. It differs in where the
+extra frames come from: TH10–15 run the simulation faster; TH08 keeps the simulation at 60 Hz
 and draws it at the display's rate (§4 and §5 give the reason). Two optional modes write game
 state and are off by default: `[fixed60] subtick=1` (§6) and `[fixed60] substep=1` (§9).
 
@@ -72,8 +72,8 @@ manages about 120–180 presentations a second.
 | `0x164d520` / `0x164d524` | RNG seed (u16) / RNG count (u32) |
 
 `GameWindow::Render` is taken over by the **shared frame scheduler** (`core/frame.c`) as
-TH10–14's frame function is: `patch_jmp(0x441e70, hfr_frame_ecx)`. `GameProfile` has three
-callbacks for an engine outside the TH10–14 family: `frame_original` (call the game's frame
+TH10–15's frame function is: `patch_jmp(0x441e70, hfr_frame_ecx)`. `GameProfile` has three
+callbacks for an engine outside the TH10–15 family: `frame_original` (call the game's frame
 function once the entry is ours), `update_only` (the catch-up tick: an update pass with no
 frame drawn behind it) and `replay_playing`. TH08 sets the first two and tracks replay playback
 itself (the walker notes when callback `0x452550` runs). A private wall-clock pacer is not an
@@ -129,7 +129,7 @@ Draw callbacks (bold = "the playfield" in §5; `debug=1` logs each once as
 `Supervisor+0x188` is the ancestor of TH10's game speed. `ZunTimer::Increment` accumulates it
 into a sub-frame and keeps the previous integer, `AnmManager` scales rotation and scale growth
 by it, and the player's movement is `position += speed * multiplier`. It looks as if the engine
-can be sub-stepped as TH10–14 are, by setting the multiplier to a sixth and calling everything
+can be sub-stepped as TH10–15 are, by setting the multiplier to a sixth and calling everything
 six times. It cannot: with Player, EffectManager and BulletManager classified `MODE_SUB` at
 120 Hz, the demonstration diverges by frame 367.
 

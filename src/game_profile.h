@@ -74,6 +74,7 @@ struct GameProfile {
         uint32_t replay_stage;
         uint32_t replay_frame;
         uint32_t replay_stages;
+        uint32_t replay_mode;       /* 1 = playing back; zero selects +0x10 (TH15: +0x0c) */
         /* Two adjacent fixed-point int32s: where the player is. Only used by the desync trace. */
         uint32_t player_pos;
         uint32_t player_timer;
@@ -153,6 +154,9 @@ struct GameProfile {
         uintptr_t dispatch; unsigned char dispatch_len, node_reg; uint32_t prio_off;
         uintptr_t flush_fn; unsigned char flush_reg; uintptr_t flush_this;
         uintptr_t vm_draw; unsigned char vm_draw_len, vm_reg; uint32_t vm_anm_off, vm_layer_off, vm_script_off;
+        /* TH15: the VM holds its ANM's slot index at +vm_slot_off instead of a pointer; the loaded
+           records are an array of anm_slots pointers at anm_manager+anm_table_off. */
+        uint32_t vm_slot_off, anm_table_off, anm_slots;
         /* TH14 on: the VM is the draw's first stack argument rather than arriving in a
            register, so `vm_reg` says nothing and the wrap reads it off the stack instead. */
         int vm_stack_arg;
@@ -163,13 +167,13 @@ struct GameProfile {
     void (*install_sites)(void);
     int d3d8;                     /* translate the native D3D8 interface to D3D9 */
     void (*install_presentation)(void); /* older engine's native-60/render hooks */
-    /* An engine outside the TH10-14 family keeps the shared frame scheduler (frame.c) and
+    /* An engine outside the TH10-15 family keeps the shared frame scheduler (frame.c) and
        supplies the two things it cannot know: how to call the game's frame function once the
        entry has been taken over, and how to run one update pass with no frame drawn behind it
        (the catch-up tick; returns non-zero when the game asked to exit). */
     int (*frame_original)(void* ctx);
     int (*update_only)(void);
-    /* Replay state for an engine whose replay manager is not the TH10-14 one: non-zero while a
+    /* Replay state for an engine whose replay manager is not the TH10-15 one: non-zero while a
        replay is being played back. NULL with no addr.replay_manager: never. */
     int (*replay_playing)(void);
     void (*place_enemy)(uint8_t* enemy, uint8_t* anm, uint32_t flags, const float* position);

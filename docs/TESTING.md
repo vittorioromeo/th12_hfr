@@ -104,7 +104,7 @@ installed games (`(TH10) ...`, `(TH14) ...`), it launches each one and judges th
 | --- | --- | --- |
 | every launch | | process starts, window appears, not hung, closes on request; one install line with this checkout's signature count; none of the log lines in `$NeverOk` (failed patch, conflict, exception, draw guard, shader compile error, ...); picture not blank |
 | before any launch | | every game carries the same runtime file, and it is `build\touhou_hfr.dll` |
-| `base` | 1 | F10: one step and one log line per press, through the three presets and borderless. F11: opens and closes in the log, and the picture changes while it is open. Presents/s against the target, target against the display. Attract-mode demo through the replay hooks (TH10–14) |
+| `base` | 1 | F10: one step and one log line per press, through the three presets and borderless. F11: opens and closes in the log, and the picture changes while it is open. Presents/s against the target, target against the display. Attract-mode demo through the replay hooks (TH10–15) |
 | `-Matrix` | ~12 | one INI setting per launch: `cap-120`, `substep-off`, `plain-d3d9`, `vsync`, `internal-x2`, `texture-x2`, `sharpen-cas`, `filter-<each shader>`, `fixed-interp-off` (TH08), `launcher` (`touhou_hfr.exe` installs exactly once) |
 | `-Drive` | 1 | presses Z until the log reports a stage start, holds fire and alternates left/right for `-DriveSeconds`; then: no crash, ticks/s at the display's rate (60 on TH08), and on TH14 a steady `shots` rate in the `debug=1` site census (the shot-cycle regression) |
 

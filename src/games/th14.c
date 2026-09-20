@@ -17,6 +17,7 @@
    sub-stepped and nothing is mis-stepped; the menu offers no sub-step switches for this game
    and says why. */
 #include "../game_profile.h"
+#include "th14_family.h"
 
 /* Dimming (DEVNOTES_RUNTIME 3b, TH14_DEVNOTES 6). Written from a stage trace, and
    deliberately short: every line below is something the trace actually showed, and the classes
@@ -531,23 +532,9 @@ static void th14_install_sites(void) {
    directions, because that update also reaches it as `lea esi,[ebx+0x1314]`, and 0x11f0 + 0x124
    is 0x1314. The VM position is at +0x59c (TH13: +0x574) and a parent's contribution is read from
    its VM at +0x3c, the same three words TH13 uses. */
+static const struct Th14EnemySprites th14_enemy_sprites = { 0x11f0, 0x124, 0x164, 0x224, 0x4000000, 0x167, 0x0f };
 static void th14_place_enemy(uint8_t* e, uint8_t* am, uint32_t flags, const float* R) {
-    uint8_t* in = e + 0x11f0;
-    int* ids = (int*)(in + 0x124); float* offs = (float*)(in + 0x164); int* parent = (int*)(in + 0x224);
-    for (int i = 0; i < 14; i++) {
-        if (!ids[i]) continue;
-        float* vm = anm_get_vm(am, ids[i]);
-        if (!vm) continue;
-        float x = R[0], y = R[1], z = R[2];
-        if (!(flags & 0x4000000)) {
-            x += offs[i*3]; y += offs[i*3+1]; z += offs[i*3+2];
-            if (parent[i] >= 0 && parent[i] < 14 && ids[parent[i]]) {
-                float* pvm = anm_get_vm(am, ids[parent[i]]);
-                if (pvm) { x += pvm[0x0f]; y += pvm[0x10]; z += pvm[0x11]; }
-            }
-        }
-        vm[0x167] = x; vm[0x168] = y; vm[0x169] = z;   /* +0x59c */
-    }
+    th14_family_place_enemy(&th14_enemy_sprites, e, am, flags, R);
 }
 
 /* The player's options, for the same render interpolation as the enemies and for the same
@@ -562,43 +549,10 @@ static void th14_place_enemy(uint8_t* e, uint8_t* am, uint32_t flags, const floa
    own tail at 0x44db3d, which writes exactly these two VMs' positions from exactly these two
    integers, scaled by the 1/128 at 0x4c1900, with z zero. The game writes them every tick from
    the position it last settled on; this runs after the pass and writes the interpolated one. */
-static struct { int32_t last[2], prev[2]; unsigned seen; } th14_opt[8];
+static struct Th14OptionState th14_opt[8];
 static unsigned th14_opt_frames;
 static void th14_place_options(uint8_t* am, float alpha, int capture) {
-    uint8_t* pl = g_game->addr.player ? *(uint8_t**)g_game->addr.player : NULL;
-    if (!pl) return;
-    if (capture) ++th14_opt_frames;
-    for (int i = 0; i < 8; ++i) {
-        uint8_t* o = pl + 0xd6ec + i * 0xe4;
-        if (!*(const uint32_t*)o) { th14_opt[i].seen = 0; continue; }   /* this one is not out */
-        const int32_t* P = (const int32_t*)(o + 0x5c);
-        if (capture) {
-            /* Seen on the previous frame: last becomes prev. Otherwise it has just appeared and
-               has no motion to show yet. */
-            if (th14_opt[i].seen && th14_opt[i].seen == th14_opt_frames - 1) {
-                th14_opt[i].prev[0] = th14_opt[i].last[0]; th14_opt[i].prev[1] = th14_opt[i].last[1];
-            } else { th14_opt[i].prev[0] = P[0]; th14_opt[i].prev[1] = P[1]; }
-            th14_opt[i].last[0] = P[0]; th14_opt[i].last[1] = P[1];
-            th14_opt[i].seen = th14_opt_frames;
-        } else if (th14_opt[i].seen != th14_opt_frames) {
-            th14_opt[i].prev[0] = th14_opt[i].last[0] = P[0];
-            th14_opt[i].prev[1] = th14_opt[i].last[1] = P[1];
-            th14_opt[i].seen = th14_opt_frames;
-        }
-        float d[2] = { (float)(th14_opt[i].last[0] - th14_opt[i].prev[0]),
-                       (float)(th14_opt[i].last[1] - th14_opt[i].prev[1]) };
-        /* A whole screen in one frame is the game putting an option somewhere, not moving it. */
-        if (d[0] < -6144.0f || d[0] > 6144.0f || d[1] < -6144.0f || d[1] > 6144.0f) d[0] = d[1] = 0;
-        float x = ((float)th14_opt[i].last[0] - d[0] * (1.0f - alpha)) * (1.0f / 128.0f);
-        float y = ((float)th14_opt[i].last[1] - d[1] * (1.0f - alpha)) * (1.0f / 128.0f);
-        for (int k = 0; k < 2; ++k) {
-            int id = *(const int*)(o + 0xb0 + k * 4);
-            if (!id) continue;
-            float* vm = anm_get_vm(am, id);
-            if (!vm) continue;
-            vm[0x167] = x; vm[0x168] = y; vm[0x169] = 0.0f;   /* +0x59c */
-        }
-    }
+    th14_family_place_options(0xd6ec, 0x167, th14_opt, &th14_opt_frames, am, alpha, capture);   /* VM position +0x59c */
 }
 
 /* A per-frame fingerprint for the replay-desync trace, debug only.
