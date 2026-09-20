@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-GAMES = (10, 11, 12, 13, 14)
+GAMES = ("08", 10, 11, 12, 13, 14)
 ENTRY = re.compile(
     r"\{\s*(0x[0-9a-fA-F]+)\s*,\s*\d+\s*,\s*\{([^}]*)\}\s*\}\s*,?"   # {addr, size, {bytes}}
     r"[ \t]*(?:/\*\s*(?P<comment>.*?)\s*\*/)?",                       # optional trailing comment

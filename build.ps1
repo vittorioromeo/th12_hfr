@@ -15,10 +15,11 @@ try {
     $menuSources=@('third_party/imgui/imgui.cpp','third_party/imgui/imgui_draw.cpp',
         'third_party/imgui/imgui_tables.cpp','third_party/imgui/imgui_widgets.cpp',
         'third_party/imgui/backends/imgui_impl_dx9.cpp','third_party/imgui/backends/imgui_impl_win32.cpp',
-        'src/ui/menu.cpp','src/ui/menu_dx9.cpp')
+        'src/ui/menu.cpp','src/ui/menu_dx9.cpp','src/backends/d3d8_bridge.cpp')
+    $menuSources += Get-ChildItem third_party/d3d8to9/source/*.cpp | Where-Object Name -ne 'd3d8to9.cpp' | ForEach-Object FullName
     foreach($source in $menuSources) {
         $object='build/obj/'+[IO.Path]::GetFileNameWithoutExtension($source)+'.o'
-        & $cxxPath -std=gnu++17 -O2 -msse2 -mfpmath=sse -fno-exceptions -fno-rtti -Wall -Wno-unused-parameter -Ithird_party/imgui -c $source -o $object
+        & $cxxPath -std=gnu++17 -O2 -msse2 -mfpmath=sse -fno-exceptions -fno-rtti -fno-strict-aliasing -DD3D8TO9NOLOG -Wall -Wno-unused-parameter -Wno-delete-non-virtual-dtor -Wno-unknown-pragmas -Ithird_party/imgui -c $source -o $object
         if($LASTEXITCODE){throw "Menu compilation failed: $source"}
         $objects += $object
     }

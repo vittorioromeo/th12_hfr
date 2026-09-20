@@ -13,6 +13,7 @@ struct GameSignature { uintptr_t addr; size_t size; uint8_t bytes[32]; };
    two would report a modified executable to someone whose executable is fine. */
 struct ConflictSite { uintptr_t addr; size_t size; uint8_t bytes[8]; const char* what; };
 #include "games/th10_signatures.h"
+#include "games/th08_signatures.h"
 #include "games/th11_signatures.h"
 #include "games/th12_signatures.h"
 #include "games/th13_signatures.h"
@@ -34,8 +35,9 @@ struct GameIdentity {
 /* Named slots, so a profile says which game it is rather than counting rows. Inserting a game
    at the front of the table used to silently repoint every profile after it at its neighbour's
    identity -- the same trap as a positional initialiser, and just as quiet. */
-enum { GI_TH10, GI_TH11, GI_TH12, GI_TH13, GI_TH14 };
+enum { GI_TH08, GI_TH10, GI_TH11, GI_TH12, GI_TH13, GI_TH14 };
 static const struct GameIdentity game_identities[] = {
+    [GI_TH08] = {8,0x14dc000,"TH08 v1.00d",NULL,NULL,{"th08e.exe","th08.exe"},th08_signatures,sizeof th08_signatures/sizeof *th08_signatures,NULL,0},
     /* TH10 follows the same naming as the later games: th10.exe is the Japanese original and
        th10e.exe the English one (an earlier note here claimed a th10j.exe; that was a local
        rename, not a convention). The replay magic is unused while the simulation is
@@ -123,7 +125,8 @@ static int conflict_scan(const struct GameIdentity* game, const uint8_t* image, 
 /* Map an on-disk PE as inert bytes; never LoadLibrary an executable here. */
 static uint8_t* map_game_file(const uint8_t* file, size_t size, size_t* image_size) {
     const IMAGE_NT_HEADERS32* nt=image_header(file,size);
-    if (!nt || nt->OptionalHeader.SizeOfImage>16*1024*1024 ||
+    /* Early games keep large object pools in BSS (TH08: about 21 MiB). */
+    if (!nt || nt->OptionalHeader.SizeOfImage>64*1024*1024 ||
         nt->OptionalHeader.SizeOfHeaders>size || nt->OptionalHeader.SizeOfHeaders>nt->OptionalHeader.SizeOfImage) return NULL;
     const IMAGE_SECTION_HEADER* s=IMAGE_FIRST_SECTION(nt);
     size_t off=(const uint8_t*)s-file;

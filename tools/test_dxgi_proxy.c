@@ -15,7 +15,7 @@ static void check(int ok, const char* what) {
     if (!ok) failures = 1;
 }
 typedef HRESULT (WINAPI *Factory1)(REFIID, void**);
-typedef HRESULT (WINAPI *Declare)(void);
+typedef HRESULT (WINAPI *DebugInterface)(UINT, REFIID, void**);
 
 /* {770aae78-f26f-4dba-a829-253c83d1b387} IDXGIFactory1 */
 static const GUID iid_factory1 =
@@ -23,9 +23,9 @@ static const GUID iid_factory1 =
 
 int main(int argc, char** argv) {
     /* The proxy is loaded from a copy under a different name. Both files are the same
-       bytes, but a loader that keys modules by base name -- Wine's does -- cannot hold the
-       proxy and the system dxgi.dll open at once, and then there is nothing to compare
-       against on affected Wine versions. Renaming the copy tests forwarding separately;
+       bytes, but a loader that conflates modules with the same basename cannot hold the
+       proxy and the system dxgi.dll open at once. Renaming the copy tests forwarding
+       separately from that behavior (which is not universal across Wine versions);
        it does not prove the normal installation works on Proton. The companion
        test_dxgi_proxy_start.c uses the actual basename and a stand-in runtime to check
        activation. Real-game Proton loading still needs an integration test. */
@@ -79,11 +79,19 @@ int main(int argc, char** argv) {
         if (a) a->lpVtbl->Release(a);
         if (b) b->lpVtbl->Release(b);
     }
-    /* A forwarded export that is not one of the three the proxy wraps. */
-    Declare real_declare  = (Declare)(void*)GetProcAddress(real,  "DXGIDeclareAdapterRemovalSupport");
-    Declare proxy_declare = (Declare)(void*)GetProcAddress(proxy, "DXGIDeclareAdapterRemovalSupport");
-    if (real_declare && proxy_declare)
-        check(real_declare() == proxy_declare(), "a generated stub forwards to the real function");
+    /* An idempotent forwarded export outside the three factory wrappers. Declaring
+       adapter-removal support changes process state: the first call can succeed and
+       the second fail even when forwarding is correct, so it is not a valid comparison. */
+    DebugInterface real_debug  = (DebugInterface)(void*)GetProcAddress(real,  "DXGIGetDebugInterface1");
+    DebugInterface proxy_debug = (DebugInterface)(void*)GetProcAddress(proxy, "DXGIGetDebugInterface1");
+    if (real_debug && proxy_debug) {
+        IUnknown* a = NULL; IUnknown* b = NULL;
+        HRESULT ra = real_debug(0, &iid_factory1, (void**)&a);
+        HRESULT rb = proxy_debug(0, &iid_factory1, (void**)&b);
+        check(ra == rb && !!a == !!b, "a generated stub forwards to the real function");
+        if (a) a->lpVtbl->Release(a);
+        if (b) b->lpVtbl->Release(b);
+    }
 
     /* The proxy starts the runtime on the first factory call. In a process that is not the
        game the runtime must decline: no patches, no crash, and we are still running. */

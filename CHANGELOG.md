@@ -4,6 +4,33 @@ Newest first. Versions are the release archive names; `-test` means what it says
 Full release notes for each version are on the
 [releases page](https://github.com/vittorioromeo/th12_hfr/releases).
 
+## Unreleased
+
+Touhou 8 — Imperishable Night, experimentally, and by a different route.
+
+- **TH08 is presented at the display's rate from a simulation that stays at 60 Hz.** Direct3D 8
+  is translated to 9 inside the patch, so scaling, filters, borderless fullscreen, internal
+  resolution, dimming, screenshots and the F11 menu all apply. Nothing in game state is
+  written: a per-frame trace of the title screen's demonstration is identical to the unpatched
+  simulation's, so replays work in both directions.
+- **The playfield is shown in the present** (`[fixed60] predict=1`). Interpolating between the
+  last two 60 Hz states draws the player up to a frame late, which is input lag the stock game
+  does not have. Bullets, enemies and the stage are carried forward along their last step
+  instead, and the player is drawn where the keys held now will put her at the next tick.
+  Menus and the interface are interpolated.
+- Sprites are smoothed as rigid quads — centre, turn and scale — rather than as four
+  independent corners, which made spinning bullets shimmer. The 3D stage background is
+  smoothed through its scroll position and camera.
+- `[fixed60] subtick=1`: sub-tick player movement as in New Classic. Off by default; not
+  replay-safe, and off while a replay plays.
+- `[fixed60] substep=1`: sub-stepped bullets, lasers and items on TH08. Experimental and off by
+  default. Bullets match the stock game slot for slot at every 60 Hz boundary; collisions are
+  tested at every step, so it is not replay-safe and is off while a replay plays.
+- TH08 runs on the shared frame scheduler, with its own walker for the older engine's Chain.
+- The Direct3D 8 bridge no longer requires `d3dx9_43.dll`, and steps over another patch that
+  holds `Direct3DCreate8` instead of giving up the video path.
+- Fixed: the F11 menu drew into a dead device when a game recreates its device in-process.
+
 ## v0.5.5-test
 
 Touhou 14 gameplay runs at the display's refresh rate.

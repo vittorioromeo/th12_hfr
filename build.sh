@@ -17,6 +17,11 @@ for f in "$IMGUI/imgui" "$IMGUI/imgui_draw" "$IMGUI/imgui_tables" "$IMGUI/imgui_
 done
 $CXX $CXXFLAGS -I"$IMGUI" -c src/ui/menu.cpp -o build/obj/menu.o
 $CXX $CXXFLAGS -I"$IMGUI" -c src/ui/menu_dx9.cpp -o build/obj/menu_dx9.o
+for f in src/backends/d3d8_bridge.cpp third_party/d3d8to9/source/*.cpp; do
+    [ "$(basename "$f")" = d3d8to9.cpp ] && continue
+    $CXX $CXXFLAGS -fno-strict-aliasing -DD3D8TO9NOLOG -Wno-delete-non-virtual-dtor -Wno-unknown-pragmas \
+        -c "$f" -o "build/obj/$(basename "$f" .cpp).o"
+done
 
 $CXX -shared -static -static-libgcc -static-libstdc++ -o build/touhou_hfr.dll build/obj/*.o \
      -ld3d9 -lwinmm -lgdi32 -ldwmapi -lpsapi -Wl,--kill-at

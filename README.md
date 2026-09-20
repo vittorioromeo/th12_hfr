@@ -21,13 +21,15 @@ you remove the patch by deleting them again.
 **Contents** — [Does it work with my game?](#does-it-work-with-my-game) ·
 [Install](#install) · [Using it](#using-it) · [Settings](#settings) ·
 [Other mods](#other-mods) · [Limitations](#limitations) ·
-[New Classic](#new-classic) · [Troubleshooting](#troubleshooting) ·
+[Imperishable Night](#imperishable-night) · [New Classic](#new-classic) ·
+[Troubleshooting](#troubleshooting) ·
 [For developers](#for-developers) · [Credits](#credits-tools-and-resources)
 
 ## Does it work with my game?
 
 | Game | Version | Executables | State |
 | --- | --- | --- | --- |
+| Touhou 8 — Imperishable Night | v1.00d | `th08.exe` | **experimental**, a different approach — [details](#imperishable-night) |
 | Touhou 10 — Mountain of Faith | v1.00a | `th10.exe`, `th10e.exe` | supported |
 | Touhou 11 — Subterranean Animism | v1.00a | `th11.exe`, `th11e.exe` | supported |
 | Touhou 12 — Undefined Fantastic Object | v1.00b | `th12.exe`, `th12e.exe` | supported |
@@ -197,15 +199,18 @@ the next time the game starts.
 
 Dimming never touches enemies, bullets, lasers, the player or the interface.
 
-### `[fixed60]` — New Classic only
+### `[fixed60]` — Imperishable Night and New Classic
 
-`[hfr] fps` sets the presentation rate for New Classic too; these control its backend.
+The two games whose simulation stays at 60 Hz. `[hfr] fps` and `vsync` set the presentation
+rate for them too; `[hfr] substep`, `subtick_input` and `enemy_interp` are not read.
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
 | `interpolate` | `1` | Smooth sprite position, rotation and scale between 60 Hz frames |
-| `subtick` | `0` | Sub-tick player movement ([see below](#new-classic)) |
-| `substep` | `0` | Sub-stepped enemy bullets and lasers ([see below](#new-classic)) |
+| `predict` | `1` | TH08 only. Show the playfield in the present rather than up to a frame late, and draw the player where the keys held now will put her ([see below](#imperishable-night)). Changes nothing in the game |
+| `subtick` | `0` | Sub-tick player movement. Not replay-safe ([TH08](#imperishable-night), [New Classic](#new-classic)) |
+| `substep` | `0` | Sub-stepped enemy bullets and lasers — and items, on TH08. Experimental, not replay-safe ([TH08](#imperishable-night), [New Classic](#new-classic)) |
+| `d3d9ex` | `0` | TH08 only. Direct3D 9Ex through the Direct3D 8 bridge, for `max_frame_latency` and `flipex`. **INI only, restart**; not yet confirmed on Windows |
 | `vsync` | `0` | D3D11 vsync; separate from `[hfr] vsync` so the D3D9 default is untouched |
 | `diag_seconds` | `0` | Run for N seconds, log the draw and update lists, and quit. Leave at 0 |
 
@@ -330,6 +335,40 @@ compared them frame by frame.
   but their sprite snapping is not yet mapped.
 - `dim_special` only does something in TH13 (divine spirits); TH10–TH12 have no fifth class.
 - TH10 has no native window-size dialog beyond 640x480, so use `window_scale` or F10 there.
+
+## Imperishable Night
+
+TH08 is from the older engine family — Direct3D 8, and a simulation written to run at one
+speed — so it gets the high frame rate a different way from TH10–14. **Its simulation stays at
+60 Hz, exactly as shipped, and the picture is drawn at your display's rate from it.** The four
+files and the install are the same; Direct3D 8 is translated to Direct3D 9 inside the patch, so
+scaling, filters, borderless fullscreen, internal resolution, dimming, screenshots and the F11
+menu all work.
+
+- **The playfield is shown in the present, not a frame late.** Smoothing a 60 Hz game normally
+  means drawing between its last two states, which is up to 16 ms behind — input lag the stock
+  game does not have. Here bullets, enemies, shots and the stage are instead carried *forward*
+  along their last step, and the player is drawn where the keys you are holding right now will
+  put her at the next 60 Hz tick, so she answers within the frame you press. A sprite that
+  turns sharply is wrong for one frame; a direction pressed part way through a frame moves her
+  by that fraction of a frame at once. Menus and the interface are interpolated, where being a
+  frame late costs nothing. `predict=0` interpolates everything.
+- **Nothing in the game changes.** Positions, collisions, grazes, random numbers and replays
+  are the stock game's — checked frame by frame against the unpatched simulation — so replays
+  record and play back as they always did, in both directions.
+- **Sub-tick player movement** (`subtick=1`, off) really moves her between 60 Hz ticks from
+  freshly polled input, as New Classic's does. It changes where she is when bullets are tested
+  against her, so a replay recorded with it on will not play back; it switches itself off while
+  a replay plays.
+- **Sub-stepped projectiles** (`substep=1`, off, experimental) advance enemy bullets, lasers
+  and items a fraction of a frame at a time and test grazing and collision at every step, so a
+  bullet that would have jumped past you between two 60 Hz frames can hit you. Bullets are
+  still where the stock game puts them at every 60 Hz boundary — checked against it, slot by
+  slot — but when they hit is not, so it is not replay-safe either, and it too switches
+  itself off while a replay plays. Lasers and items have had less checking than bullets;
+  [the notes](docs/games/TH08_DEVNOTES.md#9-sub-stepped-projectiles-fixed60-substep1-off-by-default-experimental) say what was measured.
+- Only the Japanese `th08.exe` v1.00d is recognised. thprac and vpatch have not been tried with
+  it. Texture upscaling and `d3d9ex` have not been confirmed on Windows.
 
 ## New Classic
 
@@ -456,6 +495,7 @@ everything else in the devnotes was reverse-engineered from the binaries.
 | --- | --- | --- | --- |
 | [Dear ImGui](https://github.com/ocornut/imgui) 1.91.8 | Omar Cornut | MIT | the F11 menu (`third_party/imgui`) |
 | [MinHook](https://github.com/TsudaKageyu/minhook) | Tsuda Kageyu | BSD-2-Clause | function hooks in the x64 runtime (`third_party/minhook`) |
+| [d3d8to9](https://github.com/crosire/d3d8to9) | Patrick Mours | BSD-2-Clause | Direct3D 8 to 9 translation for TH08 (`third_party/d3d8to9`) |
 | MMPX | Morgan McGuire and Mara Gagiu; slang port by hunterk | MIT | `shaders/mmpx.hlsl` |
 | xBR-lv2, Super-xBR | Hyllian | MIT | `shaders/xbr-lv2.hlsl`, `shaders/super-xbr.hlsl` |
 | ScaleFX | Sp00kyFox | MIT | `shaders/scalefx.hlsl` |

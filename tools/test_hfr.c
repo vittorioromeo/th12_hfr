@@ -8,7 +8,7 @@
 #include "test_runner.h"
 #include "test_speed.h"
 #include "test_scaler.h"
-static uint8_t test_fixture[0x200000] __attribute__((section(".fixture")));
+static uint8_t test_fixture[0x1600000] __attribute__((section(".fixture")));
 
 
 /* The scheduler is game-independent, but recompute_rate now asks the profile whether anything
@@ -113,24 +113,30 @@ static void* thcrap_style_detour(const char* dll, const char* func, void* theirs
     return chain;
 }
 static void test_import_redirection(void) {
-    void** slot=iat_slot("d3d9.dll","Direct3DCreate9");
-    assert(slot && *slot==(void*)hook_Direct3DCreate9);          /* the import was taken */
-    assert(orig_Direct3DCreate9 && orig_Direct3DCreate9!=(Direct3DCreate9Fn)hook_Direct3DCreate9);
+    /* The Direct3D factory the game imports: Direct3DCreate9, or Direct3DCreate8 for an engine
+       that reaches Direct3D 9 through the bridge. Same slot discipline either way. */
+    const char* dll = g_game->d3d8 ? "d3d8.dll" : "d3d9.dll";
+    const char* func = g_game->d3d8 ? "Direct3DCreate8" : "Direct3DCreate9";
+    void* ours = g_game->d3d8 ? (void*)hook_Direct3DCreate8 : (void*)hook_Direct3DCreate9;
+    void** orig = g_game->d3d8 ? (void**)&orig_Direct3DCreate8 : (void**)&orig_Direct3DCreate9;
+    void** slot=iat_slot(dll,func);
+    assert(slot && *slot==ours);                                 /* the import was taken */
+    assert(*orig && *orig!=ours);
 
     /* They take it, and this patch is out of the call path entirely. */
-    void* theirs_chain=thcrap_style_detour("d3d9.dll","Direct3DCreate9",(void*)other_patch_d3d9);
+    void* theirs_chain=thcrap_style_detour(dll,func,(void*)other_patch_d3d9);
     assert(*slot==(void*)other_patch_d3d9);
-    assert(theirs_chain!=(void*)hook_Direct3DCreate9);
+    assert(theirs_chain!=ours);
 
     /* Taking it back must not repeat their mistake: they have to end up as what this patch
        calls, not as something discarded. */
     assert(reassert_imports()>=1);
-    assert(*slot==(void*)hook_Direct3DCreate9);                  /* ours again */
-    assert(orig_Direct3DCreate9==(Direct3DCreate9Fn)other_patch_d3d9);   /* and they are next */
+    assert(*slot==ours);                                         /* ours again */
+    assert(*orig==(void*)other_patch_d3d9);                      /* and they are next */
 
     /* Idempotent: nothing to take back when nothing has changed hands. */
     assert(reassert_imports()==0);
-    assert(orig_Direct3DCreate9==(Direct3DCreate9Fn)other_patch_d3d9);
+    assert(*orig==(void*)other_patch_d3d9);
 
     /* Nothing outside the game's own import table is touched. The process's view of these
        libraries -- which is what every other module in it resolves, overlays included -- has
@@ -308,7 +314,7 @@ int main(int argc,char**argv) {
     /* The harness links these but never calls into them, so nothing has pulled them in. The
        game always has them loaded by the time the patch installs; load them here so that the
        import redirection runs against the real modules and can be checked afterwards. */
-    LoadLibraryA("d3d9.dll");LoadLibraryA("winmm.dll");
+    LoadLibraryA("d3d9.dll");LoadLibraryA("d3d8.dll");LoadLibraryA("winmm.dll");
     cfg.subtick_input=1;cfg.d3d9ex=1;
     /* A profile may install extra sites only when the ini asks for debug -- counters inside the
        game's own guards, for working out why a sub-stepped system does nothing. Those are code
@@ -323,8 +329,11 @@ int main(int argc,char**argv) {
     }
     if (g_game->provisional) { g_validate_provisional=1; puts("NOTE: validating a provisional profile's patch plan"); }
     assert(install() && !g_patch_failed);
-    assert(g_frame_hook_installed == sim);   /* the frame hook exists exactly when the profile describes one */
-    assert(orig_Direct3DCreate9 && orig_D3DXCreateTexture && orig_D3DXCreateTextureFromFileInMemoryEx);
+    /* the frame hook exists exactly when the profile describes one -- through the TH10-14
+       runner, or through an older engine's own presentation hooks */
+    assert(g_frame_hook_installed == (sim || g_game->install_presentation != NULL));
+    if (g_game->d3d8) assert(orig_Direct3DCreate8);   /* the bridge resolves Direct3DCreate9 itself, at run time */
+    else assert(orig_Direct3DCreate9 && orig_D3DXCreateTexture && orig_D3DXCreateTextureFromFileInMemoryEx);
     assert(!sim || orig_joyGetPosEx);   /* sub-tick input only where there is a simulation */
     cfg.debug=0;
     puts("PASS: complete patch plan has frozen signatures, no overlaps; failed transaction leaves code intact");

@@ -39,6 +39,8 @@ enum {
     UI_SOFTWARE_CURSOR,       /* read-only: game hides the OS cursor; draw one in the menu */
     UI_SUBTICK_AVAILABLE,     /* read-only: this game's player movement site is described */
     UI_SUBSTEP_AVAILABLE,     /* read-only: this game's projectile update is described */
+    UI_PREDICT,               /* fixed logic: show the playfield in the present (predicted) rather than a frame late */
+    UI_PREDICT_AVAILABLE,     /* read-only: this backend can predict */
     UI_SETTING_COUNT
 };
 
@@ -87,6 +89,7 @@ void hfr_menu_render(void* dev, int width, int height);
 int  hfr_menu_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, LRESULT* result);
 void hfr_menu_toggle(void);
 int  hfr_menu_visible(void);
+int  hfr_menu_ready(void);
 #else
 static int  hfr_menu_init(void* dev, HWND hwnd) { (void)dev; (void)hwnd; return 0; }
 static void hfr_menu_shutdown(void) {}
@@ -96,6 +99,7 @@ static int  hfr_menu_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, LRESULT*
             { (void)hwnd; (void)msg; (void)wp; (void)lp; (void)result; return 0; }
 static void hfr_menu_toggle(void) {}
 static int  hfr_menu_visible(void) { return 0; }
+static int  hfr_menu_ready(void) { return 0; }
 #endif
 
 #ifdef __cplusplus

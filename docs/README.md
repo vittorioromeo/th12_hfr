@@ -10,6 +10,7 @@ The two documents a newcomer needs are at the repository root:
 | [RESOLUTION.md](RESOLUTION.md) | The picture: output scaling, the filter chain, internal resolution, texture upscaling, the window, the menu, and the presentation path. |
 | [MOD_COMPATIBILITY.md](MOD_COMPATIBILITY.md) | Coexisting with THRotator, thprac and thcrap: the source audits, the confirmed conflicts, what shipped and what is still open. |
 | [TESTING.md](TESTING.md) | What the two test suites cover, how they differ, and what still has to be checked by hand. |
+| [FIXED_STEP_RESEARCH.md](FIXED_STEP_RESEARCH.md) | Separating simulation from presentation: the current timing paths, measured step sizes, implementation scope, replay/input risks and a staged migration plan. |
 
 ## Per-game records
 
@@ -18,6 +19,7 @@ patch site is and why, and the bugs met on the way.
 
 | Game | Record |
 | --- | --- |
+| Touhou 8 — Imperishable Night (experimental) | [games/TH08_DEVNOTES.md](games/TH08_DEVNOTES.md) |
 | Touhou 10 — Mountain of Faith | [games/TH10_DEVNOTES.md](games/TH10_DEVNOTES.md) |
 | Touhou 11 — Subterranean Animism | [games/TH11_DEVNOTES.md](games/TH11_DEVNOTES.md) |
 | Touhou 12 — Undefined Fantastic Object | [games/TH12_DEVNOTES.md](games/TH12_DEVNOTES.md) |

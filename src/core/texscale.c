@@ -212,7 +212,11 @@ static void tex_register(IDirect3DTexture9* t) {
     IDirect3DSurface9* s = NULL;
     if (SUCCEEDED(t->lpVtbl->GetSurfaceLevel(t, 0, &s)) && s) { e->surf = s; s->lpVtbl->Release(s); }
     e->eligible = !(d.Usage & D3DUSAGE_RENDERTARGET) && !(d.Usage & D3DUSAGE_DEPTHSTENCIL) &&
-                  t->lpVtbl->GetLevelCount(t) <= 1 && d.Width <= TEX_SIDE_MAX && d.Height <= TEX_SIDE_MAX;
+                  d.Width <= TEX_SIDE_MAX && d.Height <= TEX_SIDE_MAX &&
+                  /* The D3D8-era games load every sheet through a statically linked D3DX8 with its
+                     default mip chain, and then draw sprites at 1:1, where only level 0 is ever
+                     sampled. Excluding mipmapped textures there would exclude all of them. */
+                  (t->lpVtbl->GetLevelCount(t) <= 1 || (g_game && g_game->d3d8));
 }
 static void tex_dirty_surface(IDirect3DSurface9* s) { struct TexEntry* e = s ? tex_find_surface(s) : NULL; if (e) e->dirty = 1; }
 static void tex_dirty_texture(IDirect3DTexture9* t) { struct TexEntry* e = t ? tex_find(t) : NULL; if (e) e->dirty = 1; }

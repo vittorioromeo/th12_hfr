@@ -16,6 +16,7 @@ typedef int (__stdcall *FrameFn)(void* ctx);
    the attribute gcc has says exactly what the game does. */
 typedef int (__attribute__((fastcall)) *FrameFnEcx)(void* ctx);
 static inline int frame_call_original(void* ctx) {
+    if (g_game->frame_original) return g_game->frame_original(ctx);
     return g_game->frame_ctx_ecx ? ((FrameFnEcx)g_game->addr.frame_fn)(ctx)
                                  : ((FrameFn)g_game->addr.frame_fn)(ctx);
 }

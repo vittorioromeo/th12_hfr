@@ -1,4 +1,4 @@
-static const struct GameProfile* const game_profiles[] = {&th10_profile,&th11_profile,&th12_profile,&th13_profile,&th14_profile};
+static const struct GameProfile* const game_profiles[] = {&th08_profile,&th10_profile,&th11_profile,&th12_profile,&th13_profile,&th14_profile};
 static int select_game(const uint8_t* image, size_t size) {
     const struct GameIdentity* id=identify_image(image,size);
     g_game=NULL;
@@ -194,7 +194,7 @@ static int install(void) {
             if (cfg.subtick_input) LOG("this game's input path is not described: sub-tick input is off.");
             cfg.subtick_input = 0;
         }
-    } else {
+    } else if (!g_game->install_presentation) {
         LOG("this game's simulation is not described yet: no high frame rate or sub-stepping.");
         LOG("  scaling, filters, window resizing and the menu do not depend on it and are active.");
     }
@@ -213,7 +213,7 @@ static int install(void) {
         if (g_game->screenshot_stack_arg) E(0xC2,0x04,0x00); else E(0xC3);
         stub_end();          /* account for these bytes: they are flushed from the I-cache below */
         site_call(g_game->addr.screenshot_call,stub);
-    } else LOG("screenshot routine not known for this game; its screenshots are unsupported");
+    } else if (!g_game->install_presentation) LOG("screenshot routine not known for this game; its screenshots are unsupported");
     /* Higher internal resolution: the sprite builder's whole-pixel snapping goes (d3d9.c says why). */
     if (cfg.internal_scale > 1 && g_game->sprite_round_count) {
         static const uint8_t nop2[2] = {0x90,0x90};
@@ -222,7 +222,7 @@ static int install(void) {
         LOG("internal resolution: sprite corners no longer snapped to whole pixels (%u sites)", (unsigned)g_game->sprite_round_count);
     } else if (cfg.internal_scale > 1) LOG("internal resolution: this game's sprite snapping is not known; sprites stay on whole pixels");
     /* Dimming needs to know which draw callback each draw call belongs to (dimming.c). */
-    if (g_game->draw.dispatch) dim_install(); else LOG("dimming: this game's draw runner is not described; dim_background/dim_items are inert");
+    if (g_game->draw.dispatch) dim_install(); else if (!g_game->install_presentation) LOG("dimming: this game's draw runner is not described; dim_background/dim_items are inert");
     if (sim) {
         for (int i=0;i<4;++i) if (g_game->addr.replay_saves[i]) site_call(g_game->addr.replay_saves[i],hfr_replay_save);
         if (g_game->addr.replay_load_call) site_call(g_game->addr.replay_load_call,hfr_replay_load);
@@ -236,10 +236,17 @@ static int install(void) {
         for (int i=0;i<3;++i) if (g_game->addr.frame_calls[i]) site_call(g_game->addr.frame_calls[i],frame_hook);
         g_frame_hook_installed = 1;
     }
-    if (!hook_import("d3d9.dll","Direct3DCreate9",hook_Direct3DCreate9,(void**)&orig_Direct3DCreate9)) {
+    if (g_game->install_presentation) g_game->install_presentation();
+    /* Through the D3D8 bridge 9Ex is opt-in ([fixed60] d3d9ex=1) until it has been played on
+       real hardware: the bridge asks for managed resources, which 9Ex does not have, and relies
+       on the device hooks converting them. */
+    if (g_game->d3d8) cfg.d3d9ex = GetPrivateProfileIntA("fixed60", "d3d9ex", 0, g_ini_path) != 0;
+    if (!(g_game->d3d8
+          ? hook_import("d3d8.dll","Direct3DCreate8",hook_Direct3DCreate8,(void**)&orig_Direct3DCreate8)
+          : hook_import("d3d9.dll","Direct3DCreate9",hook_Direct3DCreate9,(void**)&orig_Direct3DCreate9))) {
         LOG("Required Direct3D import is unavailable; no hooks applied");return 0;
     }
-    if (cfg.d3d9ex) {
+    if (cfg.d3d9ex && !g_game->d3d8) {   /* a D3D8 game has no D3DX9 imports: its statically linked D3DX8 reaches the device hooks */
         int a=hook_import(g_game->d3dx,"D3DXCreateTexture",hook_D3DXCreateTexture,(void**)&orig_D3DXCreateTexture);
         int b=hook_import(g_game->d3dx,"D3DXCreateTextureFromFileInMemoryEx",hook_D3DXCreateTextureFromFileInMemoryEx,(void**)&orig_D3DXCreateTextureFromFileInMemoryEx);
         if (!a || !b) {cfg.d3d9ex=0;LOG("D3DX hooks unavailable (%d,%d): using D3D9",a,b);}

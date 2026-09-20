@@ -25,9 +25,15 @@ static int ui_sub_count(void) {
     for (size_t k = 0; g_game && k < g_class_count; ++k) n += g_classes[k].mode == MODE_SUB;
     return n;
 }
+static int ui_fixed_logic(void) { return g_game && g_game->install_presentation != NULL; }
+static int ui_has_class(const char* name) {
+    for (size_t k = 0; g_game && k < g_class_count; ++k) if (g_classes[k].mode == MODE_SUB && !strcmp(g_classes[k].name, name)) return 1;
+    return 0;
+}
 int hfr_ui_get(int id) {
     switch (id) {
     case UI_VIDEO_AVAILABLE:    return 1;
+    case UI_FIXED_LOGIC:        return ui_fixed_logic();
     case UI_SCALING:            return cfg.scaling;
     case UI_FILTER:             return cfg.filter;
     case UI_RESIZABLE:          return cfg.resizable;
@@ -37,7 +43,9 @@ int hfr_ui_get(int id) {
     case UI_VSYNC:              return cfg.vsync;
     case UI_MAX_FRAME_LATENCY:  return cfg.max_frame_latency;
     case UI_FPS:                return cfg.fps;
-    case UI_SUBSTEP:            return cfg.substep;
+    case UI_SUBSTEP:            return ui_fixed_logic() ? cfg.fixed_substep : cfg.substep;
+    case UI_PREDICT:            return cfg.predict;
+    case UI_PREDICT_AVAILABLE:  return ui_fixed_logic();
     /* Which classes this game can actually fade: the background whenever the world's priority
        is known, and every category some rule mentions. It used to answer "all of them", which
        was true of TH10-13 and is not true of a game whose rules are still being written -- and
@@ -51,6 +59,8 @@ int hfr_ui_get(int id) {
         }
         return mask;
     }
+    /* A fixed-logic game has one switch for both: moving the player between frame ticks is
+       what takes the scheduler off 60 Hz there, and it polls the input when it does. */
     case UI_SUBTICK_INPUT:      return cfg.subtick_input;
     case UI_ENEMY_INTERP:       return cfg.enemy_interp;
     case UI_DEBUG:              return cfg.debug;
@@ -66,8 +76,8 @@ int hfr_ui_get(int id) {
        state its own update never advanced. Same for sub-tick input and the two addresses it
        reads and writes. Both are read-only answers about the profile, so the menu greys them
        out and the setters below refuse them however they are asked. */
-    case UI_SUBSTEP_AVAILABLE:  return ui_sub_count() != 0;
-    case UI_SUBTICK_AVAILABLE:  return g_game && g_game->addr.poll_input && g_game->addr.game_input;
+    case UI_SUBSTEP_AVAILABLE:  return ui_fixed_logic() ? ui_has_class("projectiles") : ui_sub_count() != 0;
+    case UI_SUBTICK_AVAILABLE:  return ui_fixed_logic() ? ui_has_class("player") : (g_game && g_game->addr.poll_input && g_game->addr.game_input);
     case UI_SHARPEN:            return cfg.sharpen;
     case UI_SHARPEN_STRENGTH:   return cfg.sharpen_strength;
     case UI_CURSOR:             return cfg.cursor;
@@ -98,8 +108,18 @@ void hfr_ui_set(int id, int value) {
     case UI_FULLSCREEN_MODE: cfg.fullscreen_mode = !!value; break;
     case UI_VSYNC:           cfg.vsync = !!value; g_pending_chain = 1; break;
     case UI_FPS:             cfg.fps = value < 0 ? 0 : (value > 1000 ? 1000 : value); g_pending_rate = 1; break;
-    case UI_SUBSTEP:         cfg.substep = !!value && hfr_ui_get(UI_SUBSTEP_AVAILABLE); g_pending_rate = 1; break;
-    case UI_SUBTICK_INPUT:   cfg.subtick_input = !!value && hfr_ui_get(UI_SUBTICK_AVAILABLE); break;
+    case UI_SUBSTEP:
+        if (ui_fixed_logic()) {
+            cfg.fixed_substep = !!value && hfr_ui_get(UI_SUBSTEP_AVAILABLE);
+            cfg.substep = cfg.subtick_input || cfg.fixed_substep; g_pending_rate = 1; break;
+        }
+        cfg.substep = !!value && hfr_ui_get(UI_SUBSTEP_AVAILABLE); g_pending_rate = 1; break;
+    case UI_SUBTICK_INPUT:
+        cfg.subtick_input = !!value && hfr_ui_get(UI_SUBTICK_AVAILABLE);
+        /* a fixed-logic game leaves 60 Hz when either of its two options wants ticks between frames */
+        if (ui_fixed_logic()) { cfg.substep = cfg.subtick_input || cfg.fixed_substep; g_pending_rate = 1; }
+        break;
+    case UI_PREDICT:         cfg.predict = !!value; break;
     case UI_ENEMY_INTERP:    cfg.enemy_interp = !!value; break;
     case UI_DEBUG:           cfg.debug = !!value; break;
     case UI_DIM_BACKGROUND: case UI_DIM_ITEMS: case UI_DIM_EFFECTS: case UI_DIM_SPECIAL: case UI_DIM_PLAYER_SHOTS:
@@ -135,7 +155,7 @@ const char* hfr_ui_present_path(void) { return g_own_present ? "own swap chain" 
 /* A stage in progress is recording a replay, and the recording carries the simulation
    settings; changing them part way through would describe the run incorrectly. */
 int hfr_ui_simulation_patched(void) {
-    return g_game && g_game->addr.runner_fn && g_game->addr.frame_calls[0];
+    return g_game && (g_game->install_presentation || (g_game->addr.runner_fn && g_game->addr.frame_calls[0]));
 }
 int hfr_ui_simulation_locked(void) {
     if (g_replay_playing) return 1;
@@ -185,13 +205,22 @@ void hfr_ui_save(void) {
     ini_put_int("hfr", "max_frame_latency", cfg.max_frame_latency);
     ini_put_int("hfr", "fps", cfg.fps);
     ini_put_int("hfr", "vsync", cfg.vsync);
-    ini_put_int("hfr", "substep", cfg.substep);
-    ini_put_int("hfr", "subtick_input", cfg.subtick_input);
-    ini_put_int("hfr", "enemy_interp", cfg.enemy_interp);
+    if (ui_fixed_logic()) {
+        /* its own section, shared with New Classic: [hfr] substep=1 is the right default for
+           the games that stamp the rate into their replays and the wrong one for these */
+        ini_put_int("fixed60", "interpolate", cfg.enemy_interp);
+        ini_put_int("fixed60", "predict", cfg.predict);
+        ini_put_int("fixed60", "subtick", cfg.subtick_input);
+        ini_put_int("fixed60", "substep", cfg.fixed_substep);
+    } else {
+        ini_put_int("hfr", "substep", cfg.substep);
+        ini_put_int("hfr", "subtick_input", cfg.subtick_input);
+        ini_put_int("hfr", "enemy_interp", cfg.enemy_interp);
+    }
     ini_put_int("hfr", "debug", cfg.debug);
     /* Only the systems that can be sub-stepped: a `sub_` key for a MODE_FRAME class would be
        read back into a flag nothing consults, and the file is read by people. */
-    for (int i = 0; g_game && i < (int)g_class_count; ++i) if (g_classes[i].mode == MODE_SUB) {
+    for (int i = 0; g_game && !ui_fixed_logic() && i < (int)g_class_count; ++i) if (g_classes[i].mode == MODE_SUB) {
         char key[64]; snprintf(key, sizeof key, "sub_%s", g_classes[i].name);
         ini_put_int("systems", key, g_sub_enabled[i]);
     }

@@ -161,6 +161,17 @@ struct GameProfile {
         const char* special_name;     /* what DIM_SPECIAL fades in this game, for the menu; NULL = nothing */
     } draw;
     void (*install_sites)(void);
+    int d3d8;                     /* translate the native D3D8 interface to D3D9 */
+    void (*install_presentation)(void); /* older engine's native-60/render hooks */
+    /* An engine outside the TH10-14 family keeps the shared frame scheduler (frame.c) and
+       supplies the two things it cannot know: how to call the game's frame function once the
+       entry has been taken over, and how to run one update pass with no frame drawn behind it
+       (the catch-up tick; returns non-zero when the game asked to exit). */
+    int (*frame_original)(void* ctx);
+    int (*update_only)(void);
+    /* Replay state for an engine whose replay manager is not the TH10-14 one: non-zero while a
+       replay is being played back. NULL with no addr.replay_manager: never. */
+    int (*replay_playing)(void);
     void (*place_enemy)(uint8_t* enemy, uint8_t* anm, uint32_t flags, const float* position);
     /* Optional, and called from the same place: a game's own once-a-frame things whose sprites
        should be drawn between their frame positions. `capture` is true on the frame boundary. */

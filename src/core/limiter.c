@@ -158,12 +158,14 @@ static void call_cleanup(void) {
    runs -- one tick per frame, which is the whole feature -- and a hitch simply is not caught
    up, which at a 60 Hz logic rate costs a frame nobody sees. */
 static int catchup_available(void) {
+    if (g_game->update_only) return 1;
     return g_game->addr.frame_context_ptr && g_game->addr.frame_flag &&
            g_game->addr.frame_context_value && g_game->addr.cleanup_fn && g_game->addr.cleanup_this;
 }
 /* an update pass without drawing/presenting (used to catch up after a missed vblank) */
 static int update_only_tick(void) {
     if (!catchup_available()) return 0;
+    if (g_game->update_only) return g_game->update_only();
     G_FRAME_FLAG34 = g_game->addr.frame_context_value;
     G_FRAME_FLAG38 = g_game->frame_flag_value ? g_game->frame_flag_value : 1;
     int r = hfr_runner(G_UPDATE_RUNNER);
@@ -237,7 +239,7 @@ static void limiter_stats(double now) {
             node_census_report();
             dim_census_report();
             site_census_report();
-            uint8_t* rm=G_REPLAY_MANAGER;
+            uint8_t* rm=g_game->addr.replay_manager ? G_REPLAY_MANAGER : NULL;
             if (rm) LOG("state: stage=%d replay_frame=%d replay_mode=%d input=%08x",
                 *(int*)(rm+g_game->layout.replay_stage),*(int*)(rm+g_game->layout.replay_frame),*(int*)(rm+0x10),(unsigned)G_GAME_INPUT);
         }

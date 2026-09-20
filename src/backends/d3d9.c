@@ -24,7 +24,8 @@ static int detect_refresh(IDirect3DDevice9* dev) {
 static int g_using_ex = 0;
 typedef HRESULT (WINAPI *Direct3DCreate9ExFn)(UINT, IDirect3D9Ex**);
 static void patch_vtable(void** vt, int idx, void* hook, void** orig) {
-    if (*orig) return;
+    if (vt[idx] == hook) return;
+    if (*orig && *orig != vt[idx]) { LOG("D3D vtable slot %d has a different implementation; leaving it unchanged",idx); return; }
     DWORD old;
     if (!VirtualProtect(&vt[idx],4,PAGE_EXECUTE_READWRITE,&old)) {LOG("Cannot patch D3D vtable slot %d",idx);return;}
     *orig=vt[idx];vt[idx]=hook;VirtualProtect(&vt[idx],4,old,&old);
@@ -347,6 +348,13 @@ static HRESULT __stdcall hook_Reset(IDirect3DDevice9* dev, D3DPRESENT_PARAMETERS
 }
 static HRESULT __stdcall hook_CreateDevice(IDirect3D9* d3d, UINT adapter, D3DDEVTYPE type, HWND hwnd, DWORD flags, D3DPRESENT_PARAMETERS* pp, IDirect3DDevice9** out) {
     apply_pp(pp);
+    /* TH08 tears its window and device down and builds both again in the same process when
+       a restart-requiring option changed -- which its first start does by itself. The menu was
+       initialised once and kept the first device and window for good: Dear ImGui holds a
+       reference on the device, so the old one stayed alive and the menu went on drawing,
+       successfully, into a device nobody presents. F11 toggled, the log said so, and nothing
+       appeared. Let go of the old device before the new one exists; init below rebinds. */
+    if (hfr_menu_ready()) { hfr_menu_shutdown(); LOG("menu: released for a new device"); }
     g_device_window = hwnd ? hwnd : (pp ? pp->hDeviceWindow : NULL);
     D3DPRESENT_PARAMETERS use; scaler_adjust_pp(&use, pp, g_device_window, 0, 0);
     HRESULT hr;
@@ -412,6 +420,16 @@ static HRESULT __stdcall hook_CreateDevice(IDirect3D9* d3d, UINT adapter, D3DDEV
         if (!hfr_menu_init(dev, g_device_window)) LOG("menu: unavailable");
         else LOG("menu: ready (open with virtual key 0x%02x)", cfg.menu_key);
         after_device(dev);
+        /* D3D8 games can create an initially hidden HWND and rely on exclusive
+           CreateDevice to show it. Our windowed presentation removes that side
+           effect. Reveal it once, at successful creation, never from the frame
+           loop (which must respect later minimization/hiding). */
+        if (g_game->d3d8 && !pp->Windowed && use.Windowed &&
+            g_device_window && !IsWindowVisible(g_device_window)) {
+            ShowWindow(g_device_window, SW_SHOWNOACTIVATE);
+            LOG("D3D8: showed the game window after converting exclusive presentation to windowed (visible=%d)",
+                IsWindowVisible(g_device_window));
+        }
     }
     return hr;
 }

@@ -100,6 +100,7 @@ extern "C" void hfr_menu_toggle(void) {
     if (g_visible) g_place_next = true;      /* opening always puts it somewhere visible */
 }
 extern "C" int  hfr_menu_visible(void) { return g_ready && g_visible; }
+extern "C" int  hfr_menu_ready(void) { return g_ready; }
 
 extern "C" int hfr_menu_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, LRESULT* result) {
     if (!g_ready) return 0;
@@ -381,6 +382,19 @@ void draw_timing_section(void) {
         ImGui::TextWrapped("This changes when bullets hit, so a replay recorded with it on will not play back faithfully. "
                            "Turn it off before watching a replay, and for score runs.");
         ImGui::Spacing();
+        if (hfr_ui_get(UI_PREDICT_AVAILABLE)) {
+            ImGui::BeginDisabled(!hfr_ui_get(UI_ENEMY_INTERP) && !subtick);
+            toggle("Show the playfield in the present", UI_PREDICT);
+            ImGui::EndDisabled();
+            ImGui::TextWrapped("Smoothing can show the past or the present. Off, everything is drawn between its last "
+                               "two 60 Hz positions: exact, and up to one frame late -- input lag the stock game does "
+                               "not have. On, the playfield is carried forward along its last step instead, and the "
+                               "player is drawn where the keys held right now will put her at the next 60 Hz tick, so "
+                               "she answers within the frame you press. A sprite that turns sharply is wrong for one "
+                               "frame. Nothing in the game changes either way: positions, collisions and replays are "
+                               "the stock game's. Menus and the interface are always interpolated.");
+            ImGui::Spacing();
+        }
         ImGui::BeginDisabled(subtick);
         toggle("Interpolate sprite positions", UI_ENEMY_INTERP);
         ImGui::EndDisabled();

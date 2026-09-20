@@ -95,7 +95,18 @@ int main(int argc,char** argv) {
                 "Start the game from Steam instead. With dinput8.dll, touhou_hfr.dll and "
                 "touhou_hfr.ini in the game's folder, the patch installs itself on any launch -- "
                 "the launcher is not needed.");
-        die("No supported executable found. Supported: TH10 v1.00a, TH11 v1.00a, TH12 v1.00b and TH13 v1.00c (Japanese or English executables). Code modified by another patch is not accepted.");
+        char message[1024] = "No supported executable found. This build recognizes:";
+        for (size_t g = 0; g < GAME_COUNT; ++g) {
+            size_t used = strlen(message);
+            snprintf(message + used, sizeof message - used, "\n%s", game_identities[g].name);
+        }
+        for (size_t g = 0; g < FIXED_GAME_COUNT; ++g) {
+            size_t used = strlen(message);
+            snprintf(message + used, sizeof message - used, "\n%s", fixed_games[g]->name);
+        }
+        size_t used = strlen(message);
+        snprintf(message + used, sizeof message - used, "\n\nAn unrecognized or modified executable is not accepted. See the README for each game's available features.");
+        die(message);
     }
     if(GetFileAttributesA(dll)==INVALID_FILE_ATTRIBUTES)die("touhou_hfr.dll is missing next to the launcher.");
     STARTUPINFOA si={0};si.cb=sizeof si;PROCESS_INFORMATION pi;
