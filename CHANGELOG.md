@@ -4,6 +4,15 @@ Newest first. Versions are the release archive names; `-test` means what it says
 Full release notes for each version are on the
 [releases page](https://github.com/vittorioromeo/th12_hfr/releases).
 
+## v0.6.1-test
+
+- **Fixed: TH14 crashed on its first frame in v0.6-test.** The compiler merged two calls through
+  one function pointer that differed only in calling convention, so TH14's frame function --
+  the only one that takes its context in ECX -- was called the way TH10-13's is. Every call into
+  the game with `this` in ECX (the frame function, the end-of-pass cleanup, node removal, the
+  replay loader) is now an explicit register call, and the harness tests the conventions.
+  TH10-13 and TH08 were not affected.
+
 ## v0.6-test
 
 Touhou 8 — Imperishable Night, experimentally, and by a different route. TH14 fixes, and the

@@ -112,6 +112,28 @@ static void* thcrap_style_detour(const char* dll, const char* func, void* theirs
     assert(iat_write(slot,theirs));   /* overwritten unconditionally, matched by name */
     return chain;
 }
+/* Calls into the game keep their calling convention. Each probe answers with where its argument
+   arrived, so a call compiled with the wrong convention -- which is what GCC made of two calls
+   through one pointer differing only in the convention attribute -- is an assertion here rather
+   than a crash on TH14's first frame. */
+extern int probe_ecx(void), probe_stack(void), probe_ecx_stack(void);
+__asm__(".intel_syntax noprefix\n"
+        ".globl _probe_ecx\n_probe_ecx:\n  mov eax, ecx\n  ret\n"
+        ".globl _probe_stack\n_probe_stack:\n  mov eax, [esp+4]\n  ret 4\n"
+        ".globl _probe_ecx_stack\n_probe_ecx_stack:\n  mov eax, ecx\n  xor eax, [esp+4]\n  ret 4\n"
+        ".att_syntax\n");
+static void test_calling_conventions(void) {
+    const struct GameProfile* real = g_game; struct GameProfile game = {0};
+    g_game = &game;
+    game.addr.frame_fn = (uintptr_t)probe_ecx; game.frame_ctx_ecx = 1;
+    assert(frame_call_original((void*)0x1234567) == 0x1234567);
+    game.addr.frame_fn = (uintptr_t)probe_stack; game.frame_ctx_ecx = 0;
+    assert(frame_call_original((void*)0x7654321) == 0x7654321);
+    assert(call_this0((uintptr_t)probe_ecx, (void*)0x1111) == 0x1111);
+    assert(call_this1((uintptr_t)probe_ecx_stack, (void*)0x1100, (void*)0x0011) == 0x1111);
+    g_game = real;
+    puts("PASS: stdcall and ECX calls into the game keep their conventions");
+}
 static void test_import_redirection(void) {
     /* The Direct3D factory the game imports: Direct3DCreate9, or Direct3DCreate8 for an engine
        that reaches Direct3D 9 through the bridge. Same slot discipline either way. */
@@ -298,7 +320,7 @@ int main(int argc,char**argv) {
        simulation at 60 Hz. The runner tests build their own class table and hold either way;
        the replay round-trip drives a real sub-step switch and needs a real class. */
     int subs = sim && g_class_count;
-    test_schedule();test_speed_sites();test_movement_residual();test_replay_parser();test_scale_rect();test_snap_client();test_menu_key();
+    test_schedule();test_calling_conventions();test_speed_sites();test_movement_residual();test_replay_parser();test_scale_rect();test_snap_client();test_menu_key();
     if (sim) { test_runner();test_runner_undescribed();test_runner_tail(); }
     else puts("SKIP: the shared runner (this game's simulation is not described)");
     if (subs) test_replay_roundtrip();

@@ -147,9 +147,8 @@ static void call_with_esi(uintptr_t fn, uintptr_t esi) {
     uintptr_t s = esi;
     __asm__ volatile ("call *%1" : "+S"(s) : "r"(fn) : "eax", "ecx", "edx", "memory", "cc");
 }
-typedef void (__attribute__((thiscall)) *CleanupThisFn)(void* self);
 static void call_cleanup(void) {
-    if (g_game->cleanup_this_ecx) ((CleanupThisFn)g_game->addr.cleanup_fn)((void*)g_game->addr.cleanup_this);
+    if (g_game->cleanup_this_ecx) call_this0(g_game->addr.cleanup_fn, (void*)g_game->addr.cleanup_this);
     else call_with_esi(g_game->addr.cleanup_fn, g_game->addr.cleanup_this);
 }
 /* Whether the catch-up tick can be made at all. It sets up the game's frame context by hand

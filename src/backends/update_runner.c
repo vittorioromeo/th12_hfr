@@ -8,11 +8,10 @@ static inline void* node_arg(struct UpdateFunc* uf) {
     return g_game->layout.node_arg ? *(void**)((uint8_t*)uf + g_game->layout.node_arg) : uf->arg;
 }
 typedef void (__fastcall *RemoveNodeFn)(void* a, void* b);
-typedef void (__attribute__((thiscall)) *RemoveNodeThisFn)(void* runner, void* node);
 static inline void game_remove_node(struct UpdateFunc* uf, uint8_t* runner) {
     switch (g_game->remove_node_abi) {
         case REMOVE_NODE_RUNNER_THIS:
-            ((RemoveNodeThisFn)g_game->addr.remove_node)(runner, uf); return;
+            call_this1(g_game->addr.remove_node, runner, uf); return;
         case REMOVE_NODE_RUNNER_FIRST:
             ((RemoveNodeFn)g_game->addr.remove_node)(runner, uf); return;
         default:

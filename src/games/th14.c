@@ -117,10 +117,9 @@ void __stdcall __attribute__((used)) th14_replay_save_c(char* filename, char* na
     ((Th14ReplaySaveFn)g_game->addr.replay_save)(filename, name, p3, p4);
     replay_append_chunk(filename);
 }
-typedef void (__attribute__((thiscall)) *Th14ReplayLoadFn)(void*, char*);
 void __stdcall __attribute__((used)) th14_replay_load_c(void* mgr, char* filename) {
     restore_replay_settings(); g_replay_playing = 0;
-    ((Th14ReplayLoadFn)g_game->addr.replay_load)(mgr, filename);
+    call_this1(g_game->addr.replay_load, mgr, filename);
     replay_loaded(filename);
 }
 /* thiscall in, stdcall out: the filename the caller pushed becomes the second argument, ECX the
