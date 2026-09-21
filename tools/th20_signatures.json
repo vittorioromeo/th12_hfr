@@ -265,6 +265,11 @@
   "description": "stone field countdown"
  },
  {
+  "address": "0x4850a2",
+  "bytes": "8b 45 a0 05 b0 04 00 00",
+  "description": "graze tint and shake"
+ },
+ {
   "address": "0x412b96",
   "bytes": "8b 45 c0 50 ff 55 bc 83 c4 04",
   "description": "draw runner dispatch"
@@ -353,6 +358,11 @@
   "address": "0x44ced0",
   "bytes": "55 8b ec 83 ec 08 89 4d fc",
   "description": "VM of a handle"
+ },
+ {
+  "address": "0x4298b0",
+  "bytes": "55 8b ec 83 ec 0c 89 4d fc",
+  "description": "Rng::float(range)"
  },
  {
   "address": "0x509280",

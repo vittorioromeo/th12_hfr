@@ -14,6 +14,9 @@ Touhou 20.
   carry their recording rate and per-tick input; dimming and the video path work. Bombs,
   effects and the stage stay at 60 Hz. Tested under Wine only so far: a recording and its
   playback agree on every frame at 120 and 144 Hz.
+- **TH20: the graze tint and shake can be switched off**, like TH15's: a checkbox under the
+  dimming sliders (`[game] th20_graze_bullets`). Visual only — the title demo's state is
+  identical frame for frame with it off.
 - **Relocatable executables.** TH20 is built with ASLR. Signatures are now compared
   relocation-aware and every address a profile names is moved by the load delta, so the patch
   works wherever Windows puts the game.

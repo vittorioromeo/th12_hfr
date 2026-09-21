@@ -151,6 +151,7 @@ Shown in the F11 menu under the dimming sliders, on that game only.
 | --- | --- | --- |
 | `th15_graze_bullets` | `1` | TH15: bullets you are grazing are tinted and their sprites shake. `0` draws them still, in their own colours; hitboxes never moved |
 | `th15_graze_glow` | `1` | TH15: the large glow around the player while bullets are in graze range |
+| `th20_graze_bullets` | `1` | TH20: bullets close to you are tinted and their sprites shake. `0` draws them still, in their own colours; hitboxes never moved |
 
 Both are visual only: grazing, its score, the item slow-down and replays are unchanged.
 

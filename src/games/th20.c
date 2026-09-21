@@ -107,6 +107,20 @@ void __cdecl __attribute__((used)) th20_option_display(const uint8_t* player, fl
     v[1] += (float)(pos[1] - th20_player_at_major[1]) / 128.0f;
 }
 
+/* Own option ([game] in the ini, a checkbox under the dimming sliders). While a bullet is within
+   graze range the collision routine (0x484a20, at 0x4850a2) tints its sprite -- colour mode 1,
+   green fading from 0xd0 to 0x60 with the time spent in range -- and gives it a random offset
+   of up to a pixel each way at VM+0x2c, every call: the flicker. Off, neither is written. The
+   graze itself, its counter and timers are before this block and the two ANM interrupts
+   around it (2 on entering, 3 on leaving, which puts the sprite back) are left alone; the two
+   random numbers are still drawn, so the generator at 0x5ba4c4 is where the game leaves it. */
+static int th20_graze_bullets = 1;
+static const struct GameToggle th20_toggles[] = {
+    { "th20_graze_bullets", "Graze effect: bullets tint and shake",
+      "Fossilized Wonders tints the bullets close to you and shakes their sprites.\n"
+      "Off: they are drawn still, in their own colours. Their hitboxes never moved.", &th20_graze_bullets, 1 },
+};
+
 /* Sub-tick input. The poll (0x41fe80, `this` = the input manager at [0x5b8898]) reads every
    device, backs the four 0x2c0-byte input objects at 0x5b88b0 up to 0x5b93b0, moves each raw
    word to "previous", rebuilds the hold counters and counts a frame -- none of which may
@@ -296,6 +310,17 @@ static void th20_install_sites(void) {
     /* An effect spawned, with random numbers, on every 30th frame of a player-side timer. */
     site_call(V(0x502c67), th20_timer_every);
 
+    /* --- The graze tint and shake, behind its switch (th20_toggles). --- */
+    STUB_BEGIN();
+    E(0x83, 0x3d); E32((uint32_t)(uintptr_t)&th20_graze_bullets); E(0x00);      /* cmp dword [switch],0 */
+    { uint8_t* je = g_p; E(0x74, 0x00);
+      ECOPY(V(0x4850a2), 8); EJMP(V(0x4850aa));                                 /* on: the game's block */
+      je[1] = (uint8_t)(g_p - (je + 2)); }
+    for (int i = 0; i < 2; ++i) {                                               /* off: its two random numbers, discarded */
+        E(0x68); E32(0x3f800000); E(0xb9); E32((uint32_t)V(0x5ba4c4)); ECALL(V(0x4298b0)); E(0xdd, 0xd8);
+    }
+    EJMP(V(0x4851ef)); site_hook(V(0x4850a2), 8);
+
     /* --- Replays. --- */
     site_call(V(0x4e3dea), th20_replay_save);
     site_call(V(0x52754f), th20_replay_save);
@@ -421,6 +446,7 @@ static const struct GameProfile th20_profile = {
     .frame_ctx_ecx = 1, .frame_flag_value = 2, .runner_return8_ends = 1,
     .update_only = th20_update_only, .poll_raw = th20_poll_raw, .place_enemy = th20_place_enemy, .mask_minor_player_edges = 1, .trace_state = th20_trace_state,
     .install_sites = th20_install_sites,
+    .toggles = th20_toggles, .toggle_count = sizeof th20_toggles / sizeof *th20_toggles,
     /* Dimming. The dispatch is "mov eax,[ebp-0x40]; push eax; call [ebp-0x44]; add esp,4"; a
        draw node's priority is its first word. The batch flush is 0x4455c0 on the sprite manager
        at [0x5c0028], and one VM is drawn by 0x443880 (the manager in ECX, the VM on the stack). */

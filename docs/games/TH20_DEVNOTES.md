@@ -184,6 +184,16 @@ The draw table: stage 3, `enemy.anm` layer 8 at 20 (the first world object, `wor
 player's band 28–34 (`pl*.anm` layers 13–15), items 35 and bullets 41 (both `bullet.anm`),
 `effect.anm` at 37, 46, 49, 50, the interface from 60.
 
+### The graze switch
+
+While a bullet is in graze range the collision routine (`0x484a20`) tints it — colour mode 1,
+green fading `0xd0` → `0x60` with the time in range (timer `+0x4b0`) — and writes a random
+offset of up to a pixel each way to its VM's `+0x2c`, every call. `[game] th20_graze_bullets=0`
+(a checkbox under the dimming sliders) skips that block at `0x4850a2`. The graze, its counters,
+and the two ANM interrupts around the block (2 on entering range, 3 on leaving) are untouched,
+and the block's two draws from the generator at `0x5ba4c4` are still made. The title demo's
+trace is identical with the switch off.
+
 ## 8. Verification
 
 ```

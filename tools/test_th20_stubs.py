@@ -84,3 +84,25 @@ for start, skip in ((0x53645d, 0x536527), (0x53674f, 0x5367b8), (0x53790d, 0x537
     reset(1); wi(u.reg_read(UC_X86_REG_EBP) - 0x50, obj)
     assert run(start, skip, start + 7) == start + 7, hex(start)
 print('PASS: TH20 stone fields act on the boundary tick only')
+
+# 0x4850a2: the grazed bullet's tint and shake, behind a switch. On, the game's own block is
+# entered with EAX on the in-range timer. Off, control reaches the end of the routine with the
+# sprite untouched, after exactly the block's two draws from the generator at 0x5ba4c4
+# (Rng::float(1.0), 0x4298b0 -- it takes a lock, so the calls are answered here, not emulated).
+RNG, RNG_FLOAT = 0x5ba4c4, 0x4298b0
+def graze(on):
+    reset(); wi(meta['th20_graze_bullets'], on)
+    ebp = u.reg_read(UC_X86_REG_EBP); b = ARENA + 0x6000; wi(ebp - 0x60, b)
+    draws = 0; pc = run(0x4850a2, 0x4850aa, 0x4851ef, RNG_FLOAT)
+    while pc == RNG_FLOAT:
+        esp = u.reg_read(UC_X86_REG_ESP)
+        assert u.reg_read(UC_X86_REG_ECX) == RNG and rf(esp + 4) == 1.0
+        ret = ri(esp); u.reg_write(UC_X86_REG_ESP, esp + 8); fpush(0.5); draws += 1   # ret 4, a float in st0
+        pc = run(ret, 0x4850aa, 0x4851ef, RNG_FLOAT)
+    return pc, draws, u.reg_read(UC_X86_REG_EAX), u.reg_read(UC_X86_REG_ESP)
+pc, draws, eax, esp = graze(1)
+assert pc == 0x4850aa and draws == 0 and eax == ARENA + 0x6000 + 0x4b0 and esp == STACK
+pc, draws, eax, esp = graze(0)
+assert pc == 0x4851ef and draws == 2 and esp == STACK
+u.mem_write(BOOT, b'\xdb\xe3'); u.emu_start(BOOT, BOOT + 2)   # and the x87 stack is empty again (fninit for the next test)
+print('PASS: TH20 grazed-bullet tint and shake follow their switch, with the same two random draws')
