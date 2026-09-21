@@ -32,10 +32,11 @@ void __stdcall __attribute__((used)) th15_replay_save_c(char* filename, char* na
     ((Th15ReplaySaveFn)g_game->addr.replay_save)(filename, name, p3, p4);
     replay_append_chunk(filename);
 }
-void __stdcall __attribute__((used)) th15_replay_load_c(void* mgr, char* filename) {
+int __stdcall __attribute__((used)) th15_replay_load_c(void* mgr, char* filename) {
     restore_replay_settings(); g_replay_playing = 0;
-    call_this1(g_game->addr.replay_load, mgr, filename);
+    int r = call_this1(g_game->addr.replay_load, mgr, filename);
     replay_loaded(filename);
+    return r;   /* callers test it: zero is success, and anything else abandons the playback */
 }
 __asm__(".intel_syntax noprefix\n.globl _th15_replay_load_entry\n_th15_replay_load_entry:\n"
         "push dword ptr [esp+4]\npush ecx\ncall _th15_replay_load_c@8\nret 4\n.att_syntax\n");
@@ -298,7 +299,8 @@ static const struct node_class th15_classes[] = {
     { 0x4203e0, MODE_FRAME, "Update31"        },
     { 0x4228c0, MODE_FRAME, "Effects?"        },
     { 0x4374f0, MODE_FRAME, "Front"           },
-    { 0x45ceb0, MODE_FRAME, "ReplayPlayback"  },
+    { 0x45cea0, MODE_FRAME, "ReplayPlayback"  },   /* latches the recorded input (0x45c150) */
+    { 0x45ceb0, MODE_FRAME, "ReplaySpeed"     },   /* fast-forward only */
 };
 
 static const struct GameProfile th15_profile = {
@@ -309,6 +311,12 @@ static const struct GameProfile th15_profile = {
         .window_flags = 0x51bbec,
         .misc_flags = 0x503d86,
         .raw_input = 0x4e6d10,
+        /* Sub-tick input, as TH14: one 0x248-byte object, hardware layer at +0, the game's copy
+           from +0x218. The record node latches it at 0x45c050; the player reads it at 0x4540ed;
+           "hold shot to focus" is option bit 0x200 with a threshold of 10 (0x45c06b). */
+        .poll_input = 0x401f50,
+        .game_input = 0x4e6f28, .game_pressed = 0x4e6f34, .game_released = 0x4e6f38,
+        .option_flags = 0x4e79cc, .autofocus = 0x4e6ea4,
         .raw_pressed = 0x4e6d1c,
         .replay_manager = 0x4e9bc4,
         .replay_save = 0x45c460, .replay_load = 0x45cc80,
@@ -316,7 +324,7 @@ static const struct GameProfile th15_profile = {
         .player = 0x4e9bb8, .player_callback = 0x4559c0,
         .anm_manager = 0x503c18, .anm_get_vm = 0x488510,
         .enemy_manager = 0x4e9a80,            /* stored by its constructor at 0x426471 */
-        .record_callback = 0x45ce90, .playback_callback = 0x45ceb0,
+        .record_callback = 0x45ce90, .playback_callback = 0x45cea0,
         .update_runner = 0x4e9a54,
         .frame_fn = 0x4729c0,
         .remove_node = 0x4018a0,
@@ -330,7 +338,7 @@ static const struct GameProfile th15_profile = {
         .screenshot_fn = 0x44cbf0, .screenshot_call = 0x472c66,
     },
     .layout = {
-        .node_arg = 0x24, .runner_next = 0x50, .runner_ending = 0x54, .input_width = 4,
+        .node_arg = 0x24, .runner_next = 0x50, .runner_ending = 0x54, .input_width = 4, .input_size = 0x248, .autofocus_frames = 10,
         .player_timer = 0x634,
         .enemy_list = 0x180, .enemy_flags = 0x526c, .enemy_position = 0x1250,
         .enemy_skip_mask = 0x2000000,

@@ -118,10 +118,11 @@ void __stdcall __attribute__((used)) th14_replay_save_c(char* filename, char* na
     ((Th14ReplaySaveFn)g_game->addr.replay_save)(filename, name, p3, p4);
     replay_append_chunk(filename);
 }
-void __stdcall __attribute__((used)) th14_replay_load_c(void* mgr, char* filename) {
+int __stdcall __attribute__((used)) th14_replay_load_c(void* mgr, char* filename) {
     restore_replay_settings(); g_replay_playing = 0;
-    call_this1(g_game->addr.replay_load, mgr, filename);
+    int r = call_this1(g_game->addr.replay_load, mgr, filename);
     replay_loaded(filename);
+    return r;   /* callers test it: zero is success, and anything else abandons the playback */
 }
 /* thiscall in, stdcall out: the filename the caller pushed becomes the second argument, ECX the
    first, and the `ret 4` at the end is the game function's own, so the caller's stack is left
@@ -734,7 +735,8 @@ static const struct node_class th14_classes[] = {
     { 0x422a60, MODE_FRAME, "Update21"        },
     { 0x439750, MODE_SUB,   "ItemManager"     },
     { 0x41cb50, MODE_FRAME, "Update26"        },
-    { 0x455e60, MODE_FRAME, "ReplayPlayback"  },
+    { 0x455e50, MODE_FRAME, "ReplayPlayback"  },   /* priority 12 in a replay: latches the recorded input (0x455180) */
+    { 0x455e60, MODE_FRAME, "ReplaySpeed"     },   /* priority 30: fast-forward only; it never advances the replay */
 };
 
 static const struct GameProfile th14_profile = {
@@ -748,6 +750,17 @@ static const struct GameProfile th14_profile = {
         .misc_flags = 0x4f5815,          /* a byte: whether the runner locks */
         .raw_input = 0x4d6878,
         .raw_pressed = 0x4d6884,
+        /* Sub-tick input. One 0x248-byte object holds both layers: the hardware reading at +0
+           (word, previous, repeat, pressed, released, hold counters) and, from +0x218, the
+           game's copy of it that the replay node latches at 0x455050, records, and the player
+           reads at 0x44d33e. `poll_input` is the supervisor's per-frame read (keyboard by
+           GetKeyboardState or DirectInput, joystick merged by 0x4018b0); it takes nothing and
+           writes the hardware layer and one word above it (+0x22c), so `input_size` is the whole
+           object; the save is put back before the game input word is touched. "Hold shot to focus" is
+           option bit 0x200, synthesised at 0x455071 once the shot's hold counter reaches 10. */
+        .poll_input = 0x401cd0,
+        .game_input = 0x4d6a90, .game_pressed = 0x4d6a9c, .game_released = 0x4d6aa0,
+        .option_flags = 0x4d916c, .autofocus = 0x4d6a0c,
         .replay_manager = 0x4db688,
         /* Saving and loading a replay file, both wrapped by th14_install_sites because both
            moved convention: the save is stdcall with four arguments, the load is thiscall. */
@@ -769,7 +782,7 @@ static const struct GameProfile th14_profile = {
         .enemy_manager = 0x4db52c,
         /* The replay nodes, from the draw trace's pairing and from where OpenInputLagPatch
            puts its replay speed-control patch (0x455e82, inside the playback one). */
-        .record_callback = 0x455e40, .playback_callback = 0x455e60,
+        .record_callback = 0x455e40, .playback_callback = 0x455e50,
         .update_runner = 0x4db51c,
         .frame_fn = 0x46a950,
         .remove_node = 0x401630,
@@ -789,7 +802,7 @@ static const struct GameProfile th14_profile = {
     .layout = {
         .node_arg = 0x24,        /* as TH13 */
         .runner_next = 0x50, .runner_ending = 0x54,     /* as TH13: the runner keeps the walk's next node in itself */
-        .input_width = 4,
+        .input_width = 4, .input_size = 0x248, .autofocus_frames = 10,
         /* The player's life-state timer: prev +0x68c, integer +0x690, float +0x694, and its
            rate pointer at +0x698 -- which the constructor points at the game speed (0x44dd2a),
            so the timer sub-steps by itself. */

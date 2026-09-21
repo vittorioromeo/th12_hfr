@@ -8,7 +8,7 @@
  * extra USER chunk, and applied on playback.
  */
 #define G_INPUT_RAW       ((uint8_t*)g_game->addr.raw_input)
-#define G_INPUT_RAW_SIZE  0x130
+#define G_INPUT_RAW_SIZE  0x248   /* the largest: TH14 saves its whole input object */
 /* Every input word the runtime reads or writes comes through these two, and a profile that has
    not described one passes zero. Answering "no bits held" and dropping the write is the right
    degradation and it is the only place it has to be written: the game input word, the pressed
@@ -82,7 +82,7 @@ static uint32_t poll_input_raw(void) {
 static uint32_t merge_subtick_bits(uint32_t frame_val, uint32_t polled, int live) {
     uint32_t v = (frame_val & ~(uint32_t)(IN_MOVE | IN_FOCUS)) | (polled & IN_MOVE);
     uint32_t focus = polled & IN_FOCUS;
-    if (live && g_game->addr.option_flags && (G_OPTION_FLAGS & 0x200) && G_AUTOFOCUS_CTR >= 8) focus = IN_FOCUS;   /* "hold shot to focus" option: synthesized by the replay node */
+    if (live && g_game->addr.option_flags && (G_OPTION_FLAGS & 0x200) && G_AUTOFOCUS_CTR >= (g_game->layout.autofocus_frames ? g_game->layout.autofocus_frames : 8u)) focus = IN_FOCUS;   /* "hold shot to focus" option: synthesized by the replay node */
     return v | focus;
 }
 static inline uint8_t bits_encode(uint32_t v) { return (uint8_t)(((v & IN_MOVE) >> 3) | !!(v & IN_FOCUS)); }

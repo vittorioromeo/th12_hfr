@@ -27,7 +27,7 @@ At TH14's level. Described: identification, the video path, the scheduler, the d
 dimming, the game speed, six sub-stepped systems, enemy and option interpolation, the replay
 extension, the desync trace.
 
-Not described: sub-tick input (`poll_input`, `game_input`), `pp`, `sprite_round_sites`,
+Not described: `pp`, `sprite_round_sites`,
 script-level dim rules (`vm_script_off`), the English and Steam builds.
 
 Tested under Wine (§8) and by `test-games.ps1 -Matrix -Drive` on Windows at 360 Hz: every case
@@ -105,7 +105,8 @@ finds no pointer, because there is none.
 | enemy manager / list | `0x4e9a80` / `+0x180`; enemy flags `+0x526c`, position `+0x1250`, skip mask `0x2000000` |
 | bullet manager | `0x4e9a6c`; 2001 bullets of `0x1494` at `+0x98` |
 | ANM manager / `get_vm` | `0x503c18` / `0x488510` |
-| replay manager / save / load | `0x4e9bc4` / `0x45c460` / `0x45cc80`; callbacks `0x45ce90` (record), `0x45ceb0` (playback) |
+| replay manager / save / load | `0x4e9bc4` / `0x45c460` / `0x45cc80`; callbacks `0x45ce90` (record), `0x45cea0` (playback); `0x45ceb0` is speed control only |
+| input | one `0x248` object at `0x4e6d10`: `poll_input` `0x401f50`, `game_input` `0x4e6f28` (latched at `0x45c050`, read by the player at `0x4540ed`), pressed `0x4e6f34`, released `0x4e6f38`, option flags `0x4e79cc`, autofocus counter `0x4e6ea4` (threshold 10) |
 | draw dispatch / flush / VM draw | `0x40168a` (node in EDI) / `0x47e3f0` / `0x4817d0` |
 
 `0x4e9a68`, four bytes below the bullet manager pointer, is a different object; a
@@ -190,7 +191,6 @@ multiply) over the sub-stepped classes found the one new site (§4, graze slow-d
 
 ## 10. Open
 
-- Sub-tick input.
 - `vm_script_off`.
 - Stage distortion RNG (TH11–13 gate it; not looked for here or on TH14).
 - English and Steam executables; `vpatch_th15.dll`.

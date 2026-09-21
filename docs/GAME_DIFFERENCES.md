@@ -36,7 +36,7 @@ adapters in `src/games/`.
 | Sprite animation | interpolated quads | sub (World, UI) | sub | sub | sub | sub (Early, Late passes) | sub (Early, Late passes) | interpolated |
 | Enemies | predicted quads | 60 Hz, **not interpolated** (`place_enemy` NULL) | interpolated | interpolated | interpolated | interpolated | interpolated | interpolated |
 | Player options | predicted quads | 60 Hz | 60 Hz | 60 Hz | 60 Hz | interpolated (`place_options`) | interpolated (`place_options`) | interpolated |
-| Sub-tick input | `th08_live_input` | yes | yes | yes | yes | **no** (`poll_input`, `game_input` unset) | **no** (as TH14) | own |
+| Sub-tick input (`addr.poll_input`, `addr.game_input`) | `th08_live_input` | yes | yes | yes | yes | yes | yes | own |
 | Opt-in modes turn off during replay playback | yes | — | — | — | — | — | — | **no** |
 
 ## 3. Calling conventions and layout (profile fields)
@@ -54,7 +54,8 @@ All of these are data; the shared runner, frame shim and stubs read them.
 | `layout.runner_ending` | — | `0x48` | `0x48` | `0x54` | `0x54` | `0x54` |
 | `layout.node_arg` / `runner_next` | `+0x20` / — | `+0x20` / — | `+0x20` / — | `+0x24` / `+0x50` | `+0x24` / `+0x50` | `+0x24` / `+0x50` |
 | `layout.enemy_list` | — | `+0x68` | `+0x68` | `+0xb0` | `+0xd0` | `+0x180` |
-| `layout.input_width` / `input_size` / `focus_mask` | 2 / `0x6a` / 4 | 4 / `0x130` / 8 | 4 / `0x130` / 8 | 4 / `0x130` / 8 | 4 / — / 8 | 4 / — / 8 |
+| `layout.input_width` / `input_size` / `focus_mask` | 2 / `0x6a` / 4 | 4 / `0x130` / 8 | 4 / `0x130` / 8 | 4 / `0x130` / 8 | 4 / `0x248` / 8 | 4 / `0x248` / 8 |
+| `layout.autofocus_frames` ("hold shot to focus") | — | 8 | 8 | 8 | 10 | 10 |
 | `mask_minor_player_edges` | 1 | 1 | 0 | 0 | 0 | 0 |
 | `native_size_cycle` | 0 | 0 | 0 | 0 | 0 | 0 |
 | Speed writes (`speed_sites`) | 12, mostly `mov` | 15 `fstp` | 15 `fstp` | 16 `fstp` | 12, SSE (`SpeedSrc` XMM/none) | 12, SSE |
@@ -120,7 +121,7 @@ gate, four `ExecuteScript` call sites and the behaviour block.
 | vpatch conflict sites (`*_conflicts.h`) | none | 5 | 4 | 4 | 4 | none | none |
 | English / Steam executables | no | yes | yes | yes | yes | unverified | unverified |
 | thprac, thcrap, THRotator | untested | yes | yes | yes | yes | untested | untested |
-| Frozen signatures | 31 | 82 | 67 | 70 | 102 | 72 | 56 |
+| Frozen signatures | 31 | 82 | 67 | 70 | 102 | 75 | 59 |
 
 ## 8. Game-specific branches outside `src/games/`
 

@@ -202,7 +202,7 @@ static int replay_read_chunk(const char* name) {
     return rate >= 60 && rate <= 1000 ? rate : 0;
 }
 typedef void (__fastcall *ReplaySaveFn)(char* filename, char* name, int p3);
-typedef void (__stdcall *ReplayLoadFn)(void* mgr, char* filename);
+typedef int (__stdcall *ReplayLoadFn)(void* mgr, char* filename);
 #define orig_replay_save ((ReplaySaveFn)g_game->addr.replay_save)
 #define orig_replay_load ((ReplayLoadFn)g_game->addr.replay_load)
 static void __fastcall hfr_replay_save(char* filename, char* name, int p3) {
@@ -217,8 +217,11 @@ static void replay_loaded(const char* filename) {
         MessageBoxA(NULL,"This replay uses different or invalid Touhou HFR simulation metadata. Playback may desynchronize. Use the build that recorded it for accurate playback.","Touhou HFR replay compatibility",MB_OK|MB_ICONWARNING);
     } else if(g_replay_rate && !g_replay_metadata) LOG("Legacy HFR replay: rate/input retained, simulation version unknown; use its original build if playback desynchronizes");
 }
-static void __stdcall hfr_replay_load(void* mgr, char* filename) {
+/* The loader's result is passed through: TH14's callers test it, and a wrapper that returned
+   whatever the log call left in EAX made every playback from the menu look like a failed load. */
+static int __stdcall hfr_replay_load(void* mgr, char* filename) {
     restore_replay_settings();g_replay_playing=0;
-    orig_replay_load(mgr, filename);
+    int r = orig_replay_load(mgr, filename);
     replay_loaded(filename);
+    return r;
 }

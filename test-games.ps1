@@ -610,6 +610,10 @@ $DriveBody = {
     Test-Stats $ctx $statsBefore $ticks
     $s = @(Get-Stats (Read-Log $log)) | Select-Object -Skip $statsBefore
     if ($s) { $ctx.Cells.Polls = ($s | Measure-Object -Property Polls -Maximum).Maximum }
+    # Sub-tick input: every sub-stepped game polls between frame boundaries while a stage runs.
+    if ($s -and $in -and -not $traits.Fixed -and $substep -and $ctx.Cells.Polls -eq 0 -and [int](Get-IniValue $ctx.Ini 'hfr' 'subtick_input' 1)) {
+        $ctx.Notes.Add('no sub-tick input polls in a stage: the input path is not described, or the stage start was not seen')
+    }
 
     # TH14's firing cycle once stopped after two steps while the button was held. Shots per
     # game frame, window by window: every window after the first must have some.

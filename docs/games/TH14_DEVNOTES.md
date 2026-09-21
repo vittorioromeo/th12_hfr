@@ -31,10 +31,9 @@ site census, exception report), `replay_trace=1`, `replay_trace_from`, `replay_t
 
 Described: identification, the video path, the scheduler, the catch-up tick, the draw path and
 dimming, the game speed and its write sites, the class table with six sub-stepped systems
-(§5), enemy and option sprite interpolation (§9), the replay extension (§10).
+(§5), enemy and option sprite interpolation (§9), the replay extension (§10), sub-tick input (§4).
 
-Not described: sub-tick input (`poll_input`, `game_input` are read but not in the profile, §10),
-`pp`, the pause test (§4), `sprite_round_sites`, `vpatch_th14.dll` conflict sites, the English
+Not described: `pp`, the pause test (§4), `sprite_round_sites`, `vpatch_th14.dll` conflict sites, the English
 and Steam builds. See §15.
 
 A callback that is not in the class table is `MODE_FRAME` (`node_mode`'s default), so it runs
@@ -174,15 +173,16 @@ priority 52, so every world draw in the trace reports an offscreen viewport.
 | `addr.anm_manager` / `addr.anm_get_vm` | `0x4f56cc` / `0x47f0a0` |
 | `addr.enemy_manager` | `0x4db52c` — the manager the shot-versus-enemy test uses at `0x451463` |
 | bullet manager | `*(void**)0x4db530` (not a profile field; used by the trace) |
-| `addr.record_callback` / `addr.playback_callback` | `0x455e40` / `0x455e60`. OpenInputLagPatch patches `0x455e82`, 0x22 bytes into the playback node, to skip replay speed control |
+| `addr.record_callback` / `addr.playback_callback` | `0x455e40` (→ `0x455040`) / `0x455e50` (→ `0x455180`), both priority 12; the playback one exists only in a replay. `0x455e60` (priority 30) is replay speed control only and never advances the replay; the profile named it as the playback node until sub-tick input showed that no stage start was ever seen in playback. OpenInputLagPatch patches `0x455e82`, inside it |
 | `addr.replay_save` / `addr.replay_load` | `0x455490` / `0x455c20` |
 | `addr.data_dir` | `0x4f5a45` |
 | global object | `0x4f5a18` (the frame functions' `this`; holds the data directory at `+0x2d`) |
 | game manager (supervisor) | `0x4db558`, flags at `+0x80` — the word every update callback's gate tests. Not in the profile: the runtime's pause test is written against TH10–13's bit assignments (`0x70`) and TH14's bits have not been read |
-| `poll_input` (not in profile) | `0x41e710`, thiscall with the raw input object `0x4d6878` in ECX |
-| `game_input` (not in profile) | `0x4d6a90` — the word the record node writes and the player's movement reads at `0x44d33e` |
+| `addr.poll_input` | `0x401cd0`, no arguments: the supervisor's per-frame read (`0x4448c8`). Keyboard by `GetKeyboardState` or DirectInput (flag `0x400` of `0x4d9684`), joystick merged by `0x4018b0`; stores into the hardware layer and runs its counters (`0x407540`). `0x41e710` is the counter update of the game layer, not a poll |
+| `addr.game_input` | `0x4d6a90` — the word the record node writes and the player's movement reads at `0x44d33e`. One `0x248`-byte object at `0x4d6878` holds the hardware layer at `+0` and this game layer from `+0x218`; `layout.input_size = 0x248` because the hardware counters write one word above `+0x218` (`+0x22c`) |
 | previous frame's input | `0x4d6a94`; pressed and released are derived from it |
-| two further recorded words | `0x4d6a9c`, `0x4d6aa0` |
+| `addr.game_pressed` / `game_released` | `0x4d6a9c`, `0x4d6aa0` (the two further recorded words) |
+| `addr.option_flags` / `autofocus` | `0x4d916c` bit `0x200` / `0x4d6a0c` (the shot's hold counter); focus is synthesised at `0x455071` from 10 frames, hence `layout.autofocus_frames = 10` |
 
 The input addresses were read from the replay record node at `0x455040`, where the game latches
 its input for the frame. The replay records three words, six bytes a frame; sub-tick input has
@@ -332,7 +332,8 @@ Callback census (`debug=1`) on a first stage. Priority is the registration prior
 | 24 | `0x439750` | in a stage | ItemManager | **sub** |
 | 26 | `0x41cb50` | in a stage | Update26 | frame |
 | 28 | `0x431a40` | in a stage | Front (GUI) | frame |
-| 30 | `0x455e60` | in a stage | ReplayPlayback | frame |
+| 12 | `0x455e50` | in a replay | ReplayPlayback | frame |
+| 30 | `0x455e60` | in a stage | ReplaySpeed | frame |
 
 A system may be `MODE_SUB` only when everything it counts in whole frames still does so with its
 update running several times a frame, and when every once-a-frame reader of its state still gets
@@ -412,7 +413,7 @@ Draw callbacks pair with update callbacks by address (usually 0x10 apart).
 | player | `0x44ec60` (18) | `0x44ec70` (28) | ~10 quads, one texture; `pl00.anm` |
 | items | `0x439750` (24) | `0x439780` (31) | 270 prims, one texture; `bullet.anm` L0 |
 | GUI | `0x431a40` (28) | `0x431a50`, `0x431a60` (48, 45) | `front.anm` in its constructor |
-| replay record / playback | `0x455e40` (12), `0x455e60` (30) | `0x455eb0` (62) | — |
+| replay record / playback / speed | `0x455e40` (12), `0x455e50` (12), `0x455e60` (30) | `0x455eb0` (62) | — |
 | ANM managers | `0x47e7f0` (8), `0x47e7c0` (29) | layer callbacks `0x47e0f0`..`0x47e550` | — |
 
 Per-priority ANM and layer from the VM trace:
@@ -1015,9 +1016,6 @@ still gives the read-after-write explanation as complete; the measurements above
 - **English and Steam builds.** Only the Japanese `th14.exe` is verified. `th14_signatures.h`
   expects the English build to match unchanged, as TH13's does (same code with an appended
   section); unchecked.
-- **Sub-tick input is not wired.** `poll_input` `0x41e710` and `game_input` `0x4d6a90` are read
-  (§4) but not in the profile, so the player samples input once per 60 Hz frame and the menu
-  reports sub-tick input unavailable. It must keep the three-word, six-byte replay stream.
 - **Bullet delay one frame early under sub-stepping** (§13): cause not identified; find the
   writer of bullet `+0x4d4`. The practical check is a whole-length fingerprint match between two
   playbacks of one file.

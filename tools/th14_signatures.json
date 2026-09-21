@@ -302,5 +302,20 @@
  {
   "address": "0x46a360",
   "bytes": "f6 05 54 7a 4f 00 40 56 8b f1"
+ },
+ {
+  "address": "0x401cd0",
+  "bytes": "55 8b ec 81 ec 04 01 00 00",
+  "description": "poll_input's entry"
+ },
+ {
+  "address": "0x455050",
+  "bytes": "a1 90 6a 4d 00 a3 94 6a 4d 00",
+  "description": "the record node: previous = game input"
+ },
+ {
+  "address": "0x455071",
+  "bytes": "f7 05 6c 91 4d 00 00 02 00 00",
+  "description": "\"hold shot to focus\": option bit 0x200"
  }
 ]

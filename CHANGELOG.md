@@ -12,6 +12,17 @@ Full release notes for each version are on the
   No sub-tick input. It is TH14's engine with one structural change (a timer holds an index
   into a rate table instead of a rate pointer) and one new mechanic (the graze slow-down, whose
   recovery is now per frame). Tested under Wine only so far.
+- **Sub-tick input on TH14 and TH15.** Movement and focus are sampled at every tick, recorded
+  per tick in the replay's HFR chunk and applied on playback, as on TH10–13. A run recorded
+  at 120 Hz with sub-tick input played back to the same frame, score, graze and power.
+- **Fixed: watching a replay from TH14's menu crashed** (`th14.exe+0x3676e`, during loading).
+  The load wrapper did not pass the game's result back, so the caller read whatever the log
+  call left in EAX as "load failed" and carried on half-built. Present since TH14 support was
+  added; TH15 had the same wrapper. The shared wrapper (TH11, TH12) passes it back too.
+- **Fixed: TH14 and TH15 playback was never aligned to the stage's first frame.** The profile
+  named the replay speed-control node (`0x455e60`) as the playback node; the one that latches
+  recorded input is `0x455e50` (TH15: `0x45cea0`). The sub-step sequence now restarts there,
+  as it does when recording.
 - **Fixed: TH14 (and TH15) raised an access violation while closing**, at `th14.exe+0x1ebe`:
   the game's shutdown runs the update list once more with a flag that means "call each node's
   clean-up, not its update", and the replacement runner did not know where TH14 keeps that flag

@@ -278,5 +278,20 @@
   "address": "0x467e9f",
   "bytes": "e8 dc 4d ff ff",
   "description": "load that peeks: read, never written"
+ },
+ {
+  "address": "0x401f50",
+  "bytes": "55 8b ec 81 ec 04 01 00 00",
+  "description": "poll_input's entry"
+ },
+ {
+  "address": "0x45c050",
+  "bytes": "a1 28 6f 4e 00 a3 2c 6f 4e 00",
+  "description": "the record node: previous = game input"
+ },
+ {
+  "address": "0x45c06b",
+  "bytes": "f7 05 cc 79 4e 00 00 02 00 00",
+  "description": "\"hold shot to focus\": option bit 0x200"
  }
 ]

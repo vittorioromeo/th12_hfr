@@ -86,6 +86,7 @@ struct GameProfile {
         uint32_t gm_pause_flags;
         uint32_t input_size;        /* bytes saved around a sub-tick poll */
         uint32_t input_width;       /* 2 or 4 bytes per input word */
+        uint32_t autofocus_frames;  /* "hold shot to focus" threshold; zero selects TH10-13's 8 */
         uint32_t focus_mask;        /* zero selects the later engines' 0x08 */
         uint32_t node_arg;          /* the UpdateFunc's argument slot; zero selects +0x20 (TH13: +0x24) */
         uint32_t runner_next;       /* runner field that holds the next list node during the walk, re-read
