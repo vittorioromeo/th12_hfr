@@ -3,6 +3,7 @@
  * subtick and substep slice the player and the projectiles, and are off unless asked for. */
 #include "../backends/fixed_clock.h"
 #include "../backends/fixed_history.h"
+#include "../backends/fixed_quad.h"
 
 typedef int (__attribute__((thiscall)) *Th08ThisFn)(void*);
 typedef int (__attribute__((thiscall)) *Th08AddQuadFn)(void*, void*);
@@ -16,12 +17,9 @@ static uint64_t th08_tick;
 static int th08_major, th08_guard_failed;
 static unsigned th08_quads, th08_smoothed;
 /* One history per sprite VM: the quad it drew on the last two frame ticks. */
-struct Th08QuadHistory {
-    uintptr_t key, script; uint64_t tick, shared_tick; int age, valid;
-    float previous[4][3], current[4][3];
-};
+
 #define TH08_HISTORY_COUNT 8192
-static struct Th08QuadHistory* th08_history;
+static struct FixedQuadHistory* th08_history;
 
 /* ---- the Chain. TH06-08 keep two priority-ordered lists of callbacks, one that updates and
  * one that draws; an element is {i16 priority, u16 flags, callback, added, deleted, prev, next,
@@ -567,13 +565,12 @@ static void th08_frame_lead(double alpha) {
     th08_lead_own[1] = th08_lead_attached[1] = to[1] - pos[1];
     th08_lead_on = 1;
 }
-static void th08_quad_shape(const struct Th08QuadHistory* h, double alpha, int predict, float out[4][3]);
 static double th08_pred_sum; static float th08_pred_max; static unsigned th08_pred_n, th08_pred_over1, th08_pred_over4;
 static unsigned th08_pred_class[5][3];
 /* Debug: how wrong the last frame's prediction turned out to be, now that the state it was
    predicting exists -- the visible cost of showing the present. Worst corner, per class. */
-static void th08_prediction_census(const struct Th08QuadHistory* h, float pos[4][3]) {
-    float guess[4][3]; th08_quad_shape(h, 1.0, 1, guess);
+static void th08_prediction_census(const struct FixedQuadHistory* h, float pos[4][3]) {
+    float guess[4][3]; fixed_quad_shape(h, 1.0, 1, guess);
     float err = 0;
     for (unsigned c = 0; c < 4; ++c) { float ex = pos[c][0] - guess[c][0], ey = pos[c][1] - guess[c][1], e = sqrtf(ex * ex + ey * ey); if (e > err) err = e; }
     if (err >= 64.0f) return;
@@ -599,69 +596,11 @@ static void th08_prediction_census(const struct Th08QuadHistory* h, float pos[4]
  * A gap in the ticks, a script restart or a teleport shows the quad where it is; so does a VM
  * that draws twice in one tick with different shapes, because that is one VM standing in for
  * several sprites and its history describes none of them. */
-static int th08_quad_pose(struct Th08QuadHistory* h, uintptr_t key, uintptr_t script, int age,
+static int th08_quad_pose(struct FixedQuadHistory* h, uintptr_t key, uintptr_t script, int age,
                           float pos[4][3], double alpha, int predict, float out[4][3]) {
-    for (unsigned c = 0; c < 4; ++c) for (unsigned i = 0; i < 3; ++i) if (!isfinite(pos[c][i])) { h->valid = 0; return 0; }
-    if (h->key != key || h->script != script || th08_tick > h->tick + 1 || th08_tick < h->tick || age < h->age) {
-        if (h->key != key) h->shared_tick = 0;
-        h->key = key; h->script = script; h->tick = th08_tick; h->age = age; h->valid = 0;
-        memcpy(h->current, pos, sizeof h->current); memcpy(h->previous, pos, sizeof h->previous);
-    } else if (th08_tick != h->tick) {
-        float cx = 0, cy = 0, px = 0, py = 0;
-        for (unsigned c = 0; c < 4; ++c) { cx += pos[c][0]; cy += pos[c][1]; px += h->current[c][0]; py += h->current[c][1]; }
-        float dx = (cx - px) * 0.25f, dy = (cy - py) * 0.25f;
-        if (cfg.debug && predict && h->valid) th08_prediction_census(h, pos);
-        memcpy(h->previous, h->current, sizeof h->previous); memcpy(h->current, pos, sizeof h->current);
-        h->tick = th08_tick; h->age = age; h->valid = dx * dx + dy * dy < 64.0f * 64.0f;
-        /* A VM that has recently stood in for several sprites still is one: its first draw of a
-           tick would otherwise be smoothed from wherever its last draw of the previous tick
-           happened to be, which is a different sprite's position (text does this per glyph). */
-        if (h->shared_tick && th08_tick - h->shared_tick < 120) h->valid = 0;
-    } else if (memcmp(h->current, pos, sizeof h->current)) {
-        h->valid = 0; h->shared_tick = th08_tick; memcpy(h->current, pos, sizeof h->current);
-    }
-    if (!h->valid) return 0;
-    th08_quad_shape(h, alpha, predict, out);
-    return memcmp(out, pos, sizeof h->current) != 0;
-}
-static void th08_quad_shape(const struct Th08QuadHistory* h, double alpha, int predict, float out[4][3]) {
-    const float a = (float)alpha;
-    float pc[3] = {0, 0, 0}, cc[3] = {0, 0, 0};
-    for (unsigned c = 0; c < 4; ++c) for (unsigned i = 0; i < 3; ++i) { pc[i] += h->previous[c][i] * 0.25f; cc[i] += h->current[c][i] * 0.25f; }
-    float centre[3];
-    for (unsigned i = 0; i < 3; ++i) centre[i] = (predict ? cc[i] : pc[i]) + (cc[i] - pc[i]) * a;
-    /* the turn, from the first corner's arm */
-    float ax = h->previous[0][0] - pc[0], ay = h->previous[0][1] - pc[1];
-    float bx = h->current[0][0] - cc[0],  by = h->current[0][1] - cc[1];
-    float cross = ax * by - ay * bx, dot = ax * bx + ay * by;
-    float la = ax * ax + ay * ay, lb = bx * bx + by * by;
-    float cs = 1.0f, sn = 0.0f; int turning = 0;
-    if (la > 0.25f && lb > 0.25f && fabsf(cross) > 1e-4f * sqrtf(la * lb)) {
-        float theta = atan2f(cross, dot);
-        if (fabsf(theta) < 1.0f) { cs = cosf(theta * a); sn = sinf(theta * a); turning = 1; }
-        else { cs = 2.0f; }                                /* not a rotation: straight lines */
-    }
-    for (unsigned c = 0; c < 4; ++c) {
-        if (cs > 1.5f) {
-            for (unsigned i = 0; i < 3; ++i)
-                out[c][i] = (predict ? h->current[c][i] : h->previous[c][i]) + (h->current[c][i] - h->previous[c][i]) * a;
-            continue;
-        }
-        float ox = h->previous[c][0] - pc[0], oy = h->previous[c][1] - pc[1];
-        float nx = h->current[c][0] - cc[0],  ny = h->current[c][1] - cc[1];
-        float fx, fy;
-        if (!turning) {                                    /* pure translation and scale: the arms are parallel */
-            fx = (predict ? nx : ox) + (nx - ox) * a; fy = (predict ? ny : oy) + (ny - oy) * a;
-        } else {
-            float lo = sqrtf(ox * ox + oy * oy), ln = sqrtf(nx * nx + ny * ny);
-            float from_x = predict ? nx : ox, from_y = predict ? ny : oy, from_l = predict ? ln : lo;
-            float want = from_l + (ln - lo) * a, k = from_l > 1e-3f ? want / from_l : 1.0f;
-            if (k < 0) k = 0;
-            fx = (from_x * cs - from_y * sn) * k; fy = (from_x * sn + from_y * cs) * k;
-        }
-        out[c][0] = centre[0] + fx; out[c][1] = centre[1] + fy;
-        out[c][2] = (predict ? h->current[c][2] : h->previous[c][2]) + (h->current[c][2] - h->previous[c][2]) * a;
-    }
+    if (cfg.debug && predict && h->valid && h->key == key && h->script == script &&
+        th08_tick == h->tick + 1 && age >= h->age) th08_prediction_census(h, pos);
+    return fixed_quad_pose(h, key, script, th08_tick, age, pos, alpha, predict, out);
 }
 /* DrawInner has already constructed and clipped the quad. Move only the temporary vertices
  * handed to the native batch copier, then restore them. No player, bullet, laser or animation
@@ -699,9 +638,9 @@ static int __attribute__((fastcall, force_align_arg_pointer)) th08_quad(void* ma
         double alpha = predict && !th08_predict_on ? 0.0 : th08_phase;
         uintptr_t key = (uintptr_t)vm;
         unsigned first = (unsigned)((key >> 2) * 2654435761u) & (TH08_HISTORY_COUNT - 1);
-        struct Th08QuadHistory* h = NULL;
+        struct FixedQuadHistory* h = NULL;
         for (unsigned i = 0; i < 16; ++i) {
-            struct Th08QuadHistory* candidate = &th08_history[(first + i) & (TH08_HISTORY_COUNT - 1)];
+            struct FixedQuadHistory* candidate = &th08_history[(first + i) & (TH08_HISTORY_COUNT - 1)];
             if (candidate->key == key || !candidate->key || candidate->tick + 2 < th08_tick) { h = candidate; break; }
         }
         float out[4][3];

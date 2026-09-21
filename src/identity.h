@@ -19,6 +19,7 @@ struct ConflictSite { uintptr_t addr; size_t size; uint8_t bytes[8]; const char*
 #include "games/th13_signatures.h"
 #include "games/th14_signatures.h"
 #include "games/th15_signatures.h"
+#include "games/th18_signatures.h"
 #include "games/th10_conflicts.h"
 #include "games/th11_conflicts.h"
 #include "games/th12_conflicts.h"
@@ -37,7 +38,7 @@ struct GameIdentity {
 /* Named slots, so a profile says which game it is rather than counting rows. Inserting a game
    at the front of the table used to silently repoint every profile after it at its neighbour's
    identity -- the same trap as a positional initialiser, and just as quiet. */
-enum { GI_TH08, GI_TH10, GI_TH11, GI_TH12, GI_TH13, GI_TH14, GI_TH15 };
+enum { GI_TH08, GI_TH10, GI_TH11, GI_TH12, GI_TH13, GI_TH14, GI_TH15, GI_TH18 };
 static const struct GameIdentity game_identities[] = {
     [GI_TH08] = {8,0x14dc000,"TH08 v1.00d",NULL,NULL,{"th08e.exe","th08.exe"},th08_signatures,sizeof th08_signatures/sizeof *th08_signatures,NULL,0},
     /* TH10 follows the same naming as the later games: th10.exe is the Japanese original and
@@ -52,6 +53,7 @@ static const struct GameIdentity game_identities[] = {
        it until replays are extended, and a wrong four bytes there would be a silent one. */
     [GI_TH14] = {14,0x101000,"TH14 v1.00b",NULL,"t13r",{"th14e.exe","th14.exe"},th14_signatures,sizeof th14_signatures/sizeof *th14_signatures,th14_conflicts,th14_conflict_count},
     [GI_TH15] = {15,0x125000,"TH15 v1.00b",NULL,"t15r",{"th15e.exe","th15.exe"},th15_signatures,sizeof th15_signatures/sizeof *th15_signatures,th15_conflicts,th15_conflict_count},
+    [GI_TH18] = {18,0x174000,"TH18 v1.00a",NULL,NULL,{"th18e.exe","th18.exe"},th18_signatures,sizeof th18_signatures/sizeof *th18_signatures,NULL,0},
 };
 #define GAME_COUNT (sizeof game_identities / sizeof *game_identities)
 static const IMAGE_NT_HEADERS32* image_header(const uint8_t* image, size_t size) {
