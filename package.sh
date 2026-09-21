@@ -2,7 +2,7 @@
 # Builds a release archive in releases/. HFR64=1 also builds and ships the
 # experimental x64 New Classic runtime.
 set -eu
-V=${1:-0.6.1-test}
+V=${1:-0.7-test}
 case "$V" in *[!A-Za-z0-9.-]*|'') echo 'Invalid version'; exit 1;; esac
 cd "$(dirname "$0")"
 ./build.sh

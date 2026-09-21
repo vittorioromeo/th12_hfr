@@ -4,7 +4,9 @@ Newest first. Versions are the release archive names; `-test` means what it says
 Full release notes for each version are on the
 [releases page](https://github.com/vittorioromeo/th12_hfr/releases).
 
-## Unreleased
+## v0.7-test
+
+Touhou 15, sub-tick input on TH14 and TH15, and two TH14 replay fixes.
 
 - **Touhou 15 — Legacy of Lunatic Kingdom (v1.00b), at TH14's level.** Bullets, lasers, items,
   the player and sprite animation step at the display's rate; enemies and the player's options
