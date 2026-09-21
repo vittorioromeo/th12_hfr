@@ -39,6 +39,12 @@ const char* hfr_ui_dim_special_name(void) { return "UFOs"; }
 static const char* g_systems[] = { "BulletManager", "Player", "Bomb", "LaserManager",
                                    "ItemManager", "Gui", "Stage", "AnmManagerWorld", "AnmManagerUI" };
 static int g_system_on[9] = { 1, 1, 0, 1, 1, 0, 1, 1, 1 };
+static int g_test_toggle = 1;
+int hfr_ui_toggle_count(void) {return 1;}
+const char* hfr_ui_toggle_label(int i) {(void)i;return "A game option";}
+const char* hfr_ui_toggle_tip(int i) {(void)i;return "Only this game has it.";}
+int hfr_ui_toggle_get(int i) {(void)i;return g_test_toggle;}
+void hfr_ui_toggle_set(int i,int v) {(void)i;g_test_toggle=v;}
 int         hfr_ui_system_count(void) { return 9; }
 const char* hfr_ui_system_name(int i) { return (i >= 0 && i < 9) ? g_systems[i] : ""; }
 int         hfr_ui_system_get(int i) { return (i >= 0 && i < 9) ? g_system_on[i] : 0; }

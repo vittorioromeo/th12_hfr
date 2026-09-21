@@ -19,7 +19,7 @@ Reference for the TH15 profile in the shared x86 runtime, written as a delta aga
 | replay directory | `%APPDATA%\ShanghaiAlice\th15\` (`addr.data_dir = 0x519bdd`) |
 | conflict sites | none recorded (no `vpatch_th15.dll` has been read) |
 
-56 frozen signatures, in TH14's three groups.
+61 frozen signatures, in TH14's three groups.
 
 ## 2. State
 
@@ -71,6 +71,26 @@ to 0, so in practice every timer runs at the game speed.
 New mechanic. A graze sets the item manager's factor at `[itemmgr + 0xe5def0]` to 0.3; it
 recovers by the constant at `0x4cfdf0` per pass at `0x44017b`, with no speed multiply. The item
 manager is sub-stepped, so the stub adds `constant × g_factor`.
+
+### Graze feedback, and its switches
+
+`th15_toggles` (`[game] th15_graze_bullets`, `th15_graze_glow`; menu, under dimming).
+
+- **Bullets.** In the bullet's graze state (`0x419cac`), after the graze count (`0x4573a0`), the
+  player's glow timer (`0x4581d0`) and the item slow-down, the block `0x419d0f..0x419d8e` runs
+  for the bullet's first 45 frames in range: VM colour mode on (`[+0x40] |= 0x20000`), colour
+  `[+0x564..0x567]` with an intensity of `min(240, (104 − t) × 2)`, and two random numbers
+  from `0x4e9a40` into the VM's offset `[+0x60]`, `[+0x64]` — the shake. Frame 45 exactly
+  (`0x419d9b`) is gameplay (sound, a spawn from the replay RNG) and is never skipped. Off, the
+  stub still draws the two random numbers: replays do not restore `0x4e9a40`, but a boss's
+  drawn position follows it, and without them the demo's enemy fingerprint moved for 430
+  frames (bullets and player never did).
+- **Glow.** `0x4581d0` arms a ten-frame timer at `player+0x1622c`; while it runs,
+  `0x45484f..0x454a62` keeps `effect.anm` script 27 alive at the player (layer 14, additive,
+  scale 4.3, alpha 96), handle at `+0x16228`. Off: with no VM the timer is disarmed and the
+  block skipped; with one alive the timer is set to its last tick so the game deletes it.
+
+Title demo with both off against both on, `replay_trace=1`: identical, 2430 frames.
 
 ### Replay manager
 

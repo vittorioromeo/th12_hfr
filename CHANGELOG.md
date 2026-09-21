@@ -12,6 +12,12 @@ Full release notes for each version are on the
   No sub-tick input. It is TH14's engine with one structural change (a timer holds an index
   into a rate table instead of a rate pointer) and one new mechanic (the graze slow-down, whose
   recovery is now per frame). Tested under Wine only so far.
+- **TH15: the graze effects can be switched off**, for anyone the flicker bothers. Two
+  checkboxes under the dimming sliders (`[game] th15_graze_bullets`, `th15_graze_glow`): the
+  tint and shake of bullets inside the graze radius, and the glow around the player. Visual
+  only: the title demo's state is identical frame for frame with both off.
+- Profiles can declare their own on/off options (`GameProfile.toggles`); the menu, the INI and
+  the stub tests pick them up.
 - **Sub-tick input on TH14 and TH15.** Movement and focus are sampled at every tick, recorded
   per tick in the replay's HFR chunk and applied on playback, as on TH10–13. A run recorded
   at 120 Hz with sub-tick input played back to the same frame, score, graze and power.

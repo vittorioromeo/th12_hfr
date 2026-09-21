@@ -69,3 +69,42 @@ for factor in (1.0, 0.25, 1.0 / 6.0):
     got = rf(ITEMS + 0xe5def0)
     assert abs(got - (0.3 + step * factor)) < 1e-6, f'factor {factor}: {got}'
 print('PASS: TH15 graze slow-down recovers by its constant per frame, not per tick')
+
+# 0x419d0f: the grazed bullet's tint and shake, behind a switch. On, the game's own block runs;
+# off, control reaches the end of the block with the bullet's colour mode untouched -- and the
+# random generator exactly where the block would have left it, because a boss's drawn position
+# follows that generator. Timer integer 10 is inside the 45-frame window.
+RNG = 0x4e9a40
+map_region(RNG, 16)
+def graze(on, t):
+    reset(); wi(meta['th15_graze_bullets'], on)
+    b = u.reg_read(UC_X86_REG_EDI); map_region(b, 0x1500)
+    wi(b + 0x1454, t); wi(b + 0x40, 0x40000); u.mem_write(RNG, bytes([1, 2, 3, 4, 5, 6, 7, 8]))
+    pc = run(0x419d0f, 0x419d8e, 0x419d9b)
+    return pc, ri(b + 0x40), bytes(u.mem_read(RNG, 8))
+pc_on, flags_on, rng_on = graze(1, 10)
+pc_off, flags_off, rng_off = graze(0, 10)
+assert pc_on == pc_off == 0x419d8e
+assert flags_on == 0x20000 and flags_off == 0x40000, (hex(flags_on), hex(flags_off))
+assert rng_on == rng_off != bytes([1, 2, 3, 4, 5, 6, 7, 8]), 'the switch must not move the random stream'
+for on in (0, 1):
+    assert graze(on, 0x2d)[0] == 0x419d9b, 'frame 45 is the game\'s own event and runs either way'
+    pc, flags, rng = graze(on, 0x2e)
+    assert pc == 0x419d8e and flags == 0x40000 and rng == bytes([1, 2, 3, 4, 5, 6, 7, 8])
+print('PASS: TH15 grazed-bullet tint and shake follow their switch; random stream and frame 45 unchanged')
+
+# 0x45484f: the player's graze glow. Off with no sprite alive: the timer is disarmed and the
+# block skipped. Off with one alive: the timer is set to its last tick so that the game's own
+# code deletes it. On: untouched.
+PL = 0x22000000
+map_region(PL + 0x16200, 0x100)
+def glow(switch, handle, timer):
+    reset(); wi(meta['th15_graze_glow'], switch)
+    u.reg_write(UC_X86_REG_EDI, PL)
+    wi(PL + 0x16228, handle); wi(PL + 0x1622c, timer - 1); wi(PL + 0x16230, timer); wf(PL + 0x16234, float(timer))
+    return run(0x45484f, 0x45485c, 0x454a62)
+assert glow(1, 0, 10) == 0x45485c and ri(PL + 0x16230) == 10
+assert glow(1, 0, 0) == 0x454a62
+assert glow(0, 0, 10) == 0x454a62 and ri(PL + 0x16230) == 0 and rf(PL + 0x16234) == 0.0 and ri(PL + 0x1622c) == 0xffffffff
+assert glow(0, 77, 10) == 0x45485c and ri(PL + 0x16230) == 1 and rf(PL + 0x16234) == 1.0 and ri(PL + 0x16228) == 77
+print('PASS: TH15 graze glow follows its switch, and an existing glow is handed to the game to delete')

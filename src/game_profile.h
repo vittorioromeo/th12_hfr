@@ -21,6 +21,7 @@ struct SpeedSite { uintptr_t addr; unsigned char size, op, src; };
    different classes (TH12's UFOs are enemies drawn on enemy.anm's effects layer): the ANM's
    script list (`thanm -l`) gives the numbers. */
 struct DimRule { int prio_lo, prio_hi; const char* anm; int layer_lo, layer_hi; int script_lo, script_hi; int category; };
+struct GameToggle { const char* key; const char* label; const char* tip; int* value; int def; };
 struct GameProfile {
     const struct GameIdentity* identity;
     struct {
@@ -96,6 +97,9 @@ struct GameProfile {
        while later engines use FSTP. Only FSTP sites consume an x87 value. */
     const struct SpeedSite* speed_sites;
     size_t speed_site_count;
+    /* On/off options that only this game has, shown in the menu under the dimming sliders and
+       kept in the INI as [game] <key>. The adapter's stubs read *value directly. */
+    const struct GameToggle* toggles; size_t toggle_count;
     const struct node_class* classes;
     size_t class_count;
     /* Set while a game is still being worked out. The patch identifies it, logs what it knows,

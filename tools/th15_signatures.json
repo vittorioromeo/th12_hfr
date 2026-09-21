@@ -280,6 +280,16 @@
   "description": "load that peeks: read, never written"
  },
  {
+  "address": "0x419d0f",
+  "bytes": "8b 87 54 14 00 00 83 f8 2d 7d 7f",
+  "description": "graze: the grazed bullet's tint and shake"
+ },
+ {
+  "address": "0x45484f",
+  "bytes": "83 bf 30 62 01 00 00 0f 8e 06 02 00 00",
+  "description": "graze: the player's glow timer"
+ },
+ {
   "address": "0x401f50",
   "bytes": "55 8b ec 81 ec 04 01 00 00",
   "description": "poll_input's entry"

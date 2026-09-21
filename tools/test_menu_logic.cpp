@@ -35,6 +35,11 @@ int         hfr_ui_simulation_locked(void) { return 0; }
 int         hfr_ui_simulation_patched(void) { return 1; }
 const char* hfr_ui_present_path(void) { return "test"; }
 const char* hfr_ui_dim_special_name(void) { return "UFOs"; }
+int hfr_ui_toggle_count(void) {return 0;}
+const char* hfr_ui_toggle_label(int i) {(void)i;return "";}
+const char* hfr_ui_toggle_tip(int i) {(void)i;return "";}
+int hfr_ui_toggle_get(int i) {(void)i;return 0;}
+void hfr_ui_toggle_set(int i,int v) {(void)i;(void)v;}
 int         hfr_ui_system_count(void) { return 0; }
 const char* hfr_ui_system_name(int) { return ""; }
 int         hfr_ui_system_get(int) { return 0; }

@@ -62,6 +62,12 @@ void        hfr_ui_scale_info(char* buf, int len);
    patch is actually doing. */
 void        hfr_ui_rate_info(char* buf, int len);
 int         hfr_ui_menu_key(void);
+/* This game's own on/off options (GameProfile.toggles); none on most games. */
+int         hfr_ui_toggle_count(void);
+const char* hfr_ui_toggle_label(int index);
+const char* hfr_ui_toggle_tip(int index);
+int         hfr_ui_toggle_get(int index);
+void        hfr_ui_toggle_set(int index, int value);
 const char* hfr_ui_dim_special_name(void);   /* what UI_DIM_SPECIAL fades in this game; NULL when it has nothing */
 /* Settings that only take effect on the next run, so the menu can say so rather than
    pretending a change did something. */

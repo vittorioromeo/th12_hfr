@@ -381,6 +381,11 @@ int main(int argc,char**argv) {
         "{\"stub_base\":%u,\"major\":%u,\"factor\":%u,\"logical\":%u,\"residual\":%u,\"ptf_prev\":%u,\"ptf_cur\":%u}",
         (unsigned)g_stub_mem,(unsigned)&g_major,(unsigned)&g_factor,(unsigned)&g_logical,
         (unsigned)g_move_residual,(unsigned)&g_ptf_prev,(unsigned)&g_ptf_cur);
+    /* this game's own switches, by INI key, so a stub test can flip them */
+    for(size_t i=0;i<g_game->toggle_count;++i) {
+        size_t n=strlen(info)-1;
+        snprintf(info+n,sizeof info-n,",\"%s\":%u}",g_game->toggles[i].key,(unsigned)g_game->toggles[i].value);
+    }
     dump(argv[2],".json",info,strlen(info));
     printf("PASS: %u executable signatures; emitted %u bytes of real hook stubs\n",
         (unsigned)id->signature_count,(unsigned)g_stub_used);

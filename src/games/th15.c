@@ -25,6 +25,24 @@ static const struct SpeedSite th15_speed_sites[] = {
     {0x42d768,  8, SPEED_ECL,      SPEED_SRC_XMM0},   /* the script instruction that sets the speed */
 };
 
+/* TH15's graze feedback, as two switches (menu: under the dimming sliders; INI: [game]).
+   A bullet inside the graze radius is tinted and its sprite is thrown about by two cosmetic
+   random offsets every pass for its first 45 frames there (0x419d0f..0x419d8e); and while any
+   bullet is that close the player carries a large additive glow, effect.anm script 27, kept
+   alive by a ten-frame timer at player+0x1622c that 0x4581d0 re-arms (0x45484f..0x454a62).
+   Neither touches the simulation: the graze count and the item slow-down are set before either
+   block, the bullets' frame-45 event is left alone, and with the shake off the stub still draws
+   the block's two random numbers. */
+static int th15_graze_bullets = 1, th15_graze_glow = 1;
+static const struct GameToggle th15_toggles[] = {
+    { "th15_graze_bullets", "Graze effect: bullets tint and shake",
+      "Legacy of Lunatic Kingdom tints the bullets you are grazing and shakes their sprites.\n"
+      "Off: they are drawn still, in their own colours. Their hitboxes never moved.", &th15_graze_bullets, 1 },
+    { "th15_graze_glow", "Graze effect: glow around the player",
+      "The large translucent glow around the player while bullets are within graze range.\n"
+      "Grazing, its score and the item slow-down are unchanged either way.", &th15_graze_glow, 1 },
+};
+
 /* thiscall in, stdcall out, exactly as TH14's: the saver is stdcall with four arguments and the
    loader takes the manager in ECX and the filename pushed. */
 typedef void (__stdcall *Th15ReplaySaveFn)(char*, char*, int, int);
@@ -199,6 +217,34 @@ static void th15_install_sites(void) {
     site_call(0x45b9bc, th15_replay_load_entry);
     site_call(0x45bb46, th15_replay_load_entry);
 
+    /* --- Graze feedback switches (see th15_toggles). --- */
+    STUB_BEGIN();
+    ECOPY(0x419d0f, 9);                             /* mov eax,[edi+0x1454]; cmp eax,0x2d */
+    EJCC(0x8d, 0x419d99);                           /* the game's own jge: frame 45 is gameplay, and stays */
+    E(0x83, 0x3d); E32((uint32_t)(uintptr_t)&th15_graze_bullets); E(0x00);   /* cmp dword [switch],0 */
+    EJCC(0x85, 0x419d1a);                           /* on: the game's block */
+    /* Off: draw the two random numbers the block would have. 0x4e9a40 is the generator replays
+       do not restore, but a boss's drawn position follows it (the demo's enemy fingerprint moved
+       for 430 frames without them), so the stream is kept exactly as the game leaves it. */
+    E(0xb9); E32(0x4e9a40); ECALL(0x403840); E(0xdd, 0xd8);      /* mov ecx,rng; call; fstp st0 */
+    E(0xb9); E32(0x4e9a40); ECALL(0x403840); E(0xdd, 0xd8);
+    EJMP(0x419d8e); site_hook(0x419d0f, 11);
+
+    STUB_BEGIN();
+    E(0x83, 0x3d); E32((uint32_t)(uintptr_t)&th15_graze_glow); E(0x00);      /* cmp dword [switch],0 */
+    E(0x75, 0x40);                                  /* jne original */
+    E(0x83, 0xbf, 0x28, 0x62, 0x01, 0x00, 0x00);    /* cmp dword [edi+0x16228],0: is the glow's VM alive? */
+    E(0x75, 0x23);                                  /* jne kill */
+    E(0xc7, 0x87, 0x30, 0x62, 0x01, 0x00); E32(0);              /* no VM: disarm the timer, */
+    E(0xc7, 0x87, 0x34, 0x62, 0x01, 0x00); E32(0);
+    E(0xc7, 0x87, 0x2c, 0x62, 0x01, 0x00); E32(0xffffffffu);
+    EJMP(0x454a62);                                 /* and skip the block */
+    E(0xc7, 0x87, 0x30, 0x62, 0x01, 0x00); E32(1);              /* kill: one tick left, so the game's */
+    E(0xc7, 0x87, 0x34, 0x62, 0x01, 0x00); E32(0x3f800000u);    /* own code below deletes the VM */
+    ECOPY(0x45484f, 7);                             /* original: cmp dword [edi+0x16230],0 */
+    EJCC(0x8e, 0x454a62);
+    EJMP(0x45485c); site_hook(0x45484f, 13);
+
     stub_end();
     LOG("TH15 site patches installed (%u bytes of stubs)", (unsigned)g_stub_used);
 }
@@ -359,6 +405,7 @@ static const struct GameProfile th15_profile = {
     .trace_state = th15_trace_state, .trace_dump = th15_trace_dump,
     .anm_get_vm_ecx = 1,
     .speed_sites = th15_speed_sites, .speed_site_count = sizeof th15_speed_sites / sizeof *th15_speed_sites,
+    .toggles = th15_toggles, .toggle_count = sizeof th15_toggles / sizeof *th15_toggles,
     .classes = th15_classes, .class_count = sizeof th15_classes / sizeof *th15_classes,
     .draw = { .dispatch = 0x40168a, .dispatch_len = 8, .node_reg = R_EDI, .prio_off = 0,
               .flush_fn = 0x47e3f0, .flush_reg = R_ECX, .flush_this = 0x503c18,

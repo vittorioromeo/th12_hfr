@@ -142,6 +142,17 @@ Edit `touhou_hfr.ini` beside the game and restart; every setting is commented in
 
 Dimming never touches enemies, bullets, lasers, the player or the interface.
 
+### `[game]` — options only one game has
+
+Shown in the F11 menu under the dimming sliders, on that game only.
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `th15_graze_bullets` | `1` | TH15: bullets you are grazing are tinted and their sprites shake. `0` draws them still, in their own colours; hitboxes never moved |
+| `th15_graze_glow` | `1` | TH15: the large glow around the player while bullets are in graze range |
+
+Both are visual only: grazing, its score, the item slow-down and replays are unchanged.
+
 ### `[fixed60]` — Imperishable Night and New Classic
 
 For the two games whose simulation stays at 60 Hz. `[hfr] fps` and `vsync` still set the

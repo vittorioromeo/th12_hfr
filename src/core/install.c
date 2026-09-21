@@ -241,6 +241,11 @@ static int install(void) {
         for (int i=0;i<3;++i) if (g_game->addr.frame_calls[i]) site_call(g_game->addr.frame_calls[i],frame_hook);
         g_frame_hook_installed = 1;
     }
+    for (size_t i = 0; i < g_game->toggle_count; ++i) {
+        const struct GameToggle* g = &g_game->toggles[i];
+        *g->value = GetPrivateProfileIntA("game", g->key, g->def, g_ini_path) != 0;
+        if (*g->value != g->def) LOG("game option %s=%d", g->key, *g->value);
+    }
     if (g_game->install_presentation) g_game->install_presentation();
     /* Through the D3D8 bridge 9Ex is opt-in ([fixed60] d3d9ex=1) until it has been played on
        real hardware: the bridge asks for managed resources, which 9Ex does not have, and relies

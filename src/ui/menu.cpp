@@ -197,6 +197,12 @@ static void draw_dimming_controls(void) {
         help(known ? d.tip : "This game's patch does not know which draws belong to this class yet.");
     }
     ImGui::EndDisabled();
+    /* This game's own visual options. They are not dimming and do not need the draw order. */
+    for (int i = 0, n = hfr_ui_toggle_count(); i < n; ++i) {
+        bool on = hfr_ui_toggle_get(i) != 0;
+        if (ImGui::Checkbox(hfr_ui_toggle_label(i), &on)) hfr_ui_toggle_set(i, on);
+        help(hfr_ui_toggle_tip(i));
+    }
 }
 
 void draw_display_section(void) {

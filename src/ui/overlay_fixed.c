@@ -75,6 +75,11 @@ int hfr_ui_filter_is_fixed_scale(int i) {(void)i;return 0;}
 int hfr_ui_post_count(void) {return 0;}
 const char* hfr_ui_post_name(int i) {(void)i;return "Unavailable";}
 const char* hfr_ui_dim_special_name(void) {return NULL;}
+int hfr_ui_toggle_count(void) {return 0;}
+const char* hfr_ui_toggle_label(int i) {(void)i;return "";}
+const char* hfr_ui_toggle_tip(int i) {(void)i;return "";}
+int hfr_ui_toggle_get(int i) {(void)i;return 0;}
+void hfr_ui_toggle_set(int i,int v) {(void)i;(void)v;}
 int hfr_ui_system_count(void) {return 0;}
 const char* hfr_ui_system_name(int i) {(void)i;return "";}
 int hfr_ui_system_get(int i) {(void)i;return 0;}

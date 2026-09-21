@@ -113,6 +113,7 @@ gate, four `ExecuteScript` call sites and the behaviour block.
 | Rules | by callback | 10 | 9 | 10 | 12 | 8 | 7 | own |
 | Script rules (`vm_script_off`) | — | yes | yes | yes | yes | **no** (0) | **no** (0) | — |
 | `dim_special` | — | — | — | — | spirits | — | — | — |
+| Own options (`toggles`, `toggle_count`; INI `[game]`) | — | — | — | — | — | — | graze tint and shake, graze glow | — |
 
 ## 7. Compatibility data
 
@@ -121,7 +122,7 @@ gate, four `ExecuteScript` call sites and the behaviour block.
 | vpatch conflict sites (`*_conflicts.h`) | none | 5 | 4 | 4 | 4 | none | none |
 | English / Steam executables | no | yes | yes | yes | yes | unverified | unverified |
 | thprac, thcrap, THRotator | untested | yes | yes | yes | yes | untested | untested |
-| Frozen signatures | 31 | 82 | 67 | 70 | 102 | 75 | 59 |
+| Frozen signatures | 31 | 82 | 67 | 70 | 102 | 75 | 61 |
 
 ## 8. Game-specific branches outside `src/games/`
 

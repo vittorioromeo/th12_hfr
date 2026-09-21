@@ -141,6 +141,12 @@ int         hfr_ui_post_count(void) { return post_count(); }
 const char* hfr_ui_post_name(int index) { struct Filter* f = post_at(index); return f ? f->name : ""; }
 int         hfr_ui_menu_key(void) { return cfg.menu_key; }
 const char* hfr_ui_dim_special_name(void) { return g_game ? g_game->draw.special_name : NULL; }
+static const struct GameToggle* ui_toggle(int i) { return g_game && i >= 0 && (size_t)i < g_game->toggle_count ? &g_game->toggles[i] : NULL; }
+int         hfr_ui_toggle_count(void) { return g_game ? (int)g_game->toggle_count : 0; }
+const char* hfr_ui_toggle_label(int i) { const struct GameToggle* g = ui_toggle(i); return g ? g->label : ""; }
+const char* hfr_ui_toggle_tip(int i) { const struct GameToggle* g = ui_toggle(i); return g ? g->tip : ""; }
+int         hfr_ui_toggle_get(int i) { const struct GameToggle* g = ui_toggle(i); return g ? *g->value : 0; }
+void        hfr_ui_toggle_set(int i, int v) { const struct GameToggle* g = ui_toggle(i); if (g) { *g->value = !!v; LOG("menu: %s -> %d", g->key, *g->value); } }
 /* The menu's list of sub-stepped systems is the systems that can be sub-stepped, which is not
    the same as the class table: a profile names every callback it has identified so that the
    census has something to report against, and most of them are MODE_FRAME. A checkbox against
@@ -202,6 +208,7 @@ void hfr_ui_save(void) {
     ini_put_int("video", "snap_aspect", cfg.snap_aspect);
     ini_put_int("video", "fullscreen_mode", cfg.fullscreen_mode);
     for (int i = 0; i < DIM_COUNT; ++i) { char key[32]; snprintf(key, sizeof key, "dim_%s", DIM_NAMES[i]); ini_put_int("video", key, cfg.dim[i]); }
+    for (size_t i = 0; g_game && i < g_game->toggle_count; ++i) ini_put_int("game", g_game->toggles[i].key, *g_game->toggles[i].value);
     ini_put_int("hfr", "max_frame_latency", cfg.max_frame_latency);
     ini_put_int("hfr", "fps", cfg.fps);
     ini_put_int("hfr", "vsync", cfg.vsync);
