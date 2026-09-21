@@ -4,7 +4,7 @@ Newest first. Versions are the release archive names; `-test` means what it says
 Full release notes for each version are on the
 [releases page](https://github.com/vittorioromeo/th12_hfr/releases).
 
-## Unreleased
+## v0.8-test
 
 Touhou 20.
 
@@ -12,8 +12,8 @@ Touhou 20.
   her shots and stones, and sprite animation step at the display's rate; enemies are
   interpolated and options are carried with the player between frames; sub-tick input; replays
   carry their recording rate and per-tick input; dimming and the video path work. Bombs,
-  effects and the stage stay at 60 Hz. Tested under Wine only so far: a recording and its
-  playback agree on every frame at 120 and 144 Hz.
+  effects and the stage stay at 60 Hz. Under Wine a recording and its playback agree on every
+  frame at 120 and 144 Hz; on Windows it has had a first play session and little more.
 - **TH20: the graze tint and shake can be switched off**, like TH15's: a checkbox under the
   dimming sliders (`[game] th20_graze_bullets`). Visual only — the title demo's state is
   identical frame for frame with it off.

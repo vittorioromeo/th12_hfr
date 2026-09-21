@@ -30,7 +30,8 @@ Everything else — the stage, enemies' logic, bombs, effects, the interface —
 
 Tested under Wine only: a recording and its playback agree on every frame of the desync trace
 at 120 Hz and at 144 Hz, with and without sub-tick input, and a copy of the executable rebased
-to `0x1400000` installs and plays. Not yet run on Windows by the author of this port.
+to `0x1400000` installs and plays. On Windows it has been played by the project's owner and
+reported working, graze switch included; the automated Windows tests have not been run on it.
 
 ## 3. What is new for the runtime
 
@@ -216,7 +217,7 @@ position sum, item count and position sum, bullet count):
 
 ## 9. Open
 
-- Windows, real hardware, D3D9Ex: untested. TH20 does not import
+- D3D9Ex on real hardware: played, not measured. TH20 does not import
   `D3DXCreateTextureFromFileInMemoryEx` (it creates with `D3DXCreateTexture` and fills with
   `D3DXLoadSurfaceFromFileInMemory`), so the D3D9Ex path now accepts that import's absence.
 - `pp`, the screenshot routine and the window-flags word are not described: resizing with

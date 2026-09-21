@@ -207,7 +207,7 @@ More on replays: [docs/REPLAYS.md](docs/REPLAYS.md).
 The two share an engine and are at the same level as TH10–13: display-rate movement for
 bullets, the player, items and lasers, sub-tick input, interpolated enemies and options,
 replays that carry their recording rate and per-tick input, dimming and the full video path.
-TH15 is new in this build and has had less play time.
+TH15 has had less play time than the others.
 
 Not covered: the English and Steam executables (unverified), script-level dim rules, and
 internal-resolution sprite snapping.
@@ -220,7 +220,7 @@ that carry their recording rate and per-tick input; dimming and the video path. 
 and the stage background still move in 60 Hz steps.
 
 It is the first supported game whose executable is relocatable, which the patch now handles.
-New in this build and tested under Wine only — please report what you see on Windows. Not
+New in this build, with little play time so far — please report what you see. Not
 covered: English patches, thprac and thcrap (untested), the game's own screenshots when
 scaling is on, and internal-resolution sprite snapping.
 
