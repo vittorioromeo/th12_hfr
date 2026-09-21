@@ -152,7 +152,7 @@ static void dim_vm_trace(const char* anm, int layer, int script) {
         /* which of its words points at a loaded ANM (slot index, then the file name)? */
         for (int i = 0; i < 300; ++i) {
             const uint8_t* al = (const uint8_t*)(uintptr_t)w[i];
-            if ((uintptr_t)al < 0x10000 || IsBadReadPtr(al, 64)) continue;
+            if ((uintptr_t)al < 0x10000 || !mem_readable(al, 64)) continue;
             const char* nm = (const char*)al + 4; int ok = 0;
             for (int k = 0; k < 28; ++k) { if (nm[k] == 0) { ok = k > 4 && nm[k-4] == '.' && nm[k-3] == 'a' && nm[k-2] == 'n' && nm[k-1] == 'm'; break; } if (nm[k] < 32 || nm[k] > 126) break; }
             if (ok) LOG("draw      vm anm pointer at +0x%x: slot %u %s", i * 4, (unsigned)*(const uint32_t*)al, nm);

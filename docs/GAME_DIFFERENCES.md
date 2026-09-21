@@ -51,7 +51,7 @@ All of these are data; the shared runner, frame shim and stubs read them.
 | `frame_flag_value` | 1 | 1 | 1 | 1 | 2 | 2 |
 | `runner_return8_ends` | 0 | 1 | 1 | 1 | 1 | 1 |
 | `critical_flag_mask` | 0 (always locks) | `0x8000` | `0x8000` | `0xff` | `0xff` | `0xff` |
-| `layout.runner_ending` | — | `0x48` | `0x48` | `0x54` | — | — |
+| `layout.runner_ending` | — | `0x48` | `0x48` | `0x54` | `0x54` | `0x54` |
 | `layout.node_arg` / `runner_next` | `+0x20` / — | `+0x20` / — | `+0x20` / — | `+0x24` / `+0x50` | `+0x24` / `+0x50` | `+0x24` / `+0x50` |
 | `layout.enemy_list` | — | `+0x68` | `+0x68` | `+0xb0` | `+0xd0` | `+0x180` |
 | `layout.input_width` / `input_size` / `focus_mask` | 2 / `0x6a` / 4 | 4 / `0x130` / 8 | 4 / `0x130` / 8 | 4 / `0x130` / 8 | 4 / — / 8 | 4 / — / 8 |

@@ -12,6 +12,16 @@ Full release notes for each version are on the
   No sub-tick input. It is TH14's engine with one structural change (a timer holds an index
   into a rate table instead of a rate pointer) and one new mechanic (the graze slow-down, whose
   recovery is now per frame). Tested under Wine only so far.
+- **Fixed: TH14 (and TH15) raised an access violation while closing**, at `th14.exe+0x1ebe`:
+  the game's shutdown runs the update list once more with a flag that means "call each node's
+  clean-up, not its update", and the replacement runner did not know where TH14 keeps that flag
+  (`layout.runner_ending = 0x54`), so it ran a normal update after DirectInput was released.
+  The game survived it, which is why it only ever showed in a `debug=1` log.
+- The debug traces probe memory with `VirtualQuery`, not `IsBadReadPtr`, which logged an
+  access violation in kernel32 for every miss.
+- `test-games.ps1`: single-pass shader filters are recognised, the F10 check expects only the
+  sizes that fit (a 1280x960 game on a 1440-line desktop has two), the firing check no longer
+  compares live-shot counts, and a window that ran an older version of the script is named.
 - TH14 and TH15 share their enemy and option interpolation (`src/games/th14_family.h`).
 - New profile fields: `layout.replay_mode`, `draw.vm_slot_off`, `draw.anm_table_off`,
   `draw.anm_slots`.

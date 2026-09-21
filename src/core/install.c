@@ -47,7 +47,7 @@ static LONG CALLBACK hfr_exception_report(EXCEPTION_POINTERS* ep) {
             const uintptr_t* sp = (const uintptr_t*)(c->Esp & ~3u);
             for (int i = 0; i < 512 && n < 400; ++i) {
                 uintptr_t v;
-                if (IsBadReadPtr(sp + i, 4)) break;
+                if (!mem_readable(sp + i, 4)) break;
                 v = sp[i];
                 int in_game = v >= 0x401000 && v < 0x500000;   /* the game is always at 0x400000 */
                 int in_stub = g_stub_mem && v >= (uintptr_t)g_stub_mem && v < (uintptr_t)g_stub_mem + g_stub_used;

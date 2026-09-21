@@ -111,7 +111,7 @@ $AllCases = @(
 )
 foreach ($s in $Shaders) {
     $AllCases += @{ Name = "filter-$s"; Kind = 'quick'; Ini = @{ 'video.filter' = $s; 'video.window_scale' = 200 }
-                    Expect = @("^shaders: $([regex]::Escape($s)) ready", "^video: filter \d+ = $([regex]::Escape($s)).*<- selected") }
+                    Expect = @("^shaders: $([regex]::Escape($s)) (pass \d+ )?ready", "^video: filter \d+ = $([regex]::Escape($s)).*<- selected") }
 }
 # What no launch may log, whatever the case.
 $NeverOk = @(
@@ -491,7 +491,20 @@ $BaseBody = {
     if ($cycles -gt 0) {
         $distinct = @($sizes | Select-Object -Unique); $desktop = Get-MonitorSize (Get-GameWindow $proc)
         $odd = @($distinct | Where-Object { @('640x480', '960x720', '1280x960', $desktop, '?') -notcontains $_ })
-        if ($distinct.Count -lt 3) { $ctx.Notes.Add("F10 cycled in the log but the window only took $($distinct -join ', ')") }
+        # The presets are 100/150/200 % of the game's own resolution, skipping those that do not fit
+        # the work area, then borderless. TH14 on can run at 1280x960, where only 100 % fits a
+        # 1440-line desktop, so the number of sizes to expect depends on both.
+        $want = 3
+        if ($sizes[-1] -match '^\d+x\d+$' -and $desktop -match '^(\d+)x(\d+)$') {
+            $dw = [int]$Matches[1]; $dh = [int]$Matches[2]
+            $native = @($distinct | Where-Object { $_ -match '^\d+x\d+$' -and $_ -ne $desktop } | Sort-Object { [int]($_ -split 'x')[0] })[0]
+            if ($native) {
+                $nw, $nh = $native -split 'x' | ForEach-Object { [int]$_ }
+                $fit = @(100, 150, 200 | Where-Object { $nw * $_ / 100 -le $dw - 16 -and $nh * $_ / 100 -le $dh - 80 }).Count
+                $want = [math]::Min(3, [math]::Max(1, $fit) + 1)
+            }
+        }
+        if ($distinct.Count -lt $want) { $ctx.Notes.Add("F10 cycled in the log but the window only took $($distinct -join ', ') (expected $want sizes)") }
         if ($odd)                  { $ctx.Notes.Add("unexpected client sizes: $($odd -join ', ') (desktop $desktop)") }
         $lines = Read-Log $log
         if ((Count-Lines $lines 'size cycle -> borderless') -gt 0 -and $distinct -notcontains $desktop) { $ctx.Notes.Add("borderless fullscreen was cycled to but the client never became $desktop") }
@@ -599,8 +612,7 @@ $DriveBody = {
     if ($s) { $ctx.Cells.Polls = ($s | Measure-Object -Property Polls -Maximum).Maximum }
 
     # TH14's firing cycle once stopped after two steps while the button was held. Shots per
-    # game frame, window by window: every window after the first must have some, and they must
-    # agree with each other.
+    # game frame, window by window: every window after the first must have some.
     if ($traits.Shots) {
         $rates = @(Read-Log $log | Select-String -Pattern '^site census.* over (\d+) frames: .*shots=([\d.]+)' | Select-Object -Skip $censusBefore |
                    Where-Object { [int]$_.Matches[0].Groups[1].Value -gt 100 } | ForEach-Object { [double]$_.Matches[0].Groups[2].Value })
@@ -609,7 +621,8 @@ $DriveBody = {
             $lo = ($held | Measure-Object -Minimum).Minimum; $hi = ($held | Measure-Object -Maximum).Maximum
             $ctx.Cells.Shots = ('{0:N2}-{1:N2}' -f $lo, $hi)
             if ($lo -le 0.05)             { $ctx.Notes.Add("firing stopped while the button was held (shots per frame by window: $($rates -join ', '))") }
-            elseif ($hi -gt $lo * 1.6)    { $ctx.Notes.Add("firing rate is uneven while held (shots per frame by window: $($rates -join ', '))") }
+            # No evenness test: the counter is live shots per frame, which follows how many are on
+            # screen (16 to 90 in one stage while firing never paused), not how many were fired.
         } else { $ctx.Cells.Shots = 'too short'; Write-Host '    not enough census windows to judge the shot cycle; raise -DriveSeconds' }
     }
     [void](Send-Key $proc $VK.Esc); Start-Sleep -Milliseconds 800

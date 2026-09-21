@@ -330,7 +330,7 @@ static const struct GameProfile th15_profile = {
         .screenshot_fn = 0x44cbf0, .screenshot_call = 0x472c66,
     },
     .layout = {
-        .node_arg = 0x24, .runner_next = 0x50, .input_width = 4,
+        .node_arg = 0x24, .runner_next = 0x50, .runner_ending = 0x54, .input_width = 4,
         .player_timer = 0x634,
         .enemy_list = 0x180, .enemy_flags = 0x526c, .enemy_position = 0x1250,
         .enemy_skip_mask = 0x2000000,

@@ -242,10 +242,10 @@ __attribute__((force_align_arg_pointer)) void __cdecl th08_rng_seen(uint32_t* re
     for (int depth = 0; depth < 3; ++depth) {
         int rng = (caller >= 0x43ecc0 && caller < 0x43edb0) || (caller >= 0x406ef0 && caller < 0x406f40) ||
                   (caller >= 0x40d390 && caller < 0x40d3b0) || (caller >= 0x410c00 && caller < 0x410c40) || (caller >= 0x4143c0 && caller < 0x4143e0);
-        if (!rng || !frame || IsBadReadPtr(frame, 8)) break;
+        if (!rng || !frame || !mem_readable(frame, 8)) break;
         caller = frame[1]; frame = (uint32_t*)frame[0];
     }
-    uint32_t parent = frame && !IsBadReadPtr(frame, 8) ? frame[1] : 0;   /* one level further up: "SpawnItem" says little, "SpawnItem from the bullet loop" a lot */
+    uint32_t parent = frame && mem_readable(frame, 8) ? frame[1] : 0;   /* one level further up: "SpawnItem" says little, "SpawnItem from the bullet loop" a lot */
     for (int i = 0; i < 64; ++i) {
         if ((th08_rng_callers[i].caller == caller && th08_rng_callers[i].parent == parent) || !th08_rng_callers[i].caller) {
             th08_rng_callers[i].caller = caller; th08_rng_callers[i].parent = parent; ++th08_rng_callers[i].n; return;

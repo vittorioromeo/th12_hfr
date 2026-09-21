@@ -20,6 +20,14 @@ typedef int (__stdcall *FrameFn)(void* ctx);
    was compiled as the stdcall call alone once a third branch was added beside it, and TH14's
    frame function ran with whatever was left in ECX -- a crash on its first frame. An explicit
    register operand cannot be merged away. */
+/* Readable without faulting. IsBadReadPtr probes by faulting, which the exception report then
+   logs as an access violation in kernel32 and test-games counts as one. */
+static inline int mem_readable(const void* p, size_t n) {
+    MEMORY_BASIC_INFORMATION m;
+    if (!p || !VirtualQuery(p, &m, sizeof m) || m.State != MEM_COMMIT) return 0;
+    if (m.Protect & (PAGE_NOACCESS | PAGE_GUARD) || !(m.Protect & 0xff)) return 0;
+    return (const uint8_t*)p + n <= (const uint8_t*)m.BaseAddress + m.RegionSize;
+}
 static inline int call_this0(uintptr_t fn, void* self) {
     int r; void* c = self;
     __asm__ volatile ("call *%2" : "=a"(r), "+c"(c) : "r"(fn) : "edx", "memory", "cc");

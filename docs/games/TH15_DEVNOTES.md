@@ -30,7 +30,8 @@ extension, the desync trace.
 Not described: sub-tick input (`poll_input`, `game_input`), `pp`, `sprite_round_sites`,
 script-level dim rules (`vm_script_off`), the English and Steam builds.
 
-Tested under Wine only (§8). Not yet played on Windows.
+Tested under Wine (§8) and by `test-games.ps1 -Matrix -Drive` on Windows at 360 Hz: every case
+passes, a driven stage holds 360 ticks/s. Not yet played by a person.
 
 ## 3. What is the same as TH14
 
@@ -40,6 +41,11 @@ The update runner and its calling conventions (`RUNNER_ARG_ECX`, `REMOVE_NODE_RU
 calls, the SSE speed writes, the SSE movement truncation, the replay save (stdcall, four
 arguments) and load (`this` in ECX, filename pushed) routines, and the VM draw taking its VM on
 the stack. The start-up resolution dialog is the game's own.
+
+The runner's shutdown flag is at `+0x54` (`layout.runner_ending`): the destructor at `0x4709c0`
+sets it and runs the list once more so that each node's clean-up is called, not its update.
+Without it the input update ran after DirectInput was released (`th15.exe+0x2145`,
+`th14.exe+0x1ebe`).
 
 Every TH14 site has a TH15 counterpart except the laser manager's null-rate hook (§4).
 
@@ -170,7 +176,7 @@ the unmodified game waits forever on its sound command queue (`0x51e0a4`) at "No
     common to TH10–15 (the player moves before the enemies read her), not a TH15 site.
 
 Not done: a parity run with a stationary player, which would test the bullet and item sites
-without the aim difference; any run on Windows; a recorded-then-replayed sub-stepped run.
+without the aim difference; a recorded-then-replayed sub-stepped run.
 
 ## 9. How the port was made
 

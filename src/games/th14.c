@@ -788,7 +788,7 @@ static const struct GameProfile th14_profile = {
     },
     .layout = {
         .node_arg = 0x24,        /* as TH13 */
-        .runner_next = 0x50,     /* as TH13: the runner keeps the walk's next node in itself */
+        .runner_next = 0x50, .runner_ending = 0x54,     /* as TH13: the runner keeps the walk's next node in itself */
         .input_width = 4,
         /* The player's life-state timer: prev +0x68c, integer +0x690, float +0x694, and its
            rate pointer at +0x698 -- which the constructor points at the game speed (0x44dd2a),
