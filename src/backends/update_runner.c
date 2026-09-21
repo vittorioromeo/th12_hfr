@@ -30,22 +30,79 @@ static inline int crit_enabled(void) { return !g_game->critical_flag_mask || (G_
 static inline void crit_enter(void) { if (crit_enabled()) { EnterCriticalSection(CRIT); CRIT_COUNT++; } }
 static inline void crit_leave(void) { if (crit_enabled()) { LeaveCriticalSection(CRIT); CRIT_COUNT--; } }
 
-static struct UpdateFunc* g_stop_node; /* node that returned "stop" on the last frame tick */
 static unsigned g_stat_sub_calls, g_stat_frame_calls, g_stat_long, g_stat_vlong;
+
+/* One update pass, in three pieces, so that a game whose list cannot be walked from outside
+   (TH20: a container with registered iterators) can keep its own walk and hand over only the
+   call. `runner_pass_begin` and `runner_pass_end` bracket the pass; `runner_node` decides about
+   one node: RUNNER_CALLED with its result in *r, RUNNER_SKIP (count it and go on), or
+   RUNNER_CUT (end the pass with a count of one, as a node returning 3 does). */
+enum { RUNNER_CALLED, RUNNER_SKIP, RUNNER_CUT };
+typedef int (*NodeInvoke)(uint32_t fn, void* arg);
+static int invoke_thiscall(uint32_t fn, void* arg) { return ((NodeFn)fn)(arg); }
+static int invoke_cdecl(uint32_t fn, void* arg) { return ((int (__cdecl *)(void*))fn)(arg); }
+static void* g_stop_id;                 /* the node that returned "stop" on the last frame tick */
+static void runner_pass_begin(void) {
+    /* The desync trace samples here, before the frame's first tick runs, so it reads the state
+       at a frame boundary in both modes. It used to sample at the end of the pass, which under
+       sub-stepping is one sub-tick -- a sixth of a frame at 360Hz -- into the frame, and that
+       put a constant offset of most of a frame's movement into every comparison and buried the
+       small real differences the trace exists to find. */
+    if (g_major) { g_stop_id = NULL; g_frame_active = 0; replay_trace_frame(); }
+    else subtick_input_begin();
+}
+static void runner_pass_end(int is_update) {
+    set_factor(1.0f);
+    if (is_update) {
+        if (g_major && !g_skip_update) ++g_site_census_frames;
+        subtick_input_end(); enemy_interp(g_phase);
+    }
+}
+static int runner_node(void* id, uint32_t fn, void* arg, int is_update, NodeInvoke invoke, int* r) {
+    int mode = node_mode(fn);
+    if (mode == MODE_FRAME && !g_major) {
+        if (id == g_stop_id) return RUNNER_CUT;   /* the list was cut here on the last frame tick */
+        /* GameManager (g_game->addr.gm_callback) returns "stop" while paused (flags 0x10/0x20/0x40); a pause raised by a
+           sub-stepped node mid-frame must cut the list immediately, not only at the next frame tick */
+        if (fn == g_game->addr.gm_callback) { uint8_t* gm = *(uint8_t**)g_game->addr.game_manager; if (gm && (*(uint32_t*)(gm + g_game->layout.gm_pause_flags) & 0x70)) return RUNNER_CUT; }
+        return RUNNER_SKIP;
+    }
+    int replay_node = is_update && g_major && (fn == g_game->addr.record_callback || fn == g_game->addr.playback_callback);   /* replay record / playback nodes */
+    int frame_before = 0;
+    if (replay_node) {
+        uint8_t* rm = G_REPLAY_MANAGER;
+        if (rm) { frame_before = *(int*)(rm + g_game->layout.replay_frame); if (frame_before == 0) replay_stage_start(rm); }
+    }
+    set_factor(mode == MODE_SUB ? g_dt : 1.0f);
+    if (mode == MODE_SUB) g_stat_sub_calls++; else g_stat_frame_calls++;
+    /* Edge-triggered actions (notably Marisa B formation switching) belong
+       to the frame boundary, even while movement/focus are sampled faster. */
+    uint32_t saved_pressed = 0, saved_released = 0, saved_bomb = 0;
+    int player_minor = g_game->mask_minor_player_edges && fn == g_game->addr.player_callback && !g_major;
+    if (player_minor) {
+        saved_pressed = input_read(g_game->addr.game_pressed);
+        saved_released = input_read(g_game->addr.game_released);
+        saved_bomb = G_GAME_INPUT & 2;
+        set_game_input(G_GAME_INPUT & ~2u);
+        input_write(g_game->addr.game_pressed, 0); input_write(g_game->addr.game_released, 0);
+    }
+    *r = invoke(fn, arg);
+    if (player_minor) {
+        input_write(g_game->addr.game_pressed, saved_pressed);
+        input_write(g_game->addr.game_released, saved_released);
+        set_game_input(G_GAME_INPUT | saved_bomb);
+    }
+    if (fn == g_game->addr.player_callback) { uint8_t* pl = *(uint8_t**)g_game->addr.player; if (pl) { g_ptf_prev = g_ptf_cur; g_ptf_cur = *(float*)(pl + g_game->layout.player_timer); } }
+    if (replay_node) { uint8_t* rm = G_REPLAY_MANAGER; if (rm && *(int*)(rm + g_game->layout.replay_frame) != frame_before) g_frame_active = 1; }
+    if (*r == 3 && g_major) g_stop_id = id;
+    return RUNNER_CALLED;
+}
 
 int __cdecl __attribute__((used)) hfr_runner(uint8_t* runner) {
     int count = 0;
     if (g_skip_update && runner == G_UPDATE_RUNNER) { enemy_interp(g_phase); return 1; }
     int is_update = runner == G_UPDATE_RUNNER;
-    if (is_update) {
-        /* The desync trace samples here, before the frame's first tick runs, so it reads the state
-           at a frame boundary in both modes. It used to sample at the end of the pass, which under
-           sub-stepping is one sub-tick -- a sixth of a frame at 360Hz -- into the frame, and that
-           put a constant offset of most of a frame's movement into every comparison and buried the
-           small real differences the trace exists to find. */
-        if (g_major) { g_stop_node = NULL; g_frame_active = 0; replay_trace_frame(); }
-        else subtick_input_begin();
-    }
+    if (is_update) runner_pass_begin();
     crit_enter();
     struct ListNode* n = *(struct ListNode**)(runner + 0x18);
 restart:
@@ -60,49 +117,20 @@ restart:
             if (uf->on_cleanup) uf->on_cleanup(node_arg(uf));
             count++; continue;
         }
-        int mode = node_mode((uint32_t)uf->func);
-        if (mode == MODE_FRAME && !g_major) {
-            if (uf == g_stop_node) { count = 1; goto done; } /* the list was cut here on the last frame tick */
-            /* GameManager (g_game->addr.gm_callback) returns "stop" while paused (flags 0x10/0x20/0x40); a pause raised by a
-               sub-stepped node mid-frame must cut the list immediately, not only at the next frame tick */
-            if ((uint32_t)uf->func == g_game->addr.gm_callback) { uint8_t* gm = *(uint8_t**)g_game->addr.game_manager; if (gm && (*(uint32_t*)(gm + g_game->layout.gm_pause_flags) & 0x70)) { count = 1; goto done; } }
+        if (node_mode((uint32_t)uf->func) == MODE_FRAME && !g_major) {   /* decided without leaving the lock */
+            int r0; int v = runner_node(uf, (uint32_t)uf->func, NULL, is_update, invoke_thiscall, &r0);
+            if (v == RUNNER_CUT) { count = 1; goto done; }
             count++; continue;
         }
         crit_leave();
-        uint32_t fn = (uint32_t)uf->func;
-        int replay_node = is_update && g_major && (fn == g_game->addr.record_callback || fn == g_game->addr.playback_callback);   /* replay record / playback nodes */
-        int frame_before = 0;
-        if (replay_node) {
-            uint8_t* rm = G_REPLAY_MANAGER;
-            if (rm) { frame_before = *(int*)(rm + g_game->layout.replay_frame); if (frame_before == 0) replay_stage_start(rm); }
-        }
-        set_factor(mode == MODE_SUB ? g_dt : 1.0f);
-        if (mode == MODE_SUB) g_stat_sub_calls++; else g_stat_frame_calls++;
-        /* Edge-triggered actions (notably Marisa B formation switching) belong
-           to the frame boundary, even while movement/focus are sampled faster. */
-        uint32_t saved_pressed = 0, saved_released = 0, saved_bomb = 0;
-        int player_minor = g_game->mask_minor_player_edges && fn == g_game->addr.player_callback && !g_major;
-        if (player_minor) {
-            saved_pressed = input_read(g_game->addr.game_pressed);
-            saved_released = input_read(g_game->addr.game_released);
-            saved_bomb = G_GAME_INPUT & 2;
-            set_game_input(G_GAME_INPUT & ~2u);
-            input_write(g_game->addr.game_pressed, 0); input_write(g_game->addr.game_released, 0);
-        }
-        int r = uf->func(node_arg(uf));
-        if (player_minor) {
-            input_write(g_game->addr.game_pressed, saved_pressed);
-            input_write(g_game->addr.game_released, saved_released);
-            set_game_input(G_GAME_INPUT | saved_bomb);
-        }
-        if (fn == g_game->addr.player_callback) { uint8_t* pl = *(uint8_t**)g_game->addr.player; if (pl) { g_ptf_prev = g_ptf_cur; g_ptf_cur = *(float*)(pl + g_game->layout.player_timer); } }
-        if (replay_node) { uint8_t* rm = G_REPLAY_MANAGER; if (rm && *(int*)(rm + g_game->layout.replay_frame) != frame_before) g_frame_active = 1; }
+        int r = 1;
+        runner_node(uf, (uint32_t)uf->func, node_arg(uf), is_update, invoke_thiscall, &r);
         crit_enter();
         n = next_load(runner, n);
         switch (r) {
         case 0: game_remove_node(uf, runner); n = next_load(runner, n); count++; break;
         case 2: if (uf->flags & 2) goto call_again; count++; break;
-        case 3: if (g_major) g_stop_node = uf; count = 1; goto done;
+        case 3: count = 1; goto done;
         case 4: count = 0; goto done;
         case 8: if (g_game->runner_return8_ends) { count = 0; goto done; } count++; break;
         case 5: count = -1; goto done;
@@ -113,13 +141,29 @@ restart:
     }
 done:
     crit_leave();
-    set_factor(1.0f);
-    if (is_update) {
-        if (g_major && !g_skip_update) ++g_site_census_frames;
-        subtick_input_end(); enemy_interp(g_phase);
-    }
+    runner_pass_end(is_update);
     return count;
 }
+
+/* The same decisions for a game that keeps its own runner (GameProfile.runner_wrap): the
+   adapter hooks the runner's entry, the one instruction that calls a node, and its exit, and
+   points them here. Nodes are cdecl in the one engine that needs this. */
+int __cdecl __attribute__((used)) hfr_wrap_begin(void) {
+    if (g_skip_update) { enemy_interp(g_phase); return 1; }
+    runner_pass_begin();
+    return 0;
+}
+int __cdecl __attribute__((used)) hfr_wrap_node(uint32_t fn, void* arg) {
+    int r = 1;
+    node_seen(fn, -1);
+    switch (runner_node((void*)(uintptr_t)(fn ^ (uintptr_t)arg), fn, arg, 1, invoke_cdecl, &r)) {
+    case RUNNER_CUT:  return 3;
+    case RUNNER_SKIP: return 1;
+    default:          return r;
+    }
+}
+void __cdecl __attribute__((used)) hfr_wrap_end(void) { runner_pass_end(1); }
+
 /* The replacement runner is entered by a five-byte jump written over the game's runner, so
  * from the jump onwards the whole function is ours -- including its last instruction, which
  * is where anything that wants to run after an update pass puts its hook. thprac's menu is

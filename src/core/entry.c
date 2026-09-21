@@ -114,7 +114,7 @@ static int late_entry_work(void) {
         uint8_t* base=(uint8_t*)GetModuleHandleA(NULL);
         MEMORY_BASIC_INFORMATION mbi;
         const IMAGE_NT_HEADERS32* nt=NULL;
-        if ((uintptr_t)base==0x400000 && VirtualQuery(base,&mbi,sizeof mbi)) nt=image_header(base,mbi.RegionSize);
+        if (base && VirtualQuery(base,&mbi,sizeof mbi)) { g_image_base=(uintptr_t)base; nt=image_header(base,mbi.RegionSize); }
         if (!nt || !select_game(base,nt->OptionalHeader.SizeOfImage)) return 0;   /* still ciphertext */
         if (!install()) { LOG("Identified after start-up but installation failed; HFR inactive"); return 1; }
         LOG("Identified once the executable had started: %s", g_game->identity->name);
@@ -157,7 +157,7 @@ BOOL WINAPI DllMain(HINSTANCE h, DWORD reason, LPVOID res) {
         MEMORY_BASIC_INFORMATION mbi;
         /* The loader has validated these headers; detection still checks all bounds. */
         const IMAGE_NT_HEADERS32* nt=NULL;
-        if ((uintptr_t)base==0x400000 && VirtualQuery(base,&mbi,sizeof mbi)) nt=image_header(base,mbi.RegionSize);
+        if (base && VirtualQuery(base,&mbi,sizeof mbi)) { g_image_base=(uintptr_t)base; nt=image_header(base,mbi.RegionSize); }
         if (nt) select_game(base,nt->OptionalHeader.SizeOfImage);
         read_config();
         if (cfg.log) { char path[MAX_PATH]; GetModuleFileNameA(NULL, path, MAX_PATH); char* p = strrchr(path, '\\'); if (p) strcpy(p + 1, "touhou_hfr.log"); g_log = fopen(path, "w"); }
@@ -173,7 +173,7 @@ BOOL WINAPI DllMain(HINSTANCE h, DWORD reason, LPVOID res) {
             uint8_t* img=(uint8_t*)GetModuleHandleA(NULL);
             MEMORY_BASIC_INFORMATION m;
             const IMAGE_NT_HEADERS32* h=NULL;
-            if ((uintptr_t)img==0x400000 && VirtualQuery(img,&m,sizeof m)) h=image_header(img,m.RegionSize);
+            if (img && VirtualQuery(img,&m,sizeof m)) h=image_header(img,m.RegionSize);
             int wrapped = !g_game && h && wrapped_executable(img,h->OptionalHeader.SizeOfImage);
             if (wrapped && armed)
                 LOG("This executable's code is not readable yet, which is what a Steam release "

@@ -27,6 +27,7 @@ No game file is modified. You add four files to the game's folder and delete the
 | Touhou 13 — Ten Desires | v1.00c | `th13.exe`, `th13e.exe` | supported |
 | Touhou 14 — Double Dealing Character | v1.00b | `th14.exe` | supported — [notes](#touhou-14-and-15) |
 | Touhou 15 — Legacy of Lunatic Kingdom | v1.00b | `th15.exe` | supported, new — [notes](#touhou-14-and-15) |
+| Touhou 20 — Fossilized Wonders | v1.00c (Steam) | `th20.exe` | supported, new — [notes](#touhou-20) |
 | Touhou Koumakyou: New Classic | [see notes](docs/games/TH06NC_DEVNOTES.md#2-product-and-inspected-build) | `th06nc.exe` | experimental — [notes](#new-classic) |
 
 - Requires Windows and a display above 60 Hz. On a 60 Hz display the patch does nothing.
@@ -209,6 +210,18 @@ TH15 is new in this build and has had less play time.
 
 Not covered: the English and Steam executables (unverified), script-level dim rules, and
 internal-resolution sprite snapping.
+
+## Touhou 20
+
+A much newer engine than TH15's, at the same level: display-rate movement for bullets, the
+player, her shots and stones, items and lasers; sub-tick input; interpolated enemies; replays
+that carry their recording rate and per-tick input; dimming and the video path. Bombs, effects
+and the stage background still move in 60 Hz steps.
+
+It is the first supported game whose executable is relocatable, which the patch now handles.
+New in this build and tested under Wine only — please report what you see on Windows. Not
+covered: English patches, thprac and thcrap (untested), the game's own screenshots when
+scaling is on, and internal-resolution sprite snapping.
 
 ## Imperishable Night
 

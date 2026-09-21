@@ -81,15 +81,22 @@ static void dim_install(void) {
     const uintptr_t at = g_game->draw.dispatch; const size_t n = g_game->draw.dispatch_len;
     const uint8_t node = g_game->draw.node_reg, freg = g_game->draw.flush_reg;
     if (!at) return;
-    if (n < 5 || n > 16 || node == 4 || freg == 4 || !g_game->draw.flush_fn || !g_game->draw.flush_this) { LOG("dimming: the profile's draw description is unusable"); return; }
+    if (n < 5 || n > 16 || (node == 4 && !g_game->draw.emit_node) || freg == 4 || !g_game->draw.flush_fn || !g_game->draw.flush_this) { LOG("dimming: the profile's draw description is unusable"); return; }
     if (!site_expected(at, n)) return;
     uint8_t* flush = g_p;
     E(0x50 | freg); E(0x8B, 0x05 | (freg << 3)); E32((uint32_t)g_game->draw.flush_this);   /* push reg; mov reg,[flush_this] */
     ECALL(g_game->draw.flush_fn); E(0x58 | freg); E(0xC3);                                      /* call flush_fn; pop reg; ret */
     STUB_BEGIN();
+    if (g_game->draw.emit_node) {
+        g_game->draw.emit_node();                                                               /* eax = the node */
+        E(0xA3); E32((uint32_t)(uintptr_t)&g_draw_node);                                        /* mov [g_draw_node],eax */
+        E(0x8B, 0x80); E32(g_game->draw.prio_off);                                              /* mov eax,[eax+prio_off] */
+        E(0xA3); E32((uint32_t)(uintptr_t)&g_draw_prio);                                        /* mov [g_draw_prio],eax */
+    } else {
     E(0x8B, 0x80 | node); E32(g_game->draw.prio_off);                                          /* mov eax,[node+prio_off] */
     E(0xA3); E32((uint32_t)(uintptr_t)&g_draw_prio);                                            /* mov [g_draw_prio],eax */
     E(0x89, 0x05 | (node << 3)); E32((uint32_t)(uintptr_t)&g_draw_node);                        /* mov [g_draw_node],node */
+    }
     ECALL((uintptr_t)flush);
     ECALL((uintptr_t)dim_at_callback);                                                        /* the background quad, when this is the first world callback */
     ECOPY(at, n);
@@ -274,7 +281,8 @@ static void __cdecl __attribute__((force_align_arg_pointer)) dim_vm_enter(uint32
     g_vm_depth++;
     if (!g_vm || g_draw_prio < 0) return;
     const char* anm = NULL; int layer = -1, script = -1;
-    if (g_game->draw.vm_anm_off) { const uint8_t* al = *(const uint8_t* const*)(g_vm + g_game->draw.vm_anm_off); if (al) anm = (const char*)al + 4; }
+    if (g_game->draw.anm_name) anm = g_game->draw.anm_name((const uint8_t*)g_vm);
+    else if (g_game->draw.vm_anm_off) { const uint8_t* al = *(const uint8_t* const*)(g_vm + g_game->draw.vm_anm_off); if (al) anm = (const char*)al + 4; }
     else if (g_game->draw.vm_slot_off && g_game->addr.anm_manager) {   /* TH15: the VM names its ANM by slot, not by pointer */
         const uint8_t* am = *(const uint8_t* const*)g_game->addr.anm_manager; const uint32_t slot = *(const uint32_t*)(g_vm + g_game->draw.vm_slot_off);
         if (am && slot < g_game->draw.anm_slots) { const uint8_t* al = *(const uint8_t* const*)(am + g_game->draw.anm_table_off + slot * 4); if (al) anm = (const char*)al + 4; }

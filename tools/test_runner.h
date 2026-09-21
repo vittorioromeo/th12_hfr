@@ -53,14 +53,14 @@ static void test_runner(void) {
     g_major=1;test_result=3;assert(hfr_runner(runner)==1 && test_sub_calls==2);
     g_major=0;assert(hfr_runner(runner)==1 && test_sub_calls==2);
     /* A new pause raised between boundary ticks must cut off the player. */
-    g_stop_node=NULL;game.addr.gm_callback=(uintptr_t)fake_frame;
+    g_stop_id=NULL;game.addr.gm_callback=(uintptr_t)fake_frame;
     *(void**)game.addr.game_manager=manager;*(uint32_t*)(manager+game.layout.gm_pause_flags)=0x10;
     assert(hfr_runner(runner)==1 && test_sub_calls==2);
     *(uint32_t*)(manager+game.layout.gm_pause_flags)=0;test_result=1;
     assert(hfr_runner(runner)==2 && test_sub_calls==3);
     DeleteCriticalSection((LPCRITICAL_SECTION)game.addr.crit);
     memset((void*)game.addr.crit, 0, sizeof(CRITICAL_SECTION));   /* keep the fixture dump comparable between runs */
-    G_UPDATE_RUNNER=NULL;*(void**)game.addr.game_manager=NULL;g_game=real;g_stop_node=NULL;g_major=1;g_dt=1;
+    G_UPDATE_RUNNER=NULL;*(void**)game.addr.game_manager=NULL;g_game=real;g_stop_id=NULL;g_major=1;g_dt=1;
     puts("PASS: shared runner boundary/minor/duplicate ticks, input edges, list stop and immediate pause");
 }
 
@@ -116,13 +116,65 @@ static void test_runner_undescribed(void) {
     cfg.debug=0;G_REPLAY_MANAGER=NULL;
     DeleteCriticalSection((LPCRITICAL_SECTION)game.addr.crit);
     memset((void*)game.addr.crit,0,sizeof(CRITICAL_SECTION));
-    G_UPDATE_RUNNER=NULL;g_game=real;g_major=1;g_dt=1;g_stop_node=NULL;
+    G_UPDATE_RUNNER=NULL;g_game=real;g_major=1;g_dt=1;g_stop_id=NULL;
     /* ... and the answer for the real profile is whatever that profile actually says, which
        is the point: TH10-13 describe these and TH14 does not, and both are legitimate. */
     assert(catchup_available() == (real->addr.frame_context_ptr && real->addr.frame_flag &&
                                    real->addr.frame_context_value && real->addr.cleanup_fn &&
                                    real->addr.cleanup_this ? 1 : 0));
     puts("PASS: a profile that describes only the scheduler survives a pass and a catch-up tick, writing through none of the addresses it lacks");
+}
+
+/* The same decisions for an engine that keeps its own runner (GameProfile.runner_wrap): the
+   adapter hooks the runner's entry, its node call and its exit and points them at
+   hfr_wrap_begin/_node/_end. Nodes are cdecl there. What the game's loop does with the
+   answers is the game's; what is tested is the answers: a per-frame node is called on the
+   frame's first tick and answered "continue" (1) on the others, a sub-stepped node is called
+   on all of them at the sub-step's share of the game speed, a skipped pass calls nothing, and
+   a node that ended the list on the first tick cuts it (3) at the same place on the rest. */
+static int __cdecl fake_frame_cdecl(void* arg) {++test_frame_calls;return test_result;}
+static int __cdecl fake_sub_cdecl(void* arg) {
+    ++test_sub_calls;
+    assert(G_GAME_SPEED==g_logical*g_dt);
+    test_edges=input_read(g_game->addr.game_pressed);
+    return 1;
+}
+static void test_runner_wrapped(void) {
+    const struct GameProfile* real=g_game;
+    struct GameProfile game=*real;
+    struct node_class classes[]={{(uintptr_t)fake_frame_cdecl,MODE_FRAME,"Frame"},{(uintptr_t)fake_sub_cdecl,MODE_SUB,"Sub"}};
+    game.classes=classes;game.class_count=2;game.addr.player_callback=(uintptr_t)fake_sub_cdecl;
+    game.addr.record_callback=game.addr.playback_callback=0;game.place_enemy=NULL;
+    test_fill_missing(&game);
+    g_game=&game;g_sub_enabled[0]=g_sub_enabled[1]=1;
+    if (game.addr.replay_manager) G_REPLAY_MANAGER=NULL;
+    *(void**)game.addr.player=NULL;
+    cfg.substep=1;cfg.subtick_input=0;g_skip_update=0;g_dt=0.25f;g_logical=1;
+    input_write(game.addr.game_pressed,2);input_write(game.addr.game_released,4);set_game_input(2);
+    int arg_a=0,arg_b=0;
+    test_result=1;test_frame_calls=test_sub_calls=0;
+    g_major=1;assert(hfr_wrap_begin()==0);
+    assert(hfr_wrap_node((uint32_t)(uintptr_t)fake_frame_cdecl,&arg_a)==1 && test_frame_calls==1);
+    assert(hfr_wrap_node((uint32_t)(uintptr_t)fake_sub_cdecl,&arg_b)==1 && test_sub_calls==1 && test_edges==2);
+    hfr_wrap_end();assert(G_GAME_SPEED==1);
+    g_major=0;assert(hfr_wrap_begin()==0);
+    assert(hfr_wrap_node((uint32_t)(uintptr_t)fake_frame_cdecl,&arg_a)==1 && test_frame_calls==1);
+    assert(hfr_wrap_node((uint32_t)(uintptr_t)fake_sub_cdecl,&arg_b)==1 && test_sub_calls==2);
+    assert(test_edges==(game.mask_minor_player_edges?0:2));
+    hfr_wrap_end();
+    assert(input_read(game.addr.game_pressed)==2 && input_read(game.addr.game_released)==4 && G_GAME_INPUT==2);
+    assert(G_GAME_SPEED==1);
+    g_skip_update=1;assert(hfr_wrap_begin()==1 && test_sub_calls==2);g_skip_update=0;
+    /* The per-frame node ends the list on the first tick: the same node cuts it on the others. */
+    g_major=1;test_result=3;assert(hfr_wrap_begin()==0);
+    assert(hfr_wrap_node((uint32_t)(uintptr_t)fake_frame_cdecl,&arg_a)==3 && test_frame_calls==2);hfr_wrap_end();
+    g_major=0;assert(hfr_wrap_begin()==0);
+    assert(hfr_wrap_node((uint32_t)(uintptr_t)fake_frame_cdecl,&arg_a)==3 && test_frame_calls==2);hfr_wrap_end();
+    /* ... and the same function with another argument is another node. */
+    g_major=0;assert(hfr_wrap_begin()==0);
+    assert(hfr_wrap_node((uint32_t)(uintptr_t)fake_frame_cdecl,&arg_b)==1 && test_frame_calls==2);hfr_wrap_end();
+    g_game=real;g_stop_id=NULL;g_major=1;g_dt=1;
+    puts("PASS: wrapped runner boundary/minor/skipped ticks, input edges and the list cut");
 }
 
 /* ---------------------------------------------------------------- the runner's ending
@@ -224,7 +276,7 @@ static void test_runner_tail(void) {
 
     DeleteCriticalSection((LPCRITICAL_SECTION)game.addr.crit);
     memset((void*)game.addr.crit, 0, sizeof(CRITICAL_SECTION));
-    G_UPDATE_RUNNER=NULL;g_game=real_game;g_stop_node=NULL;g_major=1;g_dt=1;g_runner_tail=NULL;
+    G_UPDATE_RUNNER=NULL;g_game=real_game;g_stop_id=NULL;g_major=1;g_dt=1;g_runner_tail=NULL;
     printf("PASS: the update pass ends on the game's own instruction at 0x%06x, stack and result intact\n",
            (unsigned)tail);
 }

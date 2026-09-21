@@ -88,6 +88,7 @@ struct GameProfile {
         uint32_t input_size;        /* bytes saved around a sub-tick poll */
         uint32_t input_width;       /* 2 or 4 bytes per input word */
         uint32_t autofocus_frames;  /* "hold shot to focus" threshold; zero selects TH10-13's 8 */
+        uint32_t autofocus_option;  /* that option's bit in the word at addr.option_flags; zero selects 0x200 */
         uint32_t focus_mask;        /* zero selects the later engines' 0x08 */
         uint32_t node_arg;          /* the UpdateFunc's argument slot; zero selects +0x20 (TH13: +0x24) */
         uint32_t runner_next;       /* runner field that holds the next list node during the walk, re-read
@@ -130,6 +131,12 @@ struct GameProfile {
        three menus later. */
     uint32_t frame_flag_value;
     int runner_return8_ends;
+    /* The game keeps its own update runner and the adapter hooks its entry, its node call and
+       its exit (hfr_wrap_begin/_node/_end); `runner_fn` is then never overwritten. */
+    int runner_wrap;
+    /* The adapter hooks the game's writes to its speed itself (install_sites) rather than
+       listing them as speed_sites: an engine whose speed is an object with a setter. */
+    int speed_sites_own;
     int native_size_cycle;          /* the game cycles its own window sizes on F10 (TH11 on) */
     /* How remove_node is called. TH10-12 pass (node, runner) in ECX/EDX, TH13 swapped them,
        and TH14 made it a method: the runner in ECX and the node pushed. */
@@ -165,6 +172,13 @@ struct GameProfile {
         /* TH14 on: the VM is the draw's first stack argument rather than arriving in a
            register, so `vm_reg` says nothing and the wrap reads it off the stack instead. */
         int vm_stack_arg;
+        /* An engine whose runner keeps the node in a stack slot, or behind an iterator: emit the
+           instructions that leave it in EAX at the dispatch (ECX and EDX may be lost). Replaces
+           `node_reg`. */
+        void (*emit_node)(void);
+        /* ... and one that keeps a loaded ANM's file name somewhere other than four bytes into
+           the record: the VM's ANM file name, or NULL. Replaces vm_anm_off and vm_slot_off. */
+        const char* (*anm_name)(const uint8_t* vm);
         int world_prio;
         const struct DimRule* rules; size_t rule_count;
         const char* special_name;     /* what DIM_SPECIAL fades in this game, for the menu; NULL = nothing */
@@ -181,6 +195,11 @@ struct GameProfile {
     /* Replay state for an engine whose replay manager is not the TH10-15 one: non-zero while a
        replay is being played back. NULL with no addr.replay_manager: never. */
     int (*replay_playing)(void);
+    /* Sub-tick input for an engine whose polling routine cannot be called the TH10-15 way (a
+       `this`, or more state than layout.input_size can put back): poll the devices now, leave
+       every piece of the game's own input state as it was found, return the raw input word.
+       Replaces addr.poll_input. */
+    uint32_t (*poll_raw)(void);
     void (*place_enemy)(uint8_t* enemy, uint8_t* anm, uint32_t flags, const float* position);
     /* Optional, and called from the same place: a game's own once-a-frame things whose sprites
        should be drawn between their frame positions. `capture` is true on the frame boundary. */

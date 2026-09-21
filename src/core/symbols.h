@@ -8,7 +8,8 @@
 #define G_MISC_FLAGS      (*(uint32_t*)g_game->addr.misc_flags)
 #define G_INPUT_CUR       (*(uint32_t*)g_game->addr.raw_input)
 #define G_INPUT_PRESSED   (*(uint32_t*)g_game->addr.raw_pressed)
-#define G_REPLAY_MANAGER  (*(uint8_t**)g_game->addr.replay_manager) /* mode at +0x10; frame/stage offsets in profile */
+static uint8_t* g_no_replay_manager;   /* what a profile that has not described the manager reads: none */
+#define G_REPLAY_MANAGER  (*(g_game->addr.replay_manager ? (uint8_t**)g_game->addr.replay_manager : &g_no_replay_manager)) /* mode at +0x10; frame/stage offsets in profile */
 
 /* The replay manager's mode word: 1 while a replay is playing back. */
 #define REPLAY_MODE(rm) (*(int*)((rm) + (g_game->layout.replay_mode ? g_game->layout.replay_mode : 0x10)))

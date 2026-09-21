@@ -321,7 +321,8 @@ int main(int argc,char**argv) {
        the replay round-trip drives a real sub-step switch and needs a real class. */
     int subs = sim && g_class_count;
     test_schedule();test_calling_conventions();test_speed_sites();test_movement_residual();test_replay_parser();test_scale_rect();test_snap_client();test_menu_key();
-    if (sim) { test_runner();test_runner_undescribed();test_runner_tail(); }
+    if (sim && g_game->runner_wrap) test_runner_wrapped();   /* the game keeps its own runner: no list, lock or ending of ours */
+    else if (sim) { test_runner();test_runner_undescribed();test_runner_tail(); }
     else puts("SKIP: the shared runner (this game's simulation is not described)");
     if (subs) test_replay_roundtrip();
     else puts("SKIP: replay round-trip (this game has no sub-steppable systems described)");
@@ -355,7 +356,8 @@ int main(int argc,char**argv) {
        runner, or through an older engine's own presentation hooks */
     assert(g_frame_hook_installed == (sim || g_game->install_presentation != NULL));
     if (g_game->d3d8) assert(orig_Direct3DCreate8);   /* the bridge resolves Direct3DCreate9 itself, at run time */
-    else assert(orig_Direct3DCreate9 && orig_D3DXCreateTexture && orig_D3DXCreateTextureFromFileInMemoryEx);
+    else assert(orig_Direct3DCreate9 && orig_D3DXCreateTexture && cfg.d3d9ex &&
+                (orig_D3DXCreateTextureFromFileInMemoryEx || !iat_slot(g_game->d3dx,"D3DXCreateTextureFromFileInMemoryEx")));
     assert(!sim || orig_joyGetPosEx);   /* sub-tick input only where there is a simulation */
     cfg.debug=0;
     puts("PASS: complete patch plan has frozen signatures, no overlaps; failed transaction leaves code intact");

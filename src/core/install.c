@@ -1,9 +1,53 @@
-static const struct GameProfile* const game_profiles[] = {&th08_profile,&th10_profile,&th11_profile,&th12_profile,&th13_profile,&th14_profile,&th15_profile};
+static const struct GameProfile* const game_profiles[] = {&th08_profile,&th10_profile,&th11_profile,&th12_profile,&th13_profile,&th14_profile,&th15_profile,&th20_profile};
+/* A profile is written for the preferred base. When the image is somewhere else, the runtime
+   works from a copy with every address moved: the identity's signatures (addresses, and the
+   dwords inside their bytes that the loader fixed up) and conflict sites, the profile's whole
+   `addr` block -- which is nothing but addresses, and is walked as an array for that reason --
+   and the address-bearing tables it points at. Offsets, masks and flags are untouched. An
+   adapter's own literals are its own business: it wraps them in HFR_VA(). */
+static const struct GameProfile* relocate_profile(const struct GameProfile* src, const uint8_t* image, size_t size) {
+    static struct GameProfile prof; static struct GameIdentity ident;
+    const uint32_t delta=(uint32_t)(g_image_base-HFR_PREFERRED_BASE);
+    if (!delta) return src;
+    const struct GameIdentity* id=src->identity;
+    struct GameSignature* sig=(struct GameSignature*)calloc(id->signature_count?id->signature_count:1,sizeof *sig);
+    struct ConflictSite* con=(struct ConflictSite*)calloc(id->conflict_count?id->conflict_count:1,sizeof *con);
+    struct SpeedSite* sp=(struct SpeedSite*)calloc(src->speed_site_count?src->speed_site_count:1,sizeof *sp);
+    struct node_class* cl=(struct node_class*)calloc(src->class_count?src->class_count:1,sizeof *cl);
+    uintptr_t* rs=(uintptr_t*)calloc(src->sprite_round_count?src->sprite_round_count:1,sizeof *rs);
+    if (!sig||!con||!sp||!cl||!rs) return NULL;
+    for (size_t i=0;i<id->signature_count;++i) {
+        sig[i]=id->signatures[i];
+        if (reloc_adjust(image,size,sig[i].addr,sig[i].size,sig[i].bytes,delta)<0) return NULL;
+        sig[i].addr+=delta;
+    }
+    for (size_t i=0;i<id->conflict_count;++i) {
+        con[i]=id->conflicts[i];
+        if (reloc_adjust(image,size,con[i].addr,con[i].size,con[i].bytes,delta)<0) return NULL;
+        con[i].addr+=delta;
+    }
+    ident=*id; ident.signatures=sig; ident.conflicts=id->conflicts?con:NULL;
+    prof=*src; prof.identity=&ident;
+    uintptr_t* a=(uintptr_t*)&prof.addr;
+    for (size_t i=0;i<sizeof prof.addr/sizeof *a;++i) if (a[i]) a[i]+=delta;
+    for (size_t i=0;i<src->speed_site_count;++i) { sp[i]=src->speed_sites[i]; sp[i].addr+=delta; }
+    for (size_t i=0;i<src->class_count;++i) { cl[i]=src->classes[i]; cl[i].func+=delta; }
+    for (size_t i=0;i<src->sprite_round_count;++i) rs[i]=src->sprite_round_sites[i]+delta;
+    prof.speed_sites=sp; prof.classes=cl; prof.sprite_round_sites=src->sprite_round_sites?rs:NULL;
+    if (prof.draw.dispatch) prof.draw.dispatch+=delta;
+    if (prof.draw.flush_fn) prof.draw.flush_fn+=delta;
+    if (prof.draw.flush_this) prof.draw.flush_this+=delta;
+    if (prof.draw.vm_draw) prof.draw.vm_draw+=delta;
+    return &prof;
+}
 static int select_game(const uint8_t* image, size_t size) {
     const struct GameIdentity* id=identify_image(image,size);
     g_game=NULL;
     for (size_t i=0;i<sizeof game_profiles/sizeof *game_profiles;++i)
-        if (game_profiles[i]->identity==id && game_profiles[i]->class_count<=MAX_NODE_CLASSES) { g_game=game_profiles[i];return 1; }
+        if (game_profiles[i]->identity==id && game_profiles[i]->class_count<=MAX_NODE_CLASSES) {
+            g_game=relocate_profile(game_profiles[i],image,size);
+            return g_game!=NULL;
+        }
     return 0;
 }
 /* First-chance report of a fatal exception, naming the module it came from. A crash inside
@@ -49,7 +93,7 @@ static LONG CALLBACK hfr_exception_report(EXCEPTION_POINTERS* ep) {
                 uintptr_t v;
                 if (!mem_readable(sp + i, 4)) break;
                 v = sp[i];
-                int in_game = v >= 0x401000 && v < 0x500000;   /* the game is always at 0x400000 */
+                int in_game = v >= g_image_base + 0x1000 && v < g_image_base + (g_game ? g_game->identity->image_size : 0x100000);
                 int in_stub = g_stub_mem && v >= (uintptr_t)g_stub_mem && v < (uintptr_t)g_stub_mem + g_stub_used;
                 if (in_game || in_stub)
                     n += snprintf(line + n, sizeof line - n, " [%x]=%08lx%s", i * 4, (unsigned long)v, in_stub ? "s" : "");
@@ -143,7 +187,10 @@ static int install(void) {
             {offsetof(struct GameProfile,addr.player),        "player",        "the player's state timer"},
         };
         for (size_t i=0;i<sizeof wants/sizeof *wants;++i)
-            if (!*(const uintptr_t*)((const uint8_t*)g_game + wants[i].off))
+            if (!*(const uintptr_t*)((const uint8_t*)g_game + wants[i].off) &&
+                !(g_game->update_only && !strcmp(wants[i].needed_for, "the catch-up tick")) &&   /* the profile makes that tick itself */
+                !(g_game->poll_raw && !strcmp(wants[i].name, "poll_input")) &&                     /* ... and that poll */
+                !(g_game->runner_wrap && (!strcmp(wants[i].name, "remove_node") || !strcmp(wants[i].name, "crit"))))   /* the game's own runner does both */
                 LOG("profile: %s is not described; %s is unavailable", wants[i].name, wants[i].needed_for);
         /* Some of these are not independent. The game speed is one: the runtime writes it every
            tick, and the game writes it too -- for its own slow-motion, for a pause, for the ECL
@@ -151,7 +198,7 @@ static int install(void) {
            a described speed site that folds our factor in. A profile with `speed` and no sites
            would have the runtime overwrite the game's own speed once a tick and hold it at 1.0,
            which is not a crash and not a message, just a game that never slows down. */
-        if (g_game->addr.speed && !g_game->speed_site_count)
+        if (g_game->addr.speed && !g_game->speed_site_count && !g_game->speed_sites_own)
             LOG("profile: speed is described but none of its write sites are; the game's own speed changes would be overwritten. Describe the sites or leave speed out.");
     }
     if (sim) {
@@ -190,7 +237,7 @@ static int install(void) {
                 subs, (unsigned)g_class_count, subs ? names : "none");
             LOG("  everything else steps once per 60 Hz frame, so what it draws moves in 60 Hz steps however high the frame rate is.");
         }
-        if (!g_game->addr.poll_input || !g_game->addr.game_input) {
+        if ((!g_game->addr.poll_input && !g_game->poll_raw) || !g_game->addr.game_input) {
             if (cfg.subtick_input) LOG("this game's input path is not described: sub-tick input is off.");
             cfg.subtick_input = 0;
         }
@@ -235,8 +282,10 @@ static int install(void) {
             uint8_t latency[7]; memcpy(latency,site_expected(g_game->addr.latency_cmp,7),7);latency[6]=0x7f;
             patch_bytes(g_game->addr.latency_cmp,latency,7,site_expected(g_game->addr.latency_cmp,7));
         }
-        runner_tail_select();   /* where the replacement runner ends (update_runner.c) */
-        patch_jmp(g_game->addr.runner_fn,runner_entry_thunk(),site_expected(g_game->addr.runner_fn,5));
+        if (!g_game->runner_wrap) {
+            runner_tail_select();   /* where the replacement runner ends (update_runner.c) */
+            patch_jmp(g_game->addr.runner_fn,runner_entry_thunk(),site_expected(g_game->addr.runner_fn,5));
+        }
         void* frame_hook=g_game->frame_ctx_ecx ? (void*)hfr_frame_ecx : (void*)hfr_frame;
         for (int i=0;i<3;++i) if (g_game->addr.frame_calls[i]) site_call(g_game->addr.frame_calls[i],frame_hook);
         g_frame_hook_installed = 1;
@@ -258,7 +307,10 @@ static int install(void) {
     }
     if (cfg.d3d9ex && !g_game->d3d8) {   /* a D3D8 game has no D3DX9 imports: its statically linked D3DX8 reaches the device hooks */
         int a=hook_import(g_game->d3dx,"D3DXCreateTexture",hook_D3DXCreateTexture,(void**)&orig_D3DXCreateTexture);
-        int b=hook_import(g_game->d3dx,"D3DXCreateTextureFromFileInMemoryEx",hook_D3DXCreateTextureFromFileInMemoryEx,(void**)&orig_D3DXCreateTextureFromFileInMemoryEx);
+        /* A game that never imports the second one (TH20 creates every texture with the first
+           and fills it with D3DXLoadSurfaceFromFileInMemory) has nothing there to convert. */
+        int b=!iat_slot(g_game->d3dx,"D3DXCreateTextureFromFileInMemoryEx") ||
+              hook_import(g_game->d3dx,"D3DXCreateTextureFromFileInMemoryEx",hook_D3DXCreateTextureFromFileInMemoryEx,(void**)&orig_D3DXCreateTextureFromFileInMemoryEx);
         if (!a || !b) {cfg.d3d9ex=0;LOG("D3DX hooks unavailable (%d,%d): using D3D9",a,b);}
     }
     if (cfg.internal_scale > 1 &&

@@ -29,7 +29,7 @@
 
 /* The game's resolved import slot for dll!func, or NULL when it does not import it. */
 static void** iat_slot(const char* dll, const char* func) {
-    uint8_t* base=(uint8_t*)0x400000;   /* required by the selected executable profile */
+    uint8_t* base=(uint8_t*)g_image_base;
     const IMAGE_DOS_HEADER* dos=(const void*)base;
     const IMAGE_NT_HEADERS32* nt=(const void*)(base+dos->e_lfanew);
     IMAGE_DATA_DIRECTORY dir=nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];

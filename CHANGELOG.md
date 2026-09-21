@@ -4,6 +4,26 @@ Newest first. Versions are the release archive names; `-test` means what it says
 Full release notes for each version are on the
 [releases page](https://github.com/vittorioromeo/th12_hfr/releases).
 
+## Unreleased
+
+Touhou 20.
+
+- **Touhou 20 — Fossilized Wonders (Steam, v1.00c).** Bullets, lasers, items, the player with
+  her shots and stones, and sprite animation step at the display's rate; enemies are
+  interpolated and options are carried with the player between frames; sub-tick input; replays
+  carry their recording rate and per-tick input; dimming and the video path work. Bombs,
+  effects and the stage stay at 60 Hz. Tested under Wine only so far: a recording and its
+  playback agree on every frame at 120 and 144 Hz.
+- **Relocatable executables.** TH20 is built with ASLR. Signatures are now compared
+  relocation-aware and every address a profile names is moved by the load delta, so the patch
+  works wherever Windows puts the game.
+- An engine may keep its own update runner (`runner_wrap`): TH20's is hooked at its entry, its
+  node call and its exit instead of being replaced. Likewise a profile may poll input itself
+  (`poll_raw`), name a draw node and an ANM file through callbacks (`draw.emit_node`,
+  `draw.anm_name`), and hook its own speed writes (`speed_sites_own`).
+- D3D9Ex no longer falls back to D3D9 when a game simply does not import
+  `D3DXCreateTextureFromFileInMemoryEx` (TH20 does not).
+
 ## v0.7-test
 
 Touhou 15, sub-tick input on TH14 and TH15, and two TH14 replay fixes.

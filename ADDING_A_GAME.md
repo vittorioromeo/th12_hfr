@@ -77,6 +77,14 @@ the frozen signatures cannot tell you a *right-looking* address is pointing at t
 
 ## Finding the awkward fields
 
+**An engine that is not TH10–15's.** Look at `src/games/th20.c` before anything else: it keeps
+the game's own update runner and hooks its entry, its node call and its exit (`runner_wrap`,
+`hfr_wrap_begin/_node/_end`), makes the catch-up tick itself (`update_only`), polls input itself
+(`poll_raw`), hooks the game's speed setter (`speed_sites_own`) and tells the dimming code how
+to reach a draw node and an ANM file name (`draw.emit_node`, `draw.anm_name`). It is also a
+relocatable executable: write every address the adapter emits or calls as `HFR_VA(a)`, and
+generate signatures with a tool that refuses a range cutting a relocation fixup in two.
+
 Each of these was worked out for one game and then found for the others by pattern, which is
 the method to reuse.
 

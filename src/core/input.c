@@ -65,6 +65,7 @@ static MMRESULT WINAPI hook_joyGetPosEx(UINT id, LPJOYINFOEX ji) {
 }
 /* Run the game's input poll without disturbing the per-frame raw input state. */
 static uint32_t poll_input_raw(void) {
+    if (g_game->poll_raw) { g_joy_use_cache = 1; uint32_t r = g_game->poll_raw(); g_joy_use_cache = 0; return r; }
     uint8_t save[G_INPUT_RAW_SIZE];
     size_t n = g_game->layout.input_size;
     if (!n || n > sizeof save) n = sizeof save;
@@ -82,7 +83,7 @@ static uint32_t poll_input_raw(void) {
 static uint32_t merge_subtick_bits(uint32_t frame_val, uint32_t polled, int live) {
     uint32_t v = (frame_val & ~(uint32_t)(IN_MOVE | IN_FOCUS)) | (polled & IN_MOVE);
     uint32_t focus = polled & IN_FOCUS;
-    if (live && g_game->addr.option_flags && (G_OPTION_FLAGS & 0x200) && G_AUTOFOCUS_CTR >= (g_game->layout.autofocus_frames ? g_game->layout.autofocus_frames : 8u)) focus = IN_FOCUS;   /* "hold shot to focus" option: synthesized by the replay node */
+    if (live && g_game->addr.option_flags && (G_OPTION_FLAGS & (g_game->layout.autofocus_option ? g_game->layout.autofocus_option : 0x200u)) && G_AUTOFOCUS_CTR >= (g_game->layout.autofocus_frames ? g_game->layout.autofocus_frames : 8u)) focus = IN_FOCUS;   /* "hold shot to focus" option: synthesized by the replay node */
     return v | focus;
 }
 static inline uint8_t bits_encode(uint32_t v) { return (uint8_t)(((v & IN_MOVE) >> 3) | !!(v & IN_FOCUS)); }
@@ -115,7 +116,7 @@ static void replay_stage_start(uint8_t* rm) {
    routine, so a profile without those addresses cannot have it however the ini is written. */
 static int subtick_active(uint8_t* rm) {
     return cfg.subtick_input && cfg.substep && g_logic_rate != 60 && rm && g_frame_active && g_stream_stage >= 0
-        && g_game->addr.poll_input && g_game->addr.game_input;
+        && (g_game->addr.poll_input || g_game->poll_raw) && g_game->addr.game_input;
 }
 /* start of a non-boundary tick: feed the player fresh (or recorded) movement/focus bits */
 static void subtick_input_begin(void) {

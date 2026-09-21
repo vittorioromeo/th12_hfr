@@ -17,7 +17,7 @@ def identify(path):
         image_size=struct.unpack_from('<I',data,optional+56)[0]
         if (machine,magic,base)!=(0x14c,0x10b,0x400000):raise ValueError('Unsupported PE layout')
         sections=[struct.unpack_from('<IIII',data,optional+optsize+i*40+8) for i in range(count)]
-        for game,sizes in (('08',(0x14dc000,)),(10,(0x9c000,)),(11,(0xcd000,)),(12,(0xd9000,)),(13,(0xe9000,0xea000)),(14,(0x101000,)),(15,(0x125000,))):
+        for game,sizes in (('08',(0x14dc000,)),(10,(0x9c000,)),(11,(0xcd000,)),(12,(0xd9000,)),(13,(0xe9000,0xea000)),(14,(0x101000,)),(15,(0x125000,)),(20,(0x1f9000,))):
             if image_size not in sizes:continue   # th13e.exe carries an extra section
             signatures=json.loads(Path(__file__).with_name(f'th{game}_signatures.json').read_text())
             for s in signatures:

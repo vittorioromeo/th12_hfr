@@ -53,7 +53,7 @@ static int conflict_module(char* out, size_t n) {
    its menu hook needs (update_runner.c). Its launcher is what needs saying something about,
    and only when it has been asked to bring vpatch or openinputlagpatch along. */
 static int thprac_present(void) {
-    const uint8_t* base = (const uint8_t*)0x400000;
+    const uint8_t* base = (const uint8_t*)g_image_base;
     if (memcmp(base, "MZ", 2) != 0) return 0;
     uint32_t lfanew = *(const uint32_t*)(base + 0x3c);
     if (lfanew < 8 || lfanew > 0x1000) return 0;
@@ -89,7 +89,7 @@ static int conflict_found(int installed) {
     if (!g_game) return 0;
     char module[MAX_PATH] = "";
     int has_module = conflict_module(module, sizeof module);
-    int site = conflict_scan(g_game->identity, (const uint8_t*)0x400000, g_game->identity->image_size);
+    int site = conflict_scan(g_game->identity, (const uint8_t*)g_image_base, g_game->identity->image_size);
     if (!has_module && site < 0) return 0;
 
     const struct ConflictSite* c = site >= 0 ? &g_game->identity->conflicts[site] : NULL;

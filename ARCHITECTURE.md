@@ -58,7 +58,10 @@ are not assumptions that every Touhou title uses this ABI or renderer.
 
 ## Detection and installation
 
-Detection requires x86 PE32 at image base `0x400000`, an image at least as large as
+Detection requires x86 PE32 whose preferred image base is `0x400000` (a relocatable image —
+TH20 is the first — may be loaded elsewhere: signatures are then compared with the load delta
+added to the dwords its relocation table names, and every address a profile gives is moved by
+the same delta; `identity.h`, `relocate_profile`), an image at least as large as
 the build's own (Steam and the static English builds append sections of their own, so
 this is a floor rather than an equality), and every frozen
 signature (83 for TH10, 66 for TH11, 69 for TH12, 101 for TH13). These cover all

@@ -1,0 +1,367 @@
+[
+ {
+  "address": "0x412810",
+  "bytes": "55 8b ec 6a ff",
+  "description": "the update runner's entry: skip the pass, or open it (hfr_wrap_begin)"
+ },
+ {
+  "address": "0x412913",
+  "bytes": "8b 45 cc 50 ff 55 c8 83 c4 04",
+  "description": "the runner's node call: mov eax,[arg]; push; call [fn]; add esp,4"
+ },
+ {
+  "address": "0x412a4b",
+  "bytes": "6a 00 b9 40 02 5c 00",
+  "description": "the runner's single exit: close the pass (hfr_wrap_end)"
+ },
+ {
+  "address": "0x41eb4f",
+  "bytes": "e8 cc b0 ff ff",
+  "description": "frame call 1 (0x419c20)"
+ },
+ {
+  "address": "0x41eb83",
+  "bytes": "e8 a8 b4 ff ff",
+  "description": "frame call 2 (0x41a030, no limiter of its own)"
+ },
+ {
+  "address": "0x41eba3",
+  "bytes": "e8 38 b2 ff ff",
+  "description": "frame call 3 (0x419de0, the one this profile describes)"
+ },
+ {
+  "address": "0x419e64",
+  "bytes": "72 09",
+  "description": "frame function: jb over its Sleep(1) -- becomes jmp"
+ },
+ {
+  "address": "0x419e85",
+  "bytes": "0f 86 96 01 00 00",
+  "description": "frame function: jbe \"not due yet\" -- becomes nops"
+ },
+ {
+  "address": "0x485c29",
+  "bytes": "e8 72 36 fa ff",
+  "description": "Bullet::update: speed = the bullet's own two factors"
+ },
+ {
+  "address": "0x485d42",
+  "bytes": "e8 59 35 fa ff",
+  "description": "Bullet::update: 1.0"
+ },
+ {
+  "address": "0x48608c",
+  "bytes": "e8 0f 32 fa ff",
+  "description": "Bullet::update: 1.0"
+ },
+ {
+  "address": "0x48612f",
+  "bytes": "e8 6c 31 fa ff",
+  "description": "Bullet::update: 1.0"
+ },
+ {
+  "address": "0x4958b8",
+  "bytes": "e8 e3 39 f9 ff",
+  "description": "the script instruction that sets the speed"
+ },
+ {
+  "address": "0x4b9f60",
+  "bytes": "e8 3b f3 f6 ff",
+  "description": "game.cpp: 1.0"
+ },
+ {
+  "address": "0x4bae05",
+  "bytes": "e8 96 e4 f6 ff",
+  "description": "game.cpp: 1.0"
+ },
+ {
+  "address": "0x4dd61b",
+  "bytes": "e8 80 bc f4 ff",
+  "description": "mother.cpp: 1.0"
+ },
+ {
+  "address": "0x4e4a82",
+  "bytes": "e8 19 48 f4 ff",
+  "description": "pause: restore"
+ },
+ {
+  "address": "0x4e58e3",
+  "bytes": "e8 b8 39 f4 ff",
+  "description": "pause: restore"
+ },
+ {
+  "address": "0x4e5931",
+  "bytes": "e8 6a 39 f4 ff",
+  "description": "pause: restore"
+ },
+ {
+  "address": "0x4e5b68",
+  "bytes": "e8 33 37 f4 ff",
+  "description": "pause: 1.0"
+ },
+ {
+  "address": "0x4e5d2a",
+  "bytes": "e8 71 35 f4 ff",
+  "description": "pause: 1.0"
+ },
+ {
+  "address": "0x4e5eaa",
+  "bytes": "e8 f1 33 f4 ff",
+  "description": "pause: 1.0"
+ },
+ {
+  "address": "0x4e601d",
+  "bytes": "e8 7e 32 f4 ff",
+  "description": "pause: 1.0"
+ },
+ {
+  "address": "0x4f7dee",
+  "bytes": "e8 ad 14 f3 ff",
+  "description": "player.cpp: 1.0"
+ },
+ {
+  "address": "0x42b628",
+  "bytes": "f3 0f 10 05 cc c8 56 00",
+  "description": "sprite script runner: the 1.0 a slowdown-immune sprite runs at -- its operand becomes &g_factor"
+ },
+ {
+  "address": "0x48620c",
+  "bytes": "8b 45 fc 83 78 18 00",
+  "description": "bullet countdowns"
+ },
+ {
+  "address": "0x485cd1",
+  "bytes": "f3 0f 10 05 d0 c8 56 00",
+  "description": "spawn-state divisor load"
+ },
+ {
+  "address": "0x4d6eb0",
+  "bytes": "8b 4d ec 83 b9 cc 06 00 00 00",
+  "description": "laser countdown (kind 0)"
+ },
+ {
+  "address": "0x4d737d",
+  "bytes": "8b 4d ec 83 b9 cc 06 00 00 00",
+  "description": "laser countdown (kind 1)"
+ },
+ {
+  "address": "0x4d799d",
+  "bytes": "8b 4d ec 83 b9 cc 06 00 00 00",
+  "description": "laser countdown (kind 2)"
+ },
+ {
+  "address": "0x4d2970",
+  "bytes": "e8 cb f6 f9 ff",
+  "description": "laser graze %8 (kind 0)"
+ },
+ {
+  "address": "0x4d2c21",
+  "bytes": "e8 1a f4 f9 ff",
+  "description": "laser graze %8 (kind 1)"
+ },
+ {
+  "address": "0x4d2fdb",
+  "bytes": "e8 60 f0 f9 ff",
+  "description": "laser graze %8 (kind 2)"
+ },
+ {
+  "address": "0x4ce008",
+  "bytes": "e8 63 b1 ff ff",
+  "description": "curvy laser timer rewind"
+ },
+ {
+  "address": "0x4f748b",
+  "bytes": "ff 24 8d fc 83 4f 00",
+  "description": "player state dispatch"
+ },
+ {
+  "address": "0x4ffaa2",
+  "bytes": "f3 0f 2c 91 c4 20 00 00",
+  "description": "Player::move x truncation"
+ },
+ {
+  "address": "0x4ffab6",
+  "bytes": "f3 0f 2c 91 c8 20 00 00",
+  "description": "Player::move y truncation"
+ },
+ {
+  "address": "0x4fa66d",
+  "bytes": "c7 45 e8 00 00 00 00",
+  "description": "position history shift"
+ },
+ {
+  "address": "0x4fa762",
+  "bytes": "8b 45 fc 8b 48 14",
+  "description": "focus counter"
+ },
+ {
+  "address": "0x4fab38",
+  "bytes": "8b 45 08 83 b8 fc 00 00 00 00",
+  "description": "option approach"
+ },
+ {
+  "address": "0x4fac3f",
+  "bytes": "8b 55 08 81 c2 dc 00 00 00",
+  "description": "option display position"
+ },
+ {
+  "address": "0x502c67",
+  "bytes": "e8 d4 f3 f6 ff",
+  "description": "player effect %30"
+ },
+ {
+  "address": "0x505c5b",
+  "bytes": "e8 10 35 fc ff",
+  "description": "shot timer wrap"
+ },
+ {
+  "address": "0x505d23",
+  "bytes": "e8 48 34 fc ff",
+  "description": "second shot timer wrap"
+ },
+ {
+  "address": "0x505fb1",
+  "bytes": "e8 4a 63 f5 ff",
+  "description": "shot timer bump"
+ },
+ {
+  "address": "0x534fb5",
+  "bytes": "e8 b6 07 00 00",
+  "description": "stone gauge cost"
+ },
+ {
+  "address": "0x504547",
+  "bytes": "f3 0f 10 40 18",
+  "description": "shot turn rate load"
+ },
+ {
+  "address": "0x504566",
+  "bytes": "f3 0f 10 42 20",
+  "description": "shot acceleration load"
+ },
+ {
+  "address": "0x4c04bf",
+  "bytes": "e8 1c 08 00 00",
+  "description": "damage gate: did the player timer change"
+ },
+ {
+  "address": "0x53645d",
+  "bytes": "8b 45 b0 83 78 58 00",
+  "description": "stone field countdown"
+ },
+ {
+  "address": "0x53674f",
+  "bytes": "8b 45 b0 83 78 58 00",
+  "description": "stone field countdown"
+ },
+ {
+  "address": "0x53790d",
+  "bytes": "8b 45 b0 83 78 58 00",
+  "description": "stone field countdown"
+ },
+ {
+  "address": "0x537bdf",
+  "bytes": "8b 45 b0 83 78 58 00",
+  "description": "stone field countdown"
+ },
+ {
+  "address": "0x412b96",
+  "bytes": "8b 45 c0 50 ff 55 bc 83 c4 04",
+  "description": "draw runner dispatch"
+ },
+ {
+  "address": "0x443880",
+  "bytes": "55 8b ec 81 ec 04 02 00 00",
+  "description": "sprite VM draw entry"
+ },
+ {
+  "address": "0x508882",
+  "bytes": "e8 09 03 00 00",
+  "description": "the loader's play call"
+ },
+ {
+  "address": "0x4e3dea",
+  "bytes": "e8 91 54 02 00",
+  "description": "save call (pause menu)"
+ },
+ {
+  "address": "0x52754f",
+  "bytes": "e8 2c 1d fe ff",
+  "description": "save call (end of game)"
+ },
+ {
+  "address": "0x419de0",
+  "bytes": "55 8b ec 83 ec 20 89 4d fc",
+  "description": "the frame function"
+ },
+ {
+  "address": "0x4455c0",
+  "bytes": "55 8b ec 83 ec 1c 89 4d fc",
+  "description": "frame context set-up"
+ },
+ {
+  "address": "0x41dce0",
+  "bytes": "55 8b ec 83 ec 0c 89 4d fc",
+  "description": "frame context: select the render target set"
+ },
+ {
+  "address": "0x4d9e30",
+  "bytes": "55 8b ec 51 89 4d fc",
+  "description": "end-of-pass cleanup"
+ },
+ {
+  "address": "0x4292a0",
+  "bytes": "55 8b ec 51 89 4d fc 8b 45",
+  "description": "Float::set"
+ },
+ {
+  "address": "0x4530f0",
+  "bytes": "55 8b ec 83 ec 18 89 4d fc",
+  "description": "Timer::add"
+ },
+ {
+  "address": "0x4c9170",
+  "bytes": "55 8b ec 51 89 4d fc 8b 45",
+  "description": "Timer::operator-=(int)"
+ },
+ {
+  "address": "0x45c300",
+  "bytes": "55 8b ec 51 89 4d fc 8b 45",
+  "description": "Timer::operator+=(int)"
+ },
+ {
+  "address": "0x535770",
+  "bytes": "55 8b ec 51 89 4d fc f3 0f",
+  "description": "Timer::operator-=(float)"
+ },
+ {
+  "address": "0x4c0ce0",
+  "bytes": "55 8b ec 51 89 4d fc 8b 4d",
+  "description": "player timer changed"
+ },
+ {
+  "address": "0x41fe80",
+  "bytes": "55 8b ec 6a ff 68 cd 80 56 00",
+  "description": "the input poll"
+ },
+ {
+  "address": "0x40f160",
+  "bytes": "55 8b ec 51 89 4d fc 8b 4d",
+  "description": "list iterator: the node"
+ },
+ {
+  "address": "0x44ced0",
+  "bytes": "55 8b ec 83 ec 08 89 4d fc",
+  "description": "VM of a handle"
+ },
+ {
+  "address": "0x509280",
+  "bytes": "55 8b ec 6a ff 68 e5 a7 56 00",
+  "description": "replay save"
+ },
+ {
+  "address": "0x508b90",
+  "bytes": "55 8b ec 6a ff 68 a5 a7 56 00",
+  "description": "replay load"
+ }
+]
