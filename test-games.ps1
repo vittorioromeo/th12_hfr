@@ -128,7 +128,9 @@ if ($List) {
 }
 
 # ------------------------------------------------------------------ Win32
-Add-Type -TypeDefinition @'
+# A type cannot be redefined in a PowerShell session, so a second run in the same window keeps
+# the first run's. After editing the C# below, open a new window.
+if (-not ('Hfr.Win' -as [type])) { Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
 namespace Hfr {
@@ -184,7 +186,7 @@ public static class Pixels {
     }
 }
 }
-'@
+'@ }
 
 $VK = @{ F10 = 0x79; F11 = 0x7A; Z = 0x5A; X = 0x58; Esc = 0x1B; Left = 0x25; Right = 0x27; Shift = 0x10 }
 try { [void][Hfr.Win]::SetProcessDPIAware() } catch { }
