@@ -130,6 +130,9 @@ if ($List) {
 # ------------------------------------------------------------------ Win32
 # A type cannot be redefined in a PowerShell session, so a second run in the same window keeps
 # the first run's. After editing the C# below, open a new window.
+if (('Hfr.Win' -as [type]) -and -not (('Hfr.Pixels' -as [type]) -and [Hfr.Win].GetMethod('Key'))) {
+    throw 'This PowerShell window holds Hfr.Win from a different version of this script, and a type cannot be replaced. Open a new window, or start it with: powershell -File test-games.ps1 ...'
+}
 if (-not ('Hfr.Win' -as [type])) { Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
