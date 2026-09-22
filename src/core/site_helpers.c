@@ -77,6 +77,36 @@ static void movement_cvttss(uintptr_t addr, uint8_t src_modrm, uint32_t src_disp
     patch_call_n(addr, st, 8, site_expected(addr, 8));
 }
 
+/* The same for a compiler that truncates from a register: `cvttss2si dst, xmmS`, the velocity
+   already scaled by the game speed and still in XMM. Several such truncations in a row (x
+   then y) are one site, so the four-byte instructions add up to a hookable length. Two XMM
+   registers other than the source are borrowed and given back. */
+struct CvttssXmm { uint8_t dst, src, axis; };
+static void movement_cvttss_xmm(uintptr_t addr, size_t n, const struct CvttssXmm* ops, int count) {
+    STUB_BEGIN();
+    E(0x9c);                                                       /* pushfd */
+    E(0x81, 0x3d); E32((uint32_t)(uintptr_t)&g_factor); E32(0x3f800000);
+    uint8_t* to_plain = g_p; E(0x0f, 0x84); E32(0);                /* je plain */
+    for (int i = 0; i < count; ++i) {
+        uint8_t d = ops[i].dst, s = ops[i].src, t0 = s == 0 ? 3 : 0, t1 = s == 4 ? 5 : 4;
+        uint32_t res = (uint32_t)(uintptr_t)&g_move_residual[ops[i].axis];
+        E(0x0f, 0x11, (uint8_t)(0x05 | (t0 << 3))); E32((uint32_t)(uintptr_t)&g_xmm_scratch[0]);   /* movups [s0],t0 */
+        E(0x0f, 0x11, (uint8_t)(0x05 | (t1 << 3))); E32((uint32_t)(uintptr_t)&g_xmm_scratch[4]);   /* movups [s1],t1 */
+        E(0xf3, 0x0f, 0x10, (uint8_t)(0xc0 | (t0 << 3) | s));       /* movss t0,src */
+        E(0xf3, 0x0f, 0x58, (uint8_t)(0x05 | (t0 << 3))); E32(res); /* addss t0,[residual] */
+        E(0xf3, 0x0f, 0x2c, (uint8_t)(0xc0 | (d << 3) | t0));       /* cvttss2si dst,t0 */
+        E(0xf3, 0x0f, 0x2a, (uint8_t)(0xc0 | (t1 << 3) | d));       /* cvtsi2ss t1,dst */
+        E(0xf3, 0x0f, 0x5c, (uint8_t)(0xc0 | (t0 << 3) | t1));      /* subss t0,t1 */
+        E(0xf3, 0x0f, 0x11, (uint8_t)(0x05 | (t0 << 3))); E32(res); /* movss [residual],t0 */
+        E(0x0f, 0x10, (uint8_t)(0x05 | (t0 << 3))); E32((uint32_t)(uintptr_t)&g_xmm_scratch[0]);
+        E(0x0f, 0x10, (uint8_t)(0x05 | (t1 << 3))); E32((uint32_t)(uintptr_t)&g_xmm_scratch[4]);
+    }
+    E(0x9d); EJMP(addr + n);                                       /* popfd; back */
+    { int32_t rel = (int32_t)(g_p - (to_plain + 6)); memcpy(to_plain + 2, &rel, 4); }
+    E(0x9d); ECOPY(addr, n); EJMP(addr + n);                       /* plain: the original */
+    site_hook(addr, n);
+}
+
 /* A handful of counters a game's own site hooks can increment, printed on the debug stats line.
    The update and draw censuses answer "what is there"; this answers "which of this game's own
    guards is rejecting, and how often", which is the question left when a system is sub-stepped,

@@ -259,7 +259,7 @@ static void th15_place_enemy(uint8_t* e, uint8_t* am, uint32_t flags, const floa
 static struct Th14OptionState th15_opt[8];
 static unsigned th15_opt_frames;
 static void th15_place_options(uint8_t* am, float alpha, int capture) {
-    th14_family_place_options(0x668, 0x17b, th15_opt, &th15_opt_frames, am, alpha, capture);
+    th14_family_place_options(0x668, 0xe4, 8, 0x17b, th15_opt, &th15_opt_frames, am, alpha, capture);
 }
 
 /* Debug only (replay_trace): a per-frame fingerprint of the bullets and the enemies, as TH14's.

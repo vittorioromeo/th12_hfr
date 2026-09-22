@@ -29,11 +29,12 @@ patch site is and why, and the bugs met on the way.
 | Touhou 13 — Ten Desires | [games/TH13_DEVNOTES.md](games/TH13_DEVNOTES.md) |
 | Touhou 14 — Double Dealing Character | [games/TH14_DEVNOTES.md](games/TH14_DEVNOTES.md) |
 | Touhou 15 — Legacy of Lunatic Kingdom | [games/TH15_DEVNOTES.md](games/TH15_DEVNOTES.md) |
+| Touhou 18 — Unconnected Marketeers | [games/TH18_DEVNOTES.md](games/TH18_DEVNOTES.md) |
 | Touhou 20 — Fossilized Wonders | [games/TH20_DEVNOTES.md](games/TH20_DEVNOTES.md) |
 | Touhou Koumakyou: New Classic | [games/TH06NC_DEVNOTES.md](games/TH06NC_DEVNOTES.md) |
 
 TH12's record also carries the original design rationale: the patch began as `th12_hfr`. TH13 is
-written as a delta against TH12, TH14 against TH13, and TH15 against TH14. TH20 is a newer
+written as a delta against TH12, TH14 against TH13, TH15 against TH14, and TH18 against TH15. TH20 is a newer
 engine and stands alone: a wrapped update runner and a relocatable executable.
 
 New Classic is a different engine entirely — 64-bit, Direct3D 11, its own backend and a smaller

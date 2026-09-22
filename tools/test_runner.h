@@ -74,7 +74,7 @@ static int __thiscall fake_bare(void* arg) { ++test_bare_calls; return 1; }
 static void test_runner_undescribed(void) {
     const struct GameProfile* real=g_game;
     struct GameProfile game=*real;
-    game.classes=NULL;game.class_count=0;game.place_enemy=NULL;
+    game.classes=NULL;game.class_count=0;game.place_enemy=NULL;game.place_options=NULL;game.update_only=NULL;
     game.addr.speed=0;game.addr.player=0;game.addr.player_callback=0;
     game.addr.enemy_manager=0;game.addr.anm_manager=0;
     game.addr.game_manager=0;game.addr.gm_callback=0;
@@ -118,10 +118,11 @@ static void test_runner_undescribed(void) {
     memset((void*)game.addr.crit,0,sizeof(CRITICAL_SECTION));
     G_UPDATE_RUNNER=NULL;g_game=real;g_major=1;g_dt=1;g_stop_id=NULL;
     /* ... and the answer for the real profile is whatever that profile actually says, which
-       is the point: TH10-13 describe these and TH14 does not, and both are legitimate. */
-    assert(catchup_available() == (real->addr.frame_context_ptr && real->addr.frame_flag &&
+       is the point: TH10-13 describe these, TH14 does not, and TH18 brings its own catch-up
+       tick (update_only) instead; all three are legitimate. */
+    assert(catchup_available() == (real->update_only || (real->addr.frame_context_ptr && real->addr.frame_flag &&
                                    real->addr.frame_context_value && real->addr.cleanup_fn &&
-                                   real->addr.cleanup_this ? 1 : 0));
+                                   real->addr.cleanup_this) ? 1 : 0));
     puts("PASS: a profile that describes only the scheduler survives a pass and a catch-up tick, writing through none of the addresses it lacks");
 }
 

@@ -1,211 +1,263 @@
-# TH18 v1.00a: porting record
+# Touhou 18 — Unconnected Marketeers
 
-## Status
+Reference for the TH18 profile in the shared x86 runtime, written as a delta against
+[TH15_DEVNOTES.md](TH15_DEVNOTES.md) (itself a delta against [TH14_DEVNOTES.md](TH14_DEVNOTES.md)):
+read those first. Implementation: `src/games/th18.c`, `src/games/th18_signatures.h`,
+`src/games/th18_conflicts.h`, and `src/games/th14_family.h` (shared with TH14 and TH15); stub
+tests in `tools/test_th18_stubs.py`. Shared mechanisms are in
+[DEVNOTES_RUNTIME.md](../DEVNOTES_RUNTIME.md).
 
-First playable **experimental** adapter, 2026-09-21. Native gameplay runs at 60 Hz;
-the shared HFR scheduler presents at the display rate and ordinary 2D sprite quads are
-interpolated. This is not the TH15 sub-stepping adapter with new addresses. Ability cards,
-shops, movement, damage, collision, shot cadence, RNG and replay recording/playback remain
-in the original native update runner. Replays receive no HFR extension.
+## 1. Identity
 
-No game was launched or driven during development, as requested. The user reported the first build "seems good" on 2026-09-22; its log showed about
-359.96 presents/s and 59.99 logic ticks/s. Detailed coverage remains pending: F11, F10/window/fullscreen transitions, ordinary stage play, several active/passive
-cards, the stage-end market, pause/retry, screenshots, replay playback and clean exit.
-The second build adds stage-camera interpolation; non-quad lasers remain unsmoothed. Prediction is available
-but defaults off in this adapter; it changes only submitted geometry and may overshoot turns.
-Interpolation has the usual one-native-frame visual delay.
+| | |
+|---|---|
+| executable | Japanese `th18.exe`, v1.00a (`th18e.exe` is accepted by name, unverified) |
+| SHA-256 | `6243e3624ae5100eaa5ded846e2d9b2d9e438ee7c20735e197c9c8170fb9627f` |
+| ImageBase / SizeOfImage | `0x400000` / `0x174000` (not relocatable) |
+| entry / TimeDateStamp | `0x48e5c9` / `0x607a2b08` |
+| platform | x86, Direct3D 9, `d3dx9_43.dll` |
+| replay magic | `t18r` |
+| replay directory | `%APPDATA%\ShanghaiAlice\th18\` (`addr.data_dir = 0x568c61`) |
+| conflict sites | none recorded (no `vpatch_th18.dll` has been read) |
 
-## Binary and tools
+58 frozen signatures, in TH14's three groups.
 
-User installation: `G:\TouhouClean\(TH18) Touhou Kouryuudou ~ Unconnected Marketeers\`.
-Original executable SHA256:
-`6243e3624ae5100eaa5ded846e2d9b2d9e438ee7c20735e197c9c8170fb9627f`.
-PE32 x86, preferred base `0x400000`, image size `0x174000`, entry RVA `0x8e5c9`.
-Imports include D3D9, D3DX9_43, DirectInput8, XInput1_3, DirectSound and winmm.
-The supplied readme identifies ver 1.00a (2021-05-04).
+## 2. State
 
-Static analysis used pefile, Capstone and Ghidra 11.3.2 with `tools/ExportAll.java`
-(2,037 functions exported). Local scratch under `build/th18-research/` contains the
-inert binary copy, full disassembly, decompilation, callback registration inventory and
-build logs; these are not release artifacts. Reproduce with `tools/porting/inspect_pe.py`
-and a Ghidra headless import. Copy an executable whose path has parentheses into scratch
-before calling Ghidra's Windows batch launcher (its argument handling otherwise fails).
+At TH15's level. Described: identification, the video path, the scheduler, the draw path and
+dimming, the game speed, six sub-stepped systems, enemy and option interpolation, the replay
+extension, the desync trace.
 
-The locally available thprac TH18 source supplied candidate pointers and its update/render
-hook sites; the adapter addresses were then checked against the installed binary.
-Normalized TH15 function matching alone gave poor/ambiguous matches and was not used as proof.
+Not described: `pp` writes, `sprite_round_sites`, script-level dim rules (`vm_script_off`), the
+English build, the ability cards beyond leaving them at 60 Hz (§4).
 
-## Frame path and ABI
+Verified under Wine against the title demo (§8). Not yet played by a person; the first Windows
+session is the user's.
 
-| Address | Meaning |
-| --- | --- |
-| `0x4012e0` / `0x4013f5` | Update runner entry / terminal RET, object in ECX |
-| `0x401420` / `0x401510` | Draw runner entry / terminal RET |
-| `0x401490` | Draw dispatch: ECX = node+0x24, callback = node+8, node in EDI |
-| `0x401180` / `0x401230` | Register update / draw node, two stack arguments |
-| `0x4015a0` | Remove node: runner in ECX, node pushed |
-| `0x4cf294` | Update runner pointer |
-| `0x521660`, `0x5217b0`, `0x5217be` | Critical section, nesting byte, enable byte |
-| `0x472fd0` | Unpaced native frame (apart from optional Sleep guard) |
-| `0x472dd0` | Alternative frame with a 60 Hz time loop |
-| `0x471c4e`, `0x471c5a` | Window-loop calls selecting those frame functions |
-| `0x471a9e` | Branch into/out of the inlined automatic-latency frame path |
-| `0x4730be` | Optional 60 Hz Sleep guard inside the chosen native frame |
-| `0x472ff0` | Native update call within that frame |
-| `0x41b330` | Select supervisor viewport/context; ECX object, one pushed integer |
-| `0x4ccdf0`, `0x4cd884`, `0x402b30` | Supervisor, cleanup object, cleanup method |
-| `0x4ccdf8`, `0x4ccee4` | D3D device pointer, presentation parameters |
-| `0x568c30`, `0x56ac70` | Window object (HWND first), window flags |
-| `0x4cd00c` | Native frameskip byte |
-| `0x473185` → `0x4728a0` | FPS/slowdown and replay-related post-present bookkeeping |
-| `0x473367` → `0x453f40` | Screenshot call / stdcall filename routine |
+### History
 
-The runner layout remains `next +0x50`, `ending +0x54`, list head `+0x18`,
-node argument `+0x24`. Return 8 ends the pass. The native runner is left intact,
-including the exit/shutdown call at `0x471fbf` and thprac's terminal-RET hook site.
-Only the selected frame's call is replaced by a wrapper that skips updates when the
-shared scheduler owes none. Catch-up selects context 2 and runs the native runner,
-preserving its 0/-1 exit results and cleanup behavior.
+A first TH18 adapter (branch `codex/th18-support`) kept the game's simulation at 60 Hz and
+interpolated its sprite quads and stage camera, the way TH08 is handled. That is the right
+model for TH08, whose engine has no shared speed; TH18 is TH15's engine three games on, with
+the same runner, timers, input object and replay manager, and so it is ported the way TH15
+was: sub-stepped, with the enemies interpolated. The quad interpolation extracted from TH08 in
+that work stays in `src/backends/fixed_quad.h`, used by TH08.
 
-The automatic-latency branch must also be redirected to `0x471c37`: patching the two
-ordinary frame calls alone misses an entire default timing path. Both selected calls
-then use the shared scheduler and always draw through `0x472fd0`. The optional native
-Sleep guard is disabled. Native frameskip is temporarily zero during that frame and
-restored afterward. FPS/slowdown bookkeeping and screenshots run only after native ticks,
-not once per extra presentation. The shared swap-chain hooks own presentation pacing.
+## 3. What is the same as TH15
 
-## Geometry and reuse
+Everything structural: the update runner (`RUNNER_ARG_ECX`, `REMOVE_NODE_RUNNER_THIS`, list at
+`+0x18`, node argument at `+0x24`, `runner_next +0x50`, `runner_ending +0x54`,
+`critical_flag_mask 0xff`, `runner_return8_ends`), the frame function with its two calls, the
+SSE speed writes, timers holding a rate index into a table whose entry 0 is the speed, the
+`0x248`-byte input object, the replay manager with its mode word at `+0x0c`, the replay save
+(stdcall, four arguments) and load (`this` in ECX, filename pushed) routines, the VM draw
+taking its VM on the stack and naming its ANM by slot, the enemy's sub-object with 14 VM ids,
+offsets and parent slots, and the options as an array of fixed-point positions with two VM
+ids each.
 
-`0x481210` draws an ANM VM (manager in ECX, VM pushed). `0x47dce0` constructs/clips
-ordinary 2D quads. It first writes the **native** corners into VM+`0x4f0`, then calls
-`0x47e800` at `0x47e6b5` to copy temporary vertices into the triangle batch.
-At that call ECX is the manager, EDI is the VM, and the sole stack argument is the
-vertex buffer (`0x570520` in this path). Four vertices have stride 28; position is the
-first three floats. The patch changes those temporary positions for the copy and
-restores them afterward; the VM's cached native corners and logical object positions
-are never replaced by interpolated positions.
+Every TH15 site has a TH18 counterpart. The address mapping was done by instruction-context
+voting (`tools/porting`), which found every site outside the player, and by diffing the player
+and shot functions body against TH15's for the rest.
 
-This catches embedded player/bullet VMs and manager-owned sprite VMs. The ordinary
-bullet draw at `0x424eb0` copies bullet position `+0x638` to its VM at bullet+`0x28`
-(VM position `+0x5f0`) before calling `0x481210`. Player draw `0x45cac0` likewise
-copies position `+0x620` to its VM at player+`0x14`; its other writes set draw flags.
+## 4. What differs
 
-VM fields checked in the script/draw code:
+### The catch-up tick is the adapter's
 
-- script ANM slot `+0x1c`, sprite ANM slot `+0x20`, sprite index `+0x24`;
-- script number `+0x28`, instruction offset `+0x2c`, layer `+0x18`;
-- script timer integer `+0x550`; reset to zero by script initialization;
-- flags `+0x534/+0x538`, native corner cache `+0x4f0`;
-- ANM manager `0x51f65c`, 33 file slots at manager+`0x312072c`.
+The frame function (`0x472fd0`) does more around the runner than TH15's: it flushes the sprite
+batch (`0x47e730` on the ANM manager), selects viewport context 2 on the supervisor
+(`0x41b330(0x4ccdf0, 2)`), runs the pass, and runs the end-of-pass cleanup (`0x402b30` on
+`0x4cd884`) on the runner's answers 0 and -1. `th18_update_only` does the same, so the profile
+sets `update_only` rather than the five frame-context addresses.
 
-`src/backends/fixed_quad.h` is the geometry/history code extracted from TH08. Both
-adapters use the same translation, rotation and scale interpolation, teleport/gap/script
-reset handling, and cooldown for VMs reused for several glyphs or sprites. TH08 keeps
-its own diagnostic prediction census. TH18 keeps a bounded 16,384-entry history.
-No game addresses were added to shared runtime code.
+### The speed setter
 
-Shared dimming wraps the draw dispatch and VM draw. Initially only background and item
-sliders are offered: item passes have priorities 19 and 33; bullets use 38. Other
-categories need an ANM/layer census before offering controls that may fade the wrong object.
+The ECL instruction that sets the game speed (`0x435ea3`) calls a setter (`0x43a200`,
+`movss [speed], xmm1`) rather than storing itself. The call is the `SPEED_ECL` site, with the
+value in XMM1. The setter must not be: `AnmVm::run` restores the speed it saved through the
+same setter (`0x47b832`, `0x47b882`), and a setter that took every value as the logical speed
+compounded the sub-step factor into it until the game stood still at the first stage.
 
-## Gameplay map for the next phase
+### The player
 
-| Address / layout | Finding |
-| --- | --- |
-| `0x4ccbf0` | Native game-speed float (ANM VM slow-motion override references it) |
-| `0x4b35c0` | Timer rate pointer table; timers carry an index, as in TH15 |
-| `0x4cf298` / `0x4cf2a4` | Ability manager / market pointer |
-| `0x4cf2e4` | Game thread; flags at +0xb0, mask 5 pauses bullet update |
-| `0x4cf2bc` | Bullet manager |
-| `0x423af0` | Bullet-manager allocation/registration |
-| `0x424e70` | Bullet update callback, priority 29; skips pause/shop, increments +0xa8 |
-| `0x424c50` | Bullet-manager update body, builds per-kind draw lists |
-| `0x423e10` | Individual bullet update |
-| manager+`0xec`, stride `0xfa0`, 2001 slots | Embedded bullet array; active lists +0xbc/+0xc0 |
-| bullet+`0xf68`, `0xf6c/+0xf70/+0xf74` | State; previous/integer/float lifetime timer |
-| `0x4cf410` | Player pointer; update `0x45caa0`, priority 23 |
-| `0x4cf2d0` | Enemy manager pointer |
-| `0x4cf2ec` | Item manager; update `0x446ec0`, priority 30 |
-| `0x4cf418` | Replay manager; no extension installed |
-| `0x4cf280` / `0x4cf288` | RNG objects (ANM and gameplay call sites respectively) |
-| `0x402740`, `0x4027d0` | Integer / floating random-number functions |
+The life-state timer is at `+0x634`/`+0x638`/`+0x63c` and the fixed-point position at
+`+0x62c`/`+0x630` (TH15: `+0x62c`/`+0x630`/`+0x634` and `+0x624`/`+0x628`). The state word is
+`+0x476ac`, the dispatch at `0x45bec3` (table `0x45ca8c`, tail `0x45c3d9`).
 
-A full simulation port still needs an audit of every card-dependent movement/damage/graze
-path, integer countdown, shot cycle, timer equality event and RNG consumer. Merely labeling
-these callbacks MODE_SUB would change the game. First validate this presentation-only
-baseline, then add any gameplay sub-stepping as a separately tested opt-in feature.
-Non-quad laser draw paths are the next visual target.
+- **Movement truncates from registers.** The velocity, already multiplied by the speed, is in
+  XMM1/XMM2 when it is truncated into the position (`0x45b6f7`: `cvttss2si ecx,xmm1;
+  cvttss2si edx,xmm2`). TH15's helper re-emits a memory operand; `movement_cvttss_xmm`
+  (`src/core/site_helpers.c`) is the register form, borrowing two other XMM registers and
+  giving them back. Both truncations are one 8-byte site.
+- **A 33-entry position history** (`+0x47800`, two dwords each) is shifted while the player
+  moves (`0x45b89d`) and read by the shot types (entry 16 at `0x45ddf0`). Gated to once a
+  frame on the state timer, like the focus counter (`0x45b8e4`, `+0x477e8`).
+- **Option and shot-type callbacks.** Each of the four options (`0xf0` bytes at `+0x670`) and
+  each shot object (`0xf8` bytes, 512 at `+0x1570`) carries a callback from its shot type's
+  table (`+0xe8` and `+0xd8`), called once a frame by the game (`0x45bd15`, `0x45ee2d`): the
+  homing aim with its per-call turn limit, the charge ramps, the target search. None
+  multiplies by the speed. Called on every tick they ran twice a frame at 120 Hz, the homing
+  shots turned twice as fast and enemies died a frame or two early, which the demo trace showed
+  as a steady three-bullet gap. Both calls are gated to the boundary tick (`0x45bd0b`,
+  `0x45ee20`).
+- **A shot's age.** The shot entries (`0x9c` bytes, 1024 at `+0x20574`) count their age at
+  `+0x88`, decremented in the player's shot loop after the timer (`0x45c502`). Once a frame
+  (`0x45c4ff`).
+- **A shot fired this frame does not move.** The shot objects fire after the loop, so stock
+  first moves a new shot the frame after it appears. Sub-stepped, the minor ticks after the
+  spawn moved it, and every shot flew half a frame ahead of stock for its whole life — 12 px
+  at the shot speed, seen as volleys leaving the screen a frame early. The loop's head
+  (`0x45c402`) skips, on a minor tick, an active entry whose age is still 0.
+- **The muzzle step.** When a shot object is created (`0x45e320`), its muzzle position is
+  advanced one motion step (`0x402bf0`, position += velocity × speed) before the shot type
+  reads it. A creation is a once-a-frame event, so the call (`0x45e6c9`) is made with the
+  logical speed in the speed global; left alone every shot was born 12 px short.
+- The rest is TH15's, moved: blink guard `0x45c63a`, option approach `0x45bd2f` (the counter
+  is EBX and is a constant 30, so the check always passes), shot rates `0x45c41b`/`0x45c43c`,
+  shot cadence timer `0x45c4a5` (the block also loads XMM4, kept on both paths),
+  shot-against-enemy guard `0x45f144`, `timer_rewind` rate lookup `0x452c10` (callers
+  `0x45ece1`, `0x45ed3a`), shot object timer `0x45f068`.
 
-## Validation
+What is still half a frame off: an enemy's hit test against the player's shots runs in the
+enemy manager on the boundary tick, when a sub-stepped shot has made half its step. A hit
+that stock lands at the end of frame N lands at the boundary of N+1 when the shot entered the
+hitbox in the second half of the step: at most one frame late, and the same in TH15. The
+mirror of the aim hazard in TH15 §8.
 
-The native harness maps the executable as inert data. It verifies every frozen signature,
-refuses modified fixtures, validates the complete transactional patch plan and import hooks,
-and runs the shared scheduling/geometry regressions. TH18 clock tests replace native callees
-with generated RET stubs and check exactly 60 updates at 60/144/165/240/360 Hz, skip behavior,
-and catch-up exit results. Unicorn checks the actual emitted quad thunk's ECX/EDI arguments,
-stack cleanup, return value, latency-path redirection and preservation of the native runner.
-These checks do not substitute for the pending hardware playtest.
+### Ability cards
 
-Result: TH18 complete inert suite passed; TH08 and TH15 native harnesses passed. The existing
-TH08 Unicorn script stalled and was stopped; that regression check remains unresolved.
-The first build is deployed to the requested installation, with automatic display rate and
-debug logging enabled. Original EXE hash is unchanged; installed launcher identification passes.
-See [TH18_HANDOFF.md](../TH18_HANDOFF.md) for exact resume state and deployed DLL hash.
+New in TH18. The card manager (`0x408a90`, priority 22) and the per-card objects run once a
+frame (`MODE_FRAME`); the player calls into the card list on her state changes (`0x45c0d1`,
+`0x45c114`) from paths that run on the boundary tick. Their sprites (`ability.anm`) are drawn
+in the player's band and left alone by dimming. Not audited for anything that reads the
+sub-stepped systems per call.
 
-## Stage-camera pass, 2026-09-22
+### Bullets, lasers, items
 
-- Stage manager: `0x4cf2b4`, constructor `0x41b850`; update thunk `0x41ca60`
-  jumps to `0x41c0a0` (priority 18). Age is stage+`0x3490`, script data +`0x3454`.
-- Stage draw callbacks at priorities 3 and 6: thunk `0x41ca70` jumps to `0x41c290`;
-  thunk `0x41ca80` calls `0x41c700` at `0x41ca81`. Both take stage in ECX, return 1,
-  and use RET without stack arguments. These two sites now wrap the native passes.
-- Stage camera block +`0x230`, size `0x164`, copied to supervisor+`0x688` (`0x4cd478`).
-  Interpolated inputs: eye +230/234/238, up +248/24c/250, direction +254/258/25c,
-  eye offset +26c/270/274, FOV +284. Only these 13 floats are substituted.
-- `0x41f950` constructs LookAtLH and PerspectiveFovLH (near 30, far 8000). Calls
-  at `0x41c30e`, `0x41c782`, `0x41cf4e`; `0x41e350` also contains an inline copy.
-  Wrapping the source inputs covers all these paths without replacing D3DX or duplicating
-  the engine's projection math. Stage and supervisor input fields are restored afterward;
-  native rendering matrices/viewport caches are retained until the next camera setup.
-- History rejects pointer/script changes, age rollback, tick gaps, non-finite or degenerate
-  cameras, large positional cuts (>512 units), opposing orientations and FOV jumps.
-  Both passes share the same history; camera prediction is deliberately not enabled.
-- Quad smoothing is suppressed inside the two stage passes to avoid interpolating
-  geometry already rendered through an interpolated camera. Background sprite animation
-  itself is still at the native rate; this pass smooths camera movement only.
-- `0x41c99c` decrements the transition timer (stage+`0x3478`) through `0x409750`.
-  This is draw-time mutation, so the new wrapper calls it only on a major presentation.
-  Native ABI consumes an unused stack word (RET 4); the replacement preserves that ABI.
-  Other callers of the general timer routine are untouched.
-- Culling `0x41ca90` projects bounding boxes through the rendered camera. `0x41cee0`
-  records visibility bits and draw counts; these existing draw-side effects remain.
-  Review background object activation/animation at screen edges during playtesting.
-  Catch-up updates without a draw still omit draw-time transition bookkeeping, as with
-  the first adapter's native-frame accounting; long stalls merit further investigation.
+TH15's sites, moved: bullet counter gate `0x424851` (ESI = bullet, timer `+0xf80`/`+0xf84`;
+28 bytes covering the wait counter and the collision countdown), state promotion `0x424007`,
+item countdowns `0x445af3` and `0x445b78` (EDI = item, timer `+0xc4c`/`+0xc50`, counter
+`+0xc84`), graze slow-down recovery `0x446819` (`[manager+0xe6bb14]`). TH15's bullet cancel
+site has no counterpart: the tail block covers it. Lasers need no site (as TH15).
 
-The complete TH18 inert suite passed with 33 signatures. Added tests cover camera poses,
-restarts/cuts, both actual C draw wrappers against inert native stand-ins, restoration of
-camera inputs while retaining unrelated native writes, and 60 timer decrements per 360
-presents. Build passed with existing shared/third-party warnings. No game was launched.
-The new camera/transition behavior still needs the user's visual test.
+## 5. Addresses
 
-## Non-quad laser starting points (not patched)
+| | |
+|---|---|
+| speed | `0x4ccbf0` (10 sites: 4 permanent, 5 temporary, the ECL call at `0x435ea3` from XMM1) |
+| update runner / its `ret` | `0x4012e0` / `0x4013f5`; runner pointer `0x4cf294` |
+| frame function / calls | `0x472fd0` / `0x471c4e`, `0x471c5a`; the inlined third path is bypassed at `0x471a9e` |
+| catch-up tick | `th18_update_only`: flush `0x47e730` on `0x51f65c`, viewport `0x41b330(0x4ccdf0, 2)`, cleanup `0x402b30` on `0x4cd884` |
+| remove node | `0x4015a0` |
+| critical section, count | `0x521660`, `0x5217b0` |
+| latency compare / screenshot | `0x4730be` / `0x453f40`, called at `0x473367` |
+| device, pp, window flags, misc flags | `0x4ccdf8`, `0x4ccee4`, `0x56ac70`, `0x5217be` |
+| raw input, pressed | `0x4ca210`, `0x4ca21c` |
+| player / callback / timer / position | `0x4cf410` / `0x45caa0` / `+0x63c` / `+0x62c` |
+| enemy manager / list | `0x4cf2d0` / `+0x18c`; enemy flags `+0x635c`, position `+0x1270`, skip mask `0x2000000` |
+| bullet manager | `0x4cf2bc`; 2001 bullets of `0xfa0` at `+0xec`, state `+0xf68`, position `+0x638` |
+| item manager | `0x4cf2ec`; `0x1258` items of `0xc94` at `+0x14`, state `+0xc74`, position `+0xc30` |
+| laser manager | `0x4cf3f4`; count `+0x798` |
+| ANM manager / `get_vm` | `0x51f65c` / `0x488b40` |
+| replay manager / save / load | `0x4cf418` / `0x461e90` / `0x462680`; callbacks `0x462940` (record), `0x462a50` (playback); `0x462c30` is speed control only; save calls `0x459ab3`, `0x46aa65`; load calls `0x461965`, `0x461ab3`; the header peek at `0x461d6b` stays unhooked |
+| input | one `0x248` object at `0x4ca210`: `poll_input` `0x401c50`, `game_input` `0x4ca428` (latched at `0x46295a`), pressed `0x4ca434`, released `0x4ca438`, option flags `0x4cd014` (autofocus bit `0x200`), autofocus counter `0x4ca3a4` (threshold 10) |
+| draw dispatch / flush / VM draw | `0x401490` (node in EDI) / `0x47e730` / `0x481210` |
+| sprite VM | layer `+0x18`, ANM slot `+0x20`, slot table at manager `+0x312072c`, 33 slots |
 
-Static analysis locates laser manager `0x4cf3f4`. Update callback `0x448870` calls
-`0x448760`, handling pause flags +b0 masks 5/0x400, flag 2 zeroing speed, and market guard.
-Draw `0x4488e0` walks manager+0x14, next object at +8, skips state +0x10 == 1, and calls
-virtual method +0x14 at `0x448901`. Spawn `0x448920` caps manager+0x798 at 512 objects,
-assigns serials via +0x79c, and selects subtype vtables. Verified draw entries:
+## 6. Classes and sites
 
-| Vtable | Draw (+0x14) |
-| --- | --- |
-| `0x4b672c` | `0x450340` |
-| `0x4b679c` | `0x452b80` |
-| `0x4b680c` | `0x44d010` |
-| `0x4b687c` | `0x44ab60` |
+Sub-stepped: `0x488250` and `0x488220` (sprite passes, priorities 11 and 34), `0x424e70`
+bullets (29), `0x448870` lasers (28), `0x45caa0` player (23), `0x446ec0` items (30).
+Everything else is `MODE_FRAME`; the named ones are in `th18_classes`.
 
-Next: inspect these four renderers and their vertex submissions. Prefer interpolating
-bounded submitted mesh histories with stable identity/serial and topology checks. Do not
-move logical laser nodes or change collision/update virtual methods. Curved laser
-constructor `0x44ed70` allocates vertex storage at object+0x1804, based on +0x7a8; this is
-a promising starting point, but subtype naming/layout and all writes still need an audit.
+| site | length | what |
+|---|---|---|
+| `0x471a9e` | 6 | the window loop's inlined frame path becomes a jump past it |
+| `0x424851` | 28 | bullet counter gates; ESI = bullet, timer prev `+0xf80`, int `+0xf84` |
+| `0x424007` | 13 | bullet state promotion, boundary tick only |
+| `0x445af3`, `0x445b78` | 13, 25 | item countdowns; EDI = item, timer `+0xc4c`/`+0xc50`, counter `+0xc84` |
+| `0x446819` | 16 | graze slow-down recovery × `g_factor` |
+| `0x45bec3` | 7 | player state dispatch (jump table `0x45ca8c`) |
+| `0x45b6f7` | 8 | `movement_cvttss_xmm`, x from XMM1 into ECX, y from XMM2 into EDX |
+| `0x45b89d` | 11 | position history shift: the loop's set-up, gated on the state timer |
+| `0x45b8e4` | 6 | focus counter (`gate_block`, EDI, `+0x634`) |
+| `0x45c63a` | 14 | blink guard |
+| `0x45bd2f` | 9 | option approach |
+| `0x45bd0b`, `0x45ee20` | 10, 10 | option and shot-object callbacks, boundary tick only |
+| `0x45c402` | 9 | shot loop head: a shot fired this frame waits for the next boundary tick |
+| `0x45c41b`, `0x45c43c` | 12, 10 | shot rates × `g_factor` |
+| `0x45c4a5` | 18 | shot cadence timer, boundary tick only |
+| `0x45c4ff` | 8 | shot age, boundary tick only |
+| `0x45e6c9` | 5 | the muzzle step at a shot's creation, called with the logical speed |
+| `0x45f144` | 8 | shot-against-enemy guard (`g_ptf_prev`/`g_ptf_cur`) |
+| `0x452c10` | 7 | `timer_rewind` rate → `&g_logical` |
+| `0x45f068` | 10 | shot object timer, boundary tick only |
+| `0x459ab3`, `0x46aa65`, `0x461965`, `0x461ab3` | 5 | replay save and load calls |
+
+Interpolation: `th18_enemy_sprites = {0x122c, 0x124, 0x164, 0x224, 0x4000000, 0x17c, 0x0c}`
+(sub-object `+0x122c`, VM position `+0x5f0`, parent contribution `+0x30`; `0x42ff80`); four
+options of `0xf0` at player `+0x670`, VM position word `0x17c`.
+
+## 7. Dimming
+
+`world_prio = 16` (the first `enemy.anm` draw, layer 6). From the census of the stage 3 demo:
+
+| prio | ANM / layer | class |
+|---|---|---|
+| 3, 9 | `st03wl.anm` L0, `text.anm` L32, `effect.anm` L2 | background (under the quad) |
+| 14, 15 | one quad (`0x455610`) and `text.anm` L35 (`0x455530`), gated on `0x4ccf9c` | background |
+| 16, 20, 21, 24 | `enemy.anm` L6, L8, L9, L11 | none |
+| 28, 32 | `pl00.anm` L13, L15 | `DIM_PLAYER_SHOTS` |
+| 29, 31 | `pl00.anm` L14 | none |
+| 28–32 | `effect.anm` L13–15 (focus ring, hitbox), `ability.anm` L13–15 (card effects) | none |
+| 33 | item manager's draw (`0x446f00`), `bullet.anm` L0 | `DIM_ITEMS` |
+| 38 | bullet manager's draw, `bullet.anm` L0 | none |
+| 46, 47 | `bullet.anm` L20, L21 (lasers) | none |
+| 35, 40, 43, 46, 47 | `effect.anm` L16–21 | `DIM_EFFECTS` |
+| 60+ | `title.anm`, `abcard.anm`, `front.anm`, `ascii.anm`, `sig.anm` | interface |
+
+## 8. Verification
+
+All under Wine with a null ALSA device, software rendering, the title demo (`demo/demo0.rpy`,
+stage 3) with `replay_trace=1`. The trace line carries the player's fixed-point position, the
+bullets' count and quantised position sum, the items' count and sum, the laser count and the
+player's life state; a second line fingerprints the player's shots (count, position sum, the
+sums of their timers and age counters, the focus counter).
+
+- Native harness and `test_th18_stubs.py` pass (`test.sh` with `th18.exe`, `th14.exe`,
+  `th15.exe`, `th20.exe`).
+- `substep=1` at 60 fps against `substep=0`: identical on every field, 3151 frames, shots
+  included. The hooks are inert at one tick per frame.
+- `substep=1` at 120 fps against `substep=0`: the player's position is identical for 1369
+  frames, until the diverged simulation kills her; the shots' count, timers and ages agree
+  frame for frame with stock apart from the hit-lag volleys (§4) and their positions differ by
+  one quantum here and there; items differ by one at their exits; bullets differ by one for a
+  frame or two from 328 and part for good around 1209, an enemy dying a frame earlier. Before
+  the shot-type callbacks and the muzzle step were found, the bullets sat three below stock
+  from frame 333 and the player died at 1258.
+- A stage 1 run driven by `xdotool` (fire held, left and right for 12 s), saved from the pause
+  menu and played back from the title: at 120 Hz and at 144 Hz the playback agrees with the
+  recording on every field, shots included, on every frame after the stage's intro (787 and
+  663 frames). The intro's 60 frames differ in the player's life state and in seven idle shot
+  entries; the same run in stock mode at 60 Hz differs there too, so that is the game's own
+  (its frame counter starts before the spawn animation ends, and the playback starts after).
+- Dimming: `dim_background=60`, `dim_items=50`, `dim_effects=50`, `dim_player_shots=50` fade
+  what they name and nothing else (screenshot under Xvfb).
+
+Not done: lasers in play (the demo has none, the driven run reaches none), a stage with a boss,
+the English executable, a session on Windows.
+
+## 9. How the port was made
+
+TH15's listing was matched to TH18's by instruction-context voting for every TH15 site
+(`tools/porting`); the player function and the shot code were then diffed body against body
+because the compiler reordered them. The new per-frame logic — the position history, the
+callbacks, the shot age, the muzzle step — was found from the demo trace: each left a
+signature (a steady bullet gap, shots half a frame ahead, ages one behind) that a per-shot dump
+on the frames around it pinned to an instruction.
+
+## 10. Open
+
+- `vm_script_off`; `pp` writes (the resolution dialog is the game's own, as TH15).
+- The ability cards' per-frame code has not been audited for reads of the sub-stepped systems.
+- Stage distortion RNG (TH11–13 gate it; not looked for here, TH14 or TH15).
+- The English executable.

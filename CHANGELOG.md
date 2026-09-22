@@ -4,6 +4,19 @@ Newest first. Versions are the release archive names; `-test` means what it says
 Full release notes for each version are on the
 [releases page](https://github.com/vittorioromeo/th12_hfr/releases).
 
+## Unreleased
+
+- **Touhou 18 — Unconnected Marketeers (v1.00a).** TH15's engine, ported the same way: bullets,
+  lasers, items, the player with her shots and options, and sprite animation step at the
+  display's rate; enemies and options are interpolated; sub-tick input; replays carry their
+  recording rate and per-tick input; dimming and the video path work. The ability cards, bombs,
+  effects and the stage stay at 60 Hz. Verified under Wine: identical to stock at 60 Hz through
+  the title demo, the player's path and shots match stock sub-stepped, and a recording and its
+  playback agree on every frame at 120 and 144 Hz; no play session on Windows yet.
+- New in the runtime for it: a register-source form of the movement residual
+  (`movement_cvttss_xmm`), the option interpolation taking the option array's stride and count.
+- The bare-profile runner test allows for a profile that brings its own catch-up tick.
+
 ## v0.8-test
 
 Touhou 20.

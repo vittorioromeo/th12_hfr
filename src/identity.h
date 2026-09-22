@@ -27,6 +27,7 @@ struct ConflictSite { uintptr_t addr; size_t size; uint8_t bytes[8]; const char*
 #include "games/th13_conflicts.h"
 #include "games/th14_conflicts.h"
 #include "games/th15_conflicts.h"
+#include "games/th18_conflicts.h"
 #include "games/th20_conflicts.h"
 struct GameIdentity {
     unsigned id, image_size;    /* the smallest accepted SizeOfImage; see identify_image */
@@ -55,7 +56,7 @@ static const struct GameIdentity game_identities[] = {
        it until replays are extended, and a wrong four bytes there would be a silent one. */
     [GI_TH14] = {14,0x101000,"TH14 v1.00b",NULL,"t13r",{"th14e.exe","th14.exe"},th14_signatures,sizeof th14_signatures/sizeof *th14_signatures,th14_conflicts,th14_conflict_count},
     [GI_TH15] = {15,0x125000,"TH15 v1.00b",NULL,"t15r",{"th15e.exe","th15.exe"},th15_signatures,sizeof th15_signatures/sizeof *th15_signatures,th15_conflicts,th15_conflict_count},
-    [GI_TH18] = {18,0x174000,"TH18 v1.00a",NULL,NULL,{"th18e.exe","th18.exe"},th18_signatures,sizeof th18_signatures/sizeof *th18_signatures,NULL,0},
+    [GI_TH18] = {18,0x174000,"TH18 v1.00a",NULL,"t18r",{"th18e.exe","th18.exe"},th18_signatures,sizeof th18_signatures/sizeof *th18_signatures,th18_conflicts,th18_conflict_count},
     [GI_TH20] = {20,0x1f9000,"TH20 v1.00c",NULL,"t20r",{"th20e.exe","th20.exe"},th20_signatures,sizeof th20_signatures/sizeof *th20_signatures,th20_conflicts,th20_conflict_count},
 };
 #define GAME_COUNT (sizeof game_identities / sizeof *game_identities)

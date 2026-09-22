@@ -26,16 +26,18 @@ static void th14_family_place_enemy(const struct Th14EnemySprites* L, uint8_t* e
         vm[L->vm_pos] = x; vm[L->vm_pos + 1] = y; vm[L->vm_pos + 2] = z;
     }
 }
-/* Eight options of 0xe4 at player+`base`: active flag at +0x00, position as fixed point in
-   1/128 of a pixel at +0x5c and +0x60, the two ANM VM ids at +0xb0 and +0xb4. */
+/* `count` options of `stride` bytes at player+`base` (eight of 0xe4 on TH14 and TH15, four of
+   0xf0 on TH18): active flag at +0x00, position as fixed point in 1/128 of a pixel at +0x5c and
+   +0x60, the two ANM VM ids at +0xb0 and +0xb4. */
 struct Th14OptionState { int32_t last[2], prev[2]; unsigned seen; };
-static void th14_family_place_options(uint32_t base, unsigned vm_pos, struct Th14OptionState* st, unsigned* frames,
+static void th14_family_place_options(uint32_t base, uint32_t stride, int count, unsigned vm_pos,
+                                      struct Th14OptionState* st, unsigned* frames,
                                       uint8_t* am, float alpha, int capture) {
     uint8_t* pl = g_game->addr.player ? *(uint8_t**)g_game->addr.player : NULL;
     if (!pl) return;
     if (capture) ++*frames;
-    for (int i = 0; i < 8; ++i) {
-        uint8_t* o = pl + base + i * 0xe4;
+    for (int i = 0; i < count; ++i) {
+        uint8_t* o = pl + base + i * stride;
         if (!*(const uint32_t*)o) { st[i].seen = 0; continue; }   /* this one is not out */
         const int32_t* P = (const int32_t*)(o + 0x5c);
         if (capture) {

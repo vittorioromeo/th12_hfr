@@ -1,167 +1,292 @@
 [
  {
-  "address": "0x471a9e",
-  "bytes": "0f 89 93 01 00 00",
-  "description": "automatic-latency branch"
+  "address": "0x4012e0",
+  "bytes": "55 8b ec 51 80",
+  "description": "the update runner's entry, replaced by a jump to the replacement"
  },
  {
   "address": "0x471c4e",
   "bytes": "e8 7d 13 00 00",
-  "description": "frame call, wait mode"
+  "description": "frame call, wait mode (0x472fd0, the one this profile describes)"
  },
  {
   "address": "0x471c5a",
   "bytes": "e8 71 11 00 00",
-  "description": "frame call, software mode"
+  "description": "frame call, software mode (0x472dd0)"
  },
  {
-  "address": "0x472ff0",
-  "bytes": "e8 eb e2 f8 ff",
-  "description": "native update call"
- },
- {
-  "address": "0x473185",
-  "bytes": "e8 16 f7 ff ff",
-  "description": "FPS and slowdown accounting"
- },
- {
-  "address": "0x473367",
-  "bytes": "e8 d4 0b fe ff",
-  "description": "snapshot call"
+  "address": "0x471a9e",
+  "bytes": "0f 89 93 01 00 00",
+  "description": "the window loop's branch into the inlined automatic-latency frame path -- becomes a jump past it"
  },
  {
   "address": "0x4730be",
   "bytes": "80 3d 11 d0 4c 00 01",
-  "description": "native sleep guard"
+  "description": "latency_cmp: cmp byte [0x4cd011],1 -- the last byte becomes 0x7f"
  },
  {
-  "address": "0x47e6b5",
-  "bytes": "e8 46 01 00 00",
-  "description": "quad submission"
+  "address": "0x473367",
+  "bytes": "e8 d4 0b fe ff",
+  "description": "the screenshot call"
  },
  {
   "address": "0x401490",
   "bytes": "8b 4f 24 8b 47 08 ff d0",
-  "description": "draw callback dispatch"
+  "description": "the draw runner's dispatch"
  },
  {
   "address": "0x481210",
   "bytes": "55 8b ec 83 e4 f8 83 ec 78",
-  "description": "VM draw prologue"
+  "description": "the per-VM sprite draw; the VM is its first stack argument"
  },
  {
-  "address": "0x4012e0",
-  "bytes": "55 8b ec 51 80 3d be 17 52 00 00 53 56 57 8b d9",
-  "description": "native runner and critical flag"
+  "address": "0x4425b6",
+  "bytes": "c7 05 f0 cb 4c 00 00 00 80 3f",
+  "description": "game state change"
+ },
+ {
+  "address": "0x443311",
+  "bytes": "c7 05 f0 cb 4c 00 00 00 80 3f",
+  "description": "stage set-up"
+ },
+ {
+  "address": "0x4536c0",
+  "bytes": "c7 05 f0 cb 4c 00 00 00 80 3f",
+  "description": "supervisor reset"
+ },
+ {
+  "address": "0x45c30b",
+  "bytes": "c7 05 f0 cb 4c 00 00 00 80 3f",
+  "description": "end-of-stage sequence"
+ },
+ {
+  "address": "0x45876a",
+  "bytes": "c7 05 f0 cb 4c 00 00 00 80 3f",
+  "description": "1.0 while the pause menu is up"
+ },
+ {
+  "address": "0x4589d2",
+  "bytes": "c7 05 f0 cb 4c 00 00 00 80 3f",
+  "description": "1.0 while the pause menu is up"
+ },
+ {
+  "address": "0x458ba9",
+  "bytes": "c7 05 f0 cb 4c 00 00 00 80 3f",
+  "description": "1.0 while the pause menu is up"
+ },
+ {
+  "address": "0x458df9",
+  "bytes": "c7 05 f0 cb 4c 00 00 00 80 3f",
+  "description": "1.0 while the pause menu is up"
+ },
+ {
+  "address": "0x4785b9",
+  "bytes": "c7 05 f0 cb 4c 00 00 00 80 3f",
+  "description": "1.0 for a sprite \"unaffected by slow-motion\""
+ },
+ {
+  "address": "0x435ea3",
+  "bytes": "e8 58 43 00 00",
+  "description": "the script instruction that sets the speed: its call to the setter 0x43a200"
+ },
+ {
+  "address": "0x424851",
+  "bytes": "8b 46 24 85 c0 74 04 48 89 46 24 8b 86 70 06 00 00 85 c0 7e 07 48 89 86 70 06 00 00",
+  "description": "the wait counter and the collision countdown"
+ },
+ {
+  "address": "0x424007",
+  "bytes": "83 be cc 04 00 00 00 0f 84 03 06 00 00",
+  "description": "the state 2 -> 1 promotion"
+ },
+ {
+  "address": "0x445af3",
+  "bytes": "83 87 84 0c 00 00 ff 0f 89 e5 0c 00 00",
+  "description": "state 5 despawn countdown"
+ },
+ {
+  "address": "0x445b78",
+  "bytes": "8b 87 84 0c 00 00 85 c0 7e 18 48 89 87 84 0c 00 00 85 c0 0f 8f 54 0c 00 00",
+  "description": "state 1 wait countdown"
+ },
+ {
+  "address": "0x446819",
+  "bytes": "f3 0f 58 05 d8 90 4b 00 f3 0f 11 81 14 bb e6 00",
+  "description": "the graze slow-down's recovery"
+ },
+ {
+  "address": "0x45bec3",
+  "bytes": "ff 24 85 8c ca 45 00",
+  "description": "the state dispatch"
+ },
+ {
+  "address": "0x45b6f7",
+  "bytes": "f3 0f 2c c9 f3 0f 2c d2",
+  "description": "the movement truncations (velocity in xmm1/xmm2)"
+ },
+ {
+  "address": "0x45b89d",
+  "bytes": "ba 20 00 00 00 8d 8f 04 79 04 00",
+  "description": "the position history shift while moving: the loop's set-up"
+ },
+ {
+  "address": "0x45b8e4",
+  "bytes": "ff 87 e8 77 04 00",
+  "description": "the focus counter"
+ },
+ {
+  "address": "0x45c63a",
+  "bytes": "8b 87 38 06 00 00 3b 87 34 06 00 00 74 2c",
+  "description": "the invincibility blink's timer guard"
+ },
+ {
+  "address": "0x45bd2f",
+  "bytes": "83 fb 1e 0f 8c a9 00 00 00",
+  "description": "the options' approach counter check"
+ },
+ {
+  "address": "0x45bd0b",
+  "bytes": "8b 86 88 00 00 00 85 c0 74 0a",
+  "description": "the option callback call: boundary ticks only"
+ },
+ {
+  "address": "0x45ee20",
+  "bytes": "8b 87 d8 00 00 00 85 c0 74 0d",
+  "description": "the weapon callback call: boundary ticks only"
+ },
+ {
+  "address": "0x45c402",
+  "bytes": "f6 01 01 0f 84 05 01 00 00",
+  "description": "the shot loop head: skip a shot fired this frame on the minor ticks"
+ },
+ {
+  "address": "0x45c41b",
+  "bytes": "f3 0f 10 47 a0 33 c9 f3 0f 58 47 9c",
+  "description": "shot rate 1"
+ },
+ {
+  "address": "0x45c43c",
+  "bytes": "f3 0f 10 47 a8 f3 0f 58 47 a4",
+  "description": "shot rate 2"
+ },
+ {
+  "address": "0x45c4a5",
+  "bytes": "8b 47 fc f3 0f 10 25 74 91 4b 00 89 47 f8 85 c9 74 2c",
+  "description": "the shot's hit-cadence timer"
+ },
+ {
+  "address": "0x45c4ff",
+  "bytes": "89 47 fc ff 4f 20 85 c0",
+  "description": "the shot's age counter"
+ },
+ {
+  "address": "0x45e6c9",
+  "bytes": "e8 22 45 fa ff",
+  "description": "the fire routine's muzzle motion step: call with the logical speed"
+ },
+ {
+  "address": "0x45f144",
+  "bytes": "3b 81 34 06 00 00 75 07",
+  "description": "shots against enemies: the state-timer guard"
+ },
+ {
+  "address": "0x452c10",
+  "bytes": "8b 14 85 c0 35 4b 00",
+  "description": "timer_rewind's rate lookup"
+ },
+ {
+  "address": "0x45f068",
+  "bytes": "8b 47 fc 89 47 f8 85 c9 74 24",
+  "description": "the weapon timer"
+ },
+ {
+  "address": "0x459ab3",
+  "bytes": "e8 d8 83 00 00",
+  "description": "save call (pause menu)"
+ },
+ {
+  "address": "0x46aa65",
+  "bytes": "e8 26 74 ff ff",
+  "description": "save call (end of game)"
+ },
+ {
+  "address": "0x461965",
+  "bytes": "e8 16 0d 00 00",
+  "description": "load call, mode 1: play"
+ },
+ {
+  "address": "0x461ab3",
+  "bytes": "e8 c8 0b 00 00",
+  "description": "load call, mode 2"
  },
  {
   "address": "0x4013ed",
   "bytes": "5f 8b c6 5e 5b 8b e5 5d c3",
-  "description": "native runner epilogue"
+  "description": "the runner's epilogue; runner_ret is its last byte, 0x4013f5"
  },
  {
-  "address": "0x472fd0",
-  "bytes": "56 8b f1 8b 0d 5c f6 51 00 e8 52 b7 00 00 6a 02 b9 f0 cd 4c",
-  "description": "native frame, ANM manager"
+  "address": "0x472ff0",
+  "bytes": "e8 eb e2 f8 ff",
+  "description": "the frame function's call into the update runner"
  },
  {
-  "address": "0x472fe0",
-  "bytes": "b9 f0 cd 4c 00 e8 46 83 fa ff 8b 0d 94 f2 4c 00 e8 eb e2 f8 ff",
-  "description": "supervisor and update runner"
+  "address": "0x472fde",
+  "bytes": "6a 02 b9 f0 cd 4c 00 e8 46 83 fa ff",
+  "description": "the frame function: select viewport context 2, and the runner pointer"
  },
  {
   "address": "0x472ff9",
   "bytes": "b9 84 d8 4c 00 e8 2d fb f8 ff",
-  "description": "end-of-pass cleanup"
+  "description": "the end-of-pass cleanup and its object"
  },
  {
-  "address": "0x473036",
-  "bytes": "a1 f8 cd 4c 00 50 8b 08 ff 91 a4 00 00 00",
-  "description": "Direct3D device"
+  "address": "0x472fd3",
+  "bytes": "8b 0d 5c f6 51 00 e8 52 b7 00 00",
+  "description": "the sprite batch flush and its manager"
  },
  {
-  "address": "0x47314a",
-  "bytes": "a1 f8 cd 4c 00 68 e4 ce 4c 00",
-  "description": "native present parameters"
+  "address": "0x43a200",
+  "bytes": "f3 0f 11 0d f0 cb 4c 00 c3",
+  "description": "the speed setter"
  },
  {
-  "address": "0x47e6a6",
-  "bytes": "57 8b ce e8 62 f2 ff ff 68 20 05 57 00 8b ce e8 46 01 00 00",
-  "description": "quad copy ABI: EDI VM, ECX manager"
+  "address": "0x4015a0",
+  "bytes": "55 8b ec 8b 55 08 56 8b",
+  "description": "remove_node, node on the stack"
  },
  {
-  "address": "0x47e800",
-  "bytes": "55 8b ec 53 8b d9 56 8d b3 70 0e 82 03 57 8b 3e",
-  "description": "native batch copy"
+  "address": "0x472fd0",
+  "bytes": "56 8b f1 8b 0d 5c f6 51 00 e8",
+  "description": "the frame function"
  },
  {
-  "address": "0x47e730",
-  "bytes": "56 8b f1 83 be 6c 0e 12 03 00 0f 84 bb 00 00 00",
-  "description": "batch flush"
- },
- {
-  "address": "0x4786e8",
-  "bytes": "8b 53 1c a1 5c f6 51 00 8b 4b 28 8b 84 90 2c 07 12 03 8b 80 20 01 00 00 8b 3c 88",
-  "description": "script slot and script number"
- },
- {
-  "address": "0x47870a",
-  "bytes": "3b 83 50 05 00 00",
-  "description": "script timer comparison"
- },
- {
-  "address": "0x424e70",
-  "bytes": "a1 e4 f2 4c 00 85 c0 74 12 8b 80 b0 00 00 00 8b d0 c1 ea 02 0b d0 f6 c2 01 75 09",
-  "description": "game thread and pause flags"
+  "address": "0x472dd0",
+  "bytes": "56 8b f1 e8 b8 05 00 00 f2 0f",
+  "description": "the software-mode frame function"
  },
  {
   "address": "0x453f40",
-  "bytes": "53 8b dc 83 ec 08 83 e4 f8 83 c4 04 55 8b 6b 04",
-  "description": "screenshot routine"
+  "bytes": "53 8b dc 83 ec 08 83 e4 f8 83",
+  "description": "the screenshot routine"
  },
  {
-  "address": "0x423b6d",
-  "bytes": "89 1d bc f2 4c 00",
-  "description": "bullet manager identity"
+  "address": "0x461e90",
+  "bytes": "55 8b ec 81 ec 2c 01 00 00 a1",
+  "description": "replay save"
  },
  {
-  "address": "0x45afed",
-  "bytes": "89 3d 10 f4 4c 00",
-  "description": "player identity"
+  "address": "0x462680",
+  "bytes": "55 8b ec b8 08 10 00 00 e8 c3",
+  "description": "replay load"
  },
  {
-  "address": "0x424e8b",
-  "bytes": "83 3d a4 f2 4c 00 00 74 06",
-  "description": "ability shop guard"
+  "address": "0x401c50",
+  "bytes": "55 8b ec 83 e4 f8 81 ec 0c 01",
+  "description": "the input poll"
  },
  {
-  "address": "0x41ca70",
-  "bytes": "e9 1b f8 ff ff",
-  "description": "stage first draw thunk"
- },
- {
-  "address": "0x41ca81",
-  "bytes": "e8 7a fc ff ff",
-  "description": "stage second draw call"
- },
- {
-  "address": "0x41c99c",
-  "bytes": "e8 af cd fe ff",
-  "description": "stage transition timer decrement"
- },
- {
-  "address": "0x41c2f0",
-  "bytes": "00 f3 0f 10 05 78 d5 4c 00 f3 0f 11 87 30 03 00 00 bf 78 d4 4c 00 f3 a5 51 b9 f0 cd 4c 00",
-  "description": "stage camera copy layout"
- },
- {
-  "address": "0x41c98c",
-  "bytes": "83 bf 7c 34 00 00 00 7e 35 51 8d 8f 78 34 00 00 e8 af cd fe ff",
-  "description": "stage transition timer ABI"
- },
- {
-  "address": "0x41c6e8",
-  "bytes": "8b 4c 24 2c b8 01 00 00 00 5f 5e 33 cc e8 66 15 07 00 8b e5 5d c3",
-  "description": "stage first draw return ABI"
+  "address": "0x488b40",
+  "bytes": "55 8b ec 8b 45 08 56 8b f1 85",
+  "description": "anm_get_vm"
  }
 ]

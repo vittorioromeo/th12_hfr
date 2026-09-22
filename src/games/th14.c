@@ -553,7 +553,7 @@ static void th14_place_enemy(uint8_t* e, uint8_t* am, uint32_t flags, const floa
 static struct Th14OptionState th14_opt[8];
 static unsigned th14_opt_frames;
 static void th14_place_options(uint8_t* am, float alpha, int capture) {
-    th14_family_place_options(0xd6ec, 0x167, th14_opt, &th14_opt_frames, am, alpha, capture);   /* VM position +0x59c */
+    th14_family_place_options(0xd6ec, 0xe4, 8, 0x167, th14_opt, &th14_opt_frames, am, alpha, capture);   /* VM position +0x59c */
 }
 
 /* A per-frame fingerprint for the replay-desync trace, debug only.

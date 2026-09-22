@@ -22,8 +22,8 @@ frame's step, not at the end of it (measured on TH15: 0.006 rad on the first aim
 stage). Enemy logic, script execution and the random number generator are the same at any
 rate. Keep the build you recorded with if a replay matters.
 
-Locations: TH13, TH14, TH15 and TH20 keep replays under `%APPDATA%\ShanghaiAlice\th13\replay\`,
-`...\th14\replay\`, `...\th15\replay\` and `...\th20\replay\`; the others keep them beside the executable.
+Locations: TH13, TH14, TH15, TH18 and TH20 keep replays under `%APPDATA%\ShanghaiAlice\th13\replay\`,
+`...\th14\replay\`, `...\th15\replay\`, `...\th18\replay\` and `...\th20\replay\`; the others keep them beside the executable.
 
 Full-run parity between the stock game and the patched game has not been compared frame by
 frame.
