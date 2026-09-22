@@ -8,10 +8,10 @@ interpolated. This is not the TH15 sub-stepping adapter with new addresses. Abil
 shops, movement, damage, collision, shot cadence, RNG and replay recording/playback remain
 in the original native update runner. Replays receive no HFR extension.
 
-No game was launched or driven during development, as requested. Hardware validation is
-pending: F11, F10/window/fullscreen transitions, ordinary stage play, several active/passive
+No game was launched or driven during development, as requested. The user reported the first build "seems good" on 2026-09-22; its log showed about
+359.96 presents/s and 59.99 logic ticks/s. Detailed coverage remains pending: F11, F10/window/fullscreen transitions, ordinary stage play, several active/passive
 cards, the stage-end market, pause/retry, screenshots, replay playback and clean exit.
-Non-quad lasers and the 3D stage camera are not interpolated yet. Prediction is available
+The second build adds stage-camera interpolation; non-quad lasers remain unsmoothed. Prediction is available
 but defaults off in this adapter; it changes only submitted geometry and may overshoot turns.
 Interpolation has the usual one-native-frame visual delay.
 
@@ -134,7 +134,7 @@ A full simulation port still needs an audit of every card-dependent movement/dam
 path, integer countdown, shot cycle, timer equality event and RNG consumer. Merely labeling
 these callbacks MODE_SUB would change the game. First validate this presentation-only
 baseline, then add any gameplay sub-stepping as a separately tested opt-in feature.
-The non-quad laser and stage-camera draw paths are the next visual targets.
+Non-quad laser draw paths are the next visual target.
 
 ## Validation
 
@@ -151,3 +151,61 @@ TH08 Unicorn script stalled and was stopped; that regression check remains unres
 The first build is deployed to the requested installation, with automatic display rate and
 debug logging enabled. Original EXE hash is unchanged; installed launcher identification passes.
 See [TH18_HANDOFF.md](../TH18_HANDOFF.md) for exact resume state and deployed DLL hash.
+
+## Stage-camera pass, 2026-09-22
+
+- Stage manager: `0x4cf2b4`, constructor `0x41b850`; update thunk `0x41ca60`
+  jumps to `0x41c0a0` (priority 18). Age is stage+`0x3490`, script data +`0x3454`.
+- Stage draw callbacks at priorities 3 and 6: thunk `0x41ca70` jumps to `0x41c290`;
+  thunk `0x41ca80` calls `0x41c700` at `0x41ca81`. Both take stage in ECX, return 1,
+  and use RET without stack arguments. These two sites now wrap the native passes.
+- Stage camera block +`0x230`, size `0x164`, copied to supervisor+`0x688` (`0x4cd478`).
+  Interpolated inputs: eye +230/234/238, up +248/24c/250, direction +254/258/25c,
+  eye offset +26c/270/274, FOV +284. Only these 13 floats are substituted.
+- `0x41f950` constructs LookAtLH and PerspectiveFovLH (near 30, far 8000). Calls
+  at `0x41c30e`, `0x41c782`, `0x41cf4e`; `0x41e350` also contains an inline copy.
+  Wrapping the source inputs covers all these paths without replacing D3DX or duplicating
+  the engine's projection math. Stage and supervisor input fields are restored afterward;
+  native rendering matrices/viewport caches are retained until the next camera setup.
+- History rejects pointer/script changes, age rollback, tick gaps, non-finite or degenerate
+  cameras, large positional cuts (>512 units), opposing orientations and FOV jumps.
+  Both passes share the same history; camera prediction is deliberately not enabled.
+- Quad smoothing is suppressed inside the two stage passes to avoid interpolating
+  geometry already rendered through an interpolated camera. Background sprite animation
+  itself is still at the native rate; this pass smooths camera movement only.
+- `0x41c99c` decrements the transition timer (stage+`0x3478`) through `0x409750`.
+  This is draw-time mutation, so the new wrapper calls it only on a major presentation.
+  Native ABI consumes an unused stack word (RET 4); the replacement preserves that ABI.
+  Other callers of the general timer routine are untouched.
+- Culling `0x41ca90` projects bounding boxes through the rendered camera. `0x41cee0`
+  records visibility bits and draw counts; these existing draw-side effects remain.
+  Review background object activation/animation at screen edges during playtesting.
+  Catch-up updates without a draw still omit draw-time transition bookkeeping, as with
+  the first adapter's native-frame accounting; long stalls merit further investigation.
+
+The complete TH18 inert suite passed with 33 signatures. Added tests cover camera poses,
+restarts/cuts, both actual C draw wrappers against inert native stand-ins, restoration of
+camera inputs while retaining unrelated native writes, and 60 timer decrements per 360
+presents. Build passed with existing shared/third-party warnings. No game was launched.
+The new camera/transition behavior still needs the user's visual test.
+
+## Non-quad laser starting points (not patched)
+
+Static analysis locates laser manager `0x4cf3f4`. Update callback `0x448870` calls
+`0x448760`, handling pause flags +b0 masks 5/0x400, flag 2 zeroing speed, and market guard.
+Draw `0x4488e0` walks manager+0x14, next object at +8, skips state +0x10 == 1, and calls
+virtual method +0x14 at `0x448901`. Spawn `0x448920` caps manager+0x798 at 512 objects,
+assigns serials via +0x79c, and selects subtype vtables. Verified draw entries:
+
+| Vtable | Draw (+0x14) |
+| --- | --- |
+| `0x4b672c` | `0x450340` |
+| `0x4b679c` | `0x452b80` |
+| `0x4b680c` | `0x44d010` |
+| `0x4b687c` | `0x44ab60` |
+
+Next: inspect these four renderers and their vertex submissions. Prefer interpolating
+bounded submitted mesh histories with stable identity/serial and topology checks. Do not
+move logical laser nodes or change collision/update virtual methods. Curved laser
+constructor `0x44ed70` allocates vertex storage at object+0x1804, based on +0x7a8; this is
+a promising starting point, but subtype naming/layout and all writes still need an audit.

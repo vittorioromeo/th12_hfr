@@ -9,6 +9,83 @@ static int th18_present_major;
 static struct FixedQuadHistory* th18_history;
 static unsigned th18_quads, th18_smoothed;
 
+/* Camera inputs only: eye, up, direction, eye offset, FOV. Matrices and viewport
+ * caches remain native. Both stage passes copy these inputs into the supervisor,
+ * including the inline camera setup inside 41e350. */
+static const unsigned th18_camera_offsets[] = {
+    0x230,0x234,0x238, 0x248,0x24c,0x250, 0x254,0x258,0x25c,
+    0x26c,0x270,0x274, 0x284
+};
+struct Th18CameraHistory {
+    uintptr_t key, script; uint64_t tick; int age, valid;
+    float previous[13], current[13];
+};
+static struct Th18CameraHistory th18_camera;
+static int th18_in_stage_draw;
+static int th18_camera_finite(const float* p) {
+    for (int i=0;i<13;++i) if (!isfinite(p[i])) return 0;
+    float ux=p[3],uy=p[4],uz=p[5],dx=p[6],dy=p[7],dz=p[8];
+    float x=uy*dz-uz*dy,y=uz*dx-ux*dz,z=ux*dy-uy*dx;
+    return x*x+y*y+z*z>1e-6f && p[12]>0.001f && p[12]<3.14f;
+}
+static int th18_camera_pose(struct Th18CameraHistory* h, uintptr_t key, uintptr_t script,
+                           uint64_t tick, int age, const float* p, double alpha, float* out) {
+    if (!th18_camera_finite(p)) { h->valid=0; h->key=0; return 0; }
+    if (h->key!=key || h->script!=script || (tick!=h->tick+1 && tick!=h->tick) || age<h->age) {
+        h->valid=0; memcpy(h->previous,p,sizeof h->previous); memcpy(h->current,p,sizeof h->current);
+    } else if (tick!=h->tick) {
+        float distance=0,updot=0,dirdot=0;
+        for (int i=0;i<3;++i) {
+            float d=(p[i]+p[i+9])-(h->current[i]+h->current[i+9]); distance+=d*d;
+            updot+=p[i+3]*h->current[i+3]; dirdot+=p[i+6]*h->current[i+6];
+        }
+        h->valid=distance<512.0f*512.0f && updot>0 && dirdot>0 && fabsf(p[12]-h->current[12])<0.5f;
+        memcpy(h->previous,h->current,sizeof h->previous); memcpy(h->current,p,sizeof h->current);
+    } else if (memcmp(h->current,p,sizeof h->current)) {
+        h->valid=0; memcpy(h->current,p,sizeof h->current);
+    }
+    h->key=key;h->script=script;h->tick=tick;h->age=age;
+    if (!h->valid) return 0;
+    float a=(float)fmax(0.0,fmin(1.0,alpha));
+    for (int i=0;i<13;++i) out[i]=h->previous[i]+(h->current[i]-h->previous[i])*a;
+    return th18_camera_finite(out);
+}
+static int th18_stage_draw(uint8_t* stage, uintptr_t native) {
+    float saved[13],out[13];
+    for (int i=0;i<13;++i) memcpy(&saved[i],stage+th18_camera_offsets[i],4);
+    int smooth=th18_camera_pose(&th18_camera,(uintptr_t)stage,*(uintptr_t*)(stage+0x3454),
+                               th18_tick,*(int*)(stage+0x3490),saved,th18_phase,out);
+    int applied=smooth && cfg.enemy_interp && g_refresh>60;
+    if (applied)
+        for (int i=0;i<13;++i) memcpy(stage+th18_camera_offsets[i],&out[i],4);
+    ++th18_in_stage_draw;
+    int r=call_this0(native,stage);
+    --th18_in_stage_draw;
+    if (applied) {
+        /* An inactive pass can return without selecting the stage camera. Do not
+         * overwrite another context's inputs in that case. */
+        int copied=1;
+        for (int i=0;i<13;++i)
+            if (memcmp((void*)(0x4cd478+th18_camera_offsets[i]-0x230),&out[i],4)) copied=0;
+        for (int i=0;i<13;++i) {
+            memcpy(stage+th18_camera_offsets[i],&saved[i],4);
+            if (copied) memcpy((void*)(0x4cd478+th18_camera_offsets[i]-0x230),&saved[i],4);
+        }
+    }
+    return r;
+}
+static int __attribute__((fastcall, force_align_arg_pointer)) th18_stage_first(uint8_t* stage) {
+    return th18_stage_draw(stage,0x41c290);
+}
+static int __attribute__((fastcall, force_align_arg_pointer)) th18_stage_second(uint8_t* stage) {
+    return th18_stage_draw(stage,0x41c700);
+}
+/* Native timer decrement consumes an unused stack argument (RET 4). */
+static void __attribute__((fastcall, force_align_arg_pointer)) th18_stage_timer(void* timer, void* unused, void* arg) {
+    (void)unused;
+    if (th18_present_major) call_this1(0x409750,timer,arg);
+}
+
 /* Keep the native runner, including its ending instruction (thprac hooks it). The
  * frame scheduler calls this once per presentation; only an owed tick runs logic. */
 static int __attribute__((fastcall, force_align_arg_pointer)) th18_update(void* runner) {
@@ -66,7 +143,7 @@ static int __attribute__((fastcall, force_align_arg_pointer)) th18_quad(void* ma
     float saved[4][3], out[4][3];
     for (unsigned c = 0; c < 4; ++c) memcpy(saved[c], vertices + c * 28, 12);
     ++th18_quads;
-    if (th18_history && cfg.enemy_interp && g_refresh > 60) {
+    if (!th18_in_stage_draw && th18_history && cfg.enemy_interp && g_refresh > 60) {
         uintptr_t key = (uintptr_t)vm;
         unsigned first = (unsigned)((key >> 2) * 2654435761u) & (TH18_HISTORY_COUNT - 1);
         struct FixedQuadHistory* h = NULL;
@@ -113,8 +190,11 @@ static void th18_install_presentation(void) {
     E(0xff,0x74,0x24,0x04, 0x57);
     ECALL((uintptr_t)th18_quad); E(0xc2,0x04,0x00); stub_end();
     site_call(0x47e6b5, quad);
+    patch_jmp(0x41ca70,th18_stage_first,site_expected(0x41ca70,5));
+    site_call(0x41ca81,th18_stage_second);
+    site_call(0x41c99c,th18_stage_timer);
     g_frame_hook_installed = 1;
-    LOG("TH18 experimental: native 60 Hz gameplay; 2D quad interpolation=%d prediction=%d; sub-tick gameplay unavailable", cfg.enemy_interp, cfg.predict);
+    LOG("TH18 experimental: native 60 Hz gameplay; sprite and stage-camera interpolation=%d prediction=%d; sub-tick gameplay unavailable", cfg.enemy_interp, cfg.predict);
 }
 static const struct DimRule th18_dim_rules[] = {
     { 19, 19, NULL,         -1, -1, -1, -1, DIM_ITEMS },

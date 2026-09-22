@@ -133,5 +133,35 @@
   "address": "0x424e8b",
   "bytes": "83 3d a4 f2 4c 00 00 74 06",
   "description": "ability shop guard"
+ },
+ {
+  "address": "0x41ca70",
+  "bytes": "e9 1b f8 ff ff",
+  "description": "stage first draw thunk"
+ },
+ {
+  "address": "0x41ca81",
+  "bytes": "e8 7a fc ff ff",
+  "description": "stage second draw call"
+ },
+ {
+  "address": "0x41c99c",
+  "bytes": "e8 af cd fe ff",
+  "description": "stage transition timer decrement"
+ },
+ {
+  "address": "0x41c2f0",
+  "bytes": "00 f3 0f 10 05 78 d5 4c 00 f3 0f 11 87 30 03 00 00 bf 78 d4 4c 00 f3 a5 51 b9 f0 cd 4c 00",
+  "description": "stage camera copy layout"
+ },
+ {
+  "address": "0x41c98c",
+  "bytes": "83 bf 7c 34 00 00 00 7e 35 51 8d 8f 78 34 00 00 e8 af cd fe ff",
+  "description": "stage transition timer ABI"
+ },
+ {
+  "address": "0x41c6e8",
+  "bytes": "8b 4c 24 2c b8 01 00 00 00 5f 5e 33 cc e8 66 15 07 00 8b e5 5d c3",
+  "description": "stage first draw return ABI"
  }
 ]

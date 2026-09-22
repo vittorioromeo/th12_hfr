@@ -27,7 +27,7 @@ No game file is modified. You add four files to the game's folder and delete the
 | Touhou 13 — Ten Desires | v1.00c | `th13.exe`, `th13e.exe` | supported |
 | Touhou 14 — Double Dealing Character | v1.00b | `th14.exe` | supported — [notes](#touhou-14-and-15) |
 | Touhou 15 — Legacy of Lunatic Kingdom | v1.00b | `th15.exe` | supported, new — [notes](#touhou-14-and-15) |
-| Touhou 18 — Unconnected Marketeers | v1.00a | `th18.exe` | experimental: native 60 Hz gameplay, interpolated 2D sprites — [notes](docs/games/TH18_DEVNOTES.md) |
+| Touhou 18 — Unconnected Marketeers | v1.00a | `th18.exe` | experimental: native 60 Hz gameplay, interpolated sprites and stage camera — [notes](docs/games/TH18_DEVNOTES.md) |
 | Touhou Koumakyou: New Classic | [see notes](docs/games/TH06NC_DEVNOTES.md#2-product-and-inspected-build) | `th06nc.exe` | experimental — [notes](#new-classic) |
 
 - Requires Windows and a display above 60 Hz. On a 60 Hz display the patch does nothing.

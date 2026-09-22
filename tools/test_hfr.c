@@ -321,7 +321,7 @@ int main(int argc,char**argv) {
        simulation at 60 Hz. The runner tests build their own class table and hold either way;
        the replay round-trip drives a real sub-step switch and needs a real class. */
     int subs = sim && g_class_count;
-    test_fixed_quad();test_th18_clock();test_schedule();test_calling_conventions();test_speed_sites();test_movement_residual();test_replay_parser();test_scale_rect();test_snap_client();test_menu_key();
+    test_fixed_quad();test_th18_clock();test_th18_camera();test_schedule();test_calling_conventions();test_speed_sites();test_movement_residual();test_replay_parser();test_scale_rect();test_snap_client();test_menu_key();
     if (sim) { test_runner();test_runner_undescribed();test_runner_tail(); }
     else puts("SKIP: the shared runner (this game's simulation is not described)");
     if (subs) test_replay_roundtrip();
