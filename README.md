@@ -27,7 +27,7 @@ No game file is modified. You add four files to the game's folder and delete the
 | Touhou 13 — Ten Desires | v1.00c | `th13.exe`, `th13e.exe` | supported |
 | Touhou 14 — Double Dealing Character | v1.00b | `th14.exe` | supported — [notes](#touhou-14-and-15) |
 | Touhou 15 — Legacy of Lunatic Kingdom | v1.00b | `th15.exe` | supported, new — [notes](#touhou-14-and-15) |
-| Touhou 18 — Unconnected Marketeers | v1.00a | `th18.exe` | supported, new and untested on Windows — [notes](#touhou-18) |
+| Touhou 18 — Unconnected Marketeers | v1.00a | `th18.exe` | supported, new — [notes](#touhou-18) |
 | Touhou 20 — Fossilized Wonders | v1.00c (Steam) | `th20.exe` | supported, new — [notes](#touhou-20) |
 | Touhou Koumakyou: New Classic | [see notes](docs/games/TH06NC_DEVNOTES.md#2-product-and-inspected-build) | `th06nc.exe` | experimental — [notes](#new-classic) |
 
@@ -220,11 +220,10 @@ for bullets, the player, her shots, items and lasers; sub-tick input; interpolat
 options; replays that carry their recording rate and per-tick input; dimming and the video path.
 The ability cards, bombs, effects and the stage background still move in 60 Hz steps.
 
-New in this build and so far verified only under Wine: at 60 Hz the patched game is identical
-to stock frame for frame through the title demo; sub-stepped, the player's path and her shots
-match stock until the simulation parts on the usual half-frame differences, and a recording
-and its playback agree on every frame at 120 and 144 Hz. It has not had a play session on
-Windows yet — please report what you see. Not covered: the English
+New in this build. Under Wine the patched game is identical to stock frame for frame at 60 Hz
+through the title demo, and a recording and its playback agree on every frame at 120 and
+144 Hz; on Windows it has had a first play session and little more — please report what you
+see. Not covered: the English
 executable (unverified), thprac and thcrap (untested), script-level dim rules, and
 internal-resolution sprite snapping.
 

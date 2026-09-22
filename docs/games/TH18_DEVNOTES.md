@@ -31,8 +31,9 @@ extension, the desync trace.
 Not described: `pp` writes, `sprite_round_sites`, script-level dim rules (`vm_script_off`), the
 English build, the ability cards beyond leaving them at 60 Hz (§4).
 
-Verified under Wine against the title demo (§8). Not yet played by a person; the first Windows
-session is the user's.
+Verified under Wine against the title demo and a recorded stage (§8). On Windows it has been
+played by the project's owner at 360 Hz and reported working; the automated Windows tests have
+not been run on it.
 
 ### History
 
@@ -243,8 +244,11 @@ sums of their timers and age counters, the focus counter).
 - Dimming: `dim_background=60`, `dim_items=50`, `dim_effects=50`, `dim_player_shots=50` fade
   what they name and nothing else (screenshot under Xvfb).
 
-Not done: lasers in play (the demo has none, the driven run reaches none), a stage with a boss,
-the English executable, a session on Windows.
+On Windows (the owner's machine, 360 Hz, D3D9Ex): played and reported working, bosses and
+lasers included.
+
+Not done under Wine: lasers in play (the demo has none, the driven run reaches none), a stage
+with a boss. Not done anywhere: the English executable, `test-games.ps1` on Windows.
 
 ## 9. How the port was made
 
