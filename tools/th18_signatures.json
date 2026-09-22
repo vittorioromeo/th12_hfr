@@ -1,0 +1,167 @@
+[
+ {
+  "address": "0x471a9e",
+  "bytes": "0f 89 93 01 00 00",
+  "description": "automatic-latency branch"
+ },
+ {
+  "address": "0x471c4e",
+  "bytes": "e8 7d 13 00 00",
+  "description": "frame call, wait mode"
+ },
+ {
+  "address": "0x471c5a",
+  "bytes": "e8 71 11 00 00",
+  "description": "frame call, software mode"
+ },
+ {
+  "address": "0x472ff0",
+  "bytes": "e8 eb e2 f8 ff",
+  "description": "native update call"
+ },
+ {
+  "address": "0x473185",
+  "bytes": "e8 16 f7 ff ff",
+  "description": "FPS and slowdown accounting"
+ },
+ {
+  "address": "0x473367",
+  "bytes": "e8 d4 0b fe ff",
+  "description": "snapshot call"
+ },
+ {
+  "address": "0x4730be",
+  "bytes": "80 3d 11 d0 4c 00 01",
+  "description": "native sleep guard"
+ },
+ {
+  "address": "0x47e6b5",
+  "bytes": "e8 46 01 00 00",
+  "description": "quad submission"
+ },
+ {
+  "address": "0x401490",
+  "bytes": "8b 4f 24 8b 47 08 ff d0",
+  "description": "draw callback dispatch"
+ },
+ {
+  "address": "0x481210",
+  "bytes": "55 8b ec 83 e4 f8 83 ec 78",
+  "description": "VM draw prologue"
+ },
+ {
+  "address": "0x4012e0",
+  "bytes": "55 8b ec 51 80 3d be 17 52 00 00 53 56 57 8b d9",
+  "description": "native runner and critical flag"
+ },
+ {
+  "address": "0x4013ed",
+  "bytes": "5f 8b c6 5e 5b 8b e5 5d c3",
+  "description": "native runner epilogue"
+ },
+ {
+  "address": "0x472fd0",
+  "bytes": "56 8b f1 8b 0d 5c f6 51 00 e8 52 b7 00 00 6a 02 b9 f0 cd 4c",
+  "description": "native frame, ANM manager"
+ },
+ {
+  "address": "0x472fe0",
+  "bytes": "b9 f0 cd 4c 00 e8 46 83 fa ff 8b 0d 94 f2 4c 00 e8 eb e2 f8 ff",
+  "description": "supervisor and update runner"
+ },
+ {
+  "address": "0x472ff9",
+  "bytes": "b9 84 d8 4c 00 e8 2d fb f8 ff",
+  "description": "end-of-pass cleanup"
+ },
+ {
+  "address": "0x473036",
+  "bytes": "a1 f8 cd 4c 00 50 8b 08 ff 91 a4 00 00 00",
+  "description": "Direct3D device"
+ },
+ {
+  "address": "0x47314a",
+  "bytes": "a1 f8 cd 4c 00 68 e4 ce 4c 00",
+  "description": "native present parameters"
+ },
+ {
+  "address": "0x47e6a6",
+  "bytes": "57 8b ce e8 62 f2 ff ff 68 20 05 57 00 8b ce e8 46 01 00 00",
+  "description": "quad copy ABI: EDI VM, ECX manager"
+ },
+ {
+  "address": "0x47e800",
+  "bytes": "55 8b ec 53 8b d9 56 8d b3 70 0e 82 03 57 8b 3e",
+  "description": "native batch copy"
+ },
+ {
+  "address": "0x47e730",
+  "bytes": "56 8b f1 83 be 6c 0e 12 03 00 0f 84 bb 00 00 00",
+  "description": "batch flush"
+ },
+ {
+  "address": "0x4786e8",
+  "bytes": "8b 53 1c a1 5c f6 51 00 8b 4b 28 8b 84 90 2c 07 12 03 8b 80 20 01 00 00 8b 3c 88",
+  "description": "script slot and script number"
+ },
+ {
+  "address": "0x47870a",
+  "bytes": "3b 83 50 05 00 00",
+  "description": "script timer comparison"
+ },
+ {
+  "address": "0x424e70",
+  "bytes": "a1 e4 f2 4c 00 85 c0 74 12 8b 80 b0 00 00 00 8b d0 c1 ea 02 0b d0 f6 c2 01 75 09",
+  "description": "game thread and pause flags"
+ },
+ {
+  "address": "0x453f40",
+  "bytes": "53 8b dc 83 ec 08 83 e4 f8 83 c4 04 55 8b 6b 04",
+  "description": "screenshot routine"
+ },
+ {
+  "address": "0x423b6d",
+  "bytes": "89 1d bc f2 4c 00",
+  "description": "bullet manager identity"
+ },
+ {
+  "address": "0x45afed",
+  "bytes": "89 3d 10 f4 4c 00",
+  "description": "player identity"
+ },
+ {
+  "address": "0x424e8b",
+  "bytes": "83 3d a4 f2 4c 00 00 74 06",
+  "description": "ability shop guard"
+ },
+ {
+  "address": "0x41ca70",
+  "bytes": "e9 1b f8 ff ff",
+  "description": "stage first draw thunk"
+ },
+ {
+  "address": "0x41ca81",
+  "bytes": "e8 7a fc ff ff",
+  "description": "stage second draw call"
+ },
+ {
+  "address": "0x41c99c",
+  "bytes": "e8 af cd fe ff",
+  "description": "stage transition timer decrement"
+ },
+ {
+  "address": "0x41c2f0",
+  "bytes": "00 f3 0f 10 05 78 d5 4c 00 f3 0f 11 87 30 03 00 00 bf 78 d4 4c 00 f3 a5 51 b9 f0 cd 4c 00",
+  "description": "stage camera copy layout"
+ },
+ {
+  "address": "0x41c98c",
+  "bytes": "83 bf 7c 34 00 00 00 7e 35 51 8d 8f 78 34 00 00 e8 af cd fe ff",
+  "description": "stage transition timer ABI"
+ },
+ {
+  "address": "0x41c6e8",
+  "bytes": "8b 4c 24 2c b8 01 00 00 00 5f 5e 33 cc e8 66 15 07 00 8b e5 5d c3",
+  "description": "stage first draw return ABI"
+ }
+]

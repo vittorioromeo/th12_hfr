@@ -127,6 +127,25 @@ gate, four `ExecuteScript` call sites and the behaviour block.
 | thprac, thcrap, THRotator | untested | yes | yes | yes | yes | untested | untested | untested |
 | Frozen signatures | 31 | 82 | 67 | 70 | 102 | 75 | 61 | 75 |
 
+## TH18 first playable adapter
+
+| Aspect | TH18 |
+| --- | --- |
+| Runtime / graphics / loader | x86 / D3D9 / `dinput8.dll` |
+| Simulation | Native 60 Hz, including cards, inputs, shots, collisions and replays |
+| Presentation | Shared scheduler via `frame_original`, `update_only`, `install_presentation`; interpolated 2D quads and stage camera |
+| Shared geometry | `backends/fixed_quad.h`, extracted from TH08 (rotation, translation, scale, reuse guards) |
+| Settings | `[fixed60] interpolate`, optional `predict`; no sub-tick gameplay controls |
+| Native runner | Called intact in ECX; ending at `0x4013f5` retained |
+| Dimming | Shared dispatch / VM hooks; background and items only |
+| Sprite VM | layer `+0x18`, slot `+0x20`, ANM table `+0x312072c`, 33 slots |
+| Frozen signatures | 33; Japanese v1.00a; English/Steam unverified |
+| Outstanding | Camera/transition playtest, non-quad lasers, full sub-step audit |
+
+See [TH18_DEVNOTES.md](games/TH18_DEVNOTES.md). Native replay files are unmodified;
+no replay extension or game-speed hooks are installed. TH08 uses the extracted shared quad
+algorithm with its existing prediction diagnostics and gameplay hooks.
+
 ## 8. Game-specific branches outside `src/games/`
 
 These are the places shared code knows about a kind of game. All test a profile field.

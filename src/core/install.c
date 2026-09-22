@@ -1,4 +1,4 @@
-static const struct GameProfile* const game_profiles[] = {&th08_profile,&th10_profile,&th11_profile,&th12_profile,&th13_profile,&th14_profile,&th15_profile,&th20_profile};
+static const struct GameProfile* const game_profiles[] = {&th08_profile,&th10_profile,&th11_profile,&th12_profile,&th13_profile,&th14_profile,&th15_profile,&th18_profile,&th20_profile};
 /* A profile is written for the preferred base. When the image is somewhere else, the runtime
    works from a copy with every address moved: the identity's signatures (addresses, and the
    dwords inside their bytes that the loader fixed up) and conflict sites, the profile's whole
