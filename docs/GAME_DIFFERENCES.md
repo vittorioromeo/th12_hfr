@@ -75,13 +75,16 @@ TH08 sets none of these: it has no update runner. Its equivalents are constants 
 
 |  | TH08 | TH10 | TH11 | TH12 | TH13 | TH14 | TH15 | TH18 | TH20 | New Classic |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| HFR extension | none (state is stock) | yes | yes | yes | yes | yes | yes | yes | yes | none |
-| Save sites hooked (`replay_saves`) | — | 2, via `th10_replay_save` | 4 | 4 | 4 | 4 | 2 | 2 | 2, via `th20_replay_save` (a method with four arguments) | — |
-| Play sites hooked (`replay_load_calls`) | — | 2, via an ESI/stack adapter | 2 | 2 | 2, EBX/ECX adapter | 2 | 2 | 2 | 1, via `th20_replay_load` | — |
-| Peek sites that must stay unhooked | — | `0x429765` | see notes | see notes | 3 | 2 | 2 | 1 (`0x461d6b`) | 1 (`0x508ad8`) | — |
+| HFR extension | yes | yes | yes | yes | yes | yes | yes | yes | yes | none |
+| Save sites hooked (`replay_saves`) | own: the result screen's `SaveReplay` (`0x457471`, `th08_replay_save`); the file's own path | 2, via `th10_replay_save` | 4 | 4 | 4 | 4 | 2 | 2 | 2, via `th20_replay_save` (a method with four arguments) | — |
+| Play sites hooked (`replay_load_calls`) | own: both `RegisterChain` calls (`0x43b3a7` play, `0x43b50b` record, `th08_register_chain`); the extension is read on a game's first registration to play | 2, via an ESI/stack adapter | 2 | 2 | 2, EBX/ECX adapter | 2 | 2 | 2 | 1, via `th20_replay_load` | — |
+| Peek sites that must stay unhooked | none: the menu's peek calls the loader directly and registers nothing | `0x429765` | see notes | see notes | 3 | 2 | 2 | 1 (`0x461d6b`) | 1 (`0x508ad8`) | — |
 | Magic | `T8RP` | `t10r` | `t11r` | `t12r` | `t13r` | `t13r` (reused) | `t15r` | `t18r` | `t20r` | — |
-| Directory (`data_dir`) | game folder | game folder | game folder | game folder | `%APPDATA%\ShanghaiAlice\th13\` | `...\th14\` | `...\th15\` | `...\th18\` | `...\th20\` | — |
-| Desync trace (`trace_state`, `trace_dump`) | own (`th08_trace`) | — | — | — | — | yes | yes | `trace_state` (bullets, items, lasers, the player's state and shots) | `trace_state` | — |
+| Directory (`data_dir`) | game folder (the path the game passes) | game folder | game folder | game folder | `%APPDATA%\ShanghaiAlice\th13\` | `...\th14\` | `...\th15\` | `...\th18\` | `...\th20\` | — |
+| Desync trace (`trace_state`, `trace_dump`) | own (`th08_trace`: bullets, lasers, items, stage and end markers, no line for a paused frame) | — | — | — | — | yes | yes | `trace_state` (bullets, items, lasers, the player's state and shots) | `trace_state` | — |
+| Stage start (first frame of the stream) | the first frame the player runs after `RegisterChain` (the record node runs after her) | the replay node's first frame (`replay_stage_start`) | same | same | same | same | same | same | same | — |
+| A pause at a rate that is not a multiple of 60 | the schedule continues from the last frame the player ran on (`th08_sched_resume`) | not handled: later frames may be sliced differently from the playback | same | same | same | same | same | same | same | — |
+| The replay's own fast-forward ("run the list again") | counted; the extra frames run as whole tick sequences after the presentation (`th08_fast_forward`) | re-run inside the current tick: not replay-safe while sub-stepped | same | same | same | same | same | same | same | — |
 
 ## 5. Per-game hooks, by kind
 
@@ -105,8 +108,16 @@ investigated).
 
 TH08's hooks are of a different kind (§1): the 60 Hz time gate, the two chain runners, the quad
 draw site, the snapshot call, the replay manager's registration (two call sites) and the result
-screen's save, and — with `substep=1` — the items' update (frame tick only), five counter gates, the laser graze gate, four
-`ExecuteScript` call sites and the behaviour block.
+screen's save, and, for its sub-stepped projectiles ([TH08_DEVNOTES.md](games/TH08_DEVNOTES.md)
+§9):
+
+- the items' update, run on the frame tick only on the stock multiplier (`0x43127b`);
+- three counter gates (`gate_block`: the off-screen grace and two manager counters);
+- the off-screen test, made on the frame's last tick (`0x4314b3`);
+- the laser graze gate;
+- four `ExecuteScript` call sites, whose "finished" is given on the frame tick, or on the last
+  tick for a spawning bullet a bomb cancelled;
+- the behaviour block, run once a frame on the stock state.
 
 ## 6. Dimming (`draw`)
 

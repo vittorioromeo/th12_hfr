@@ -4,21 +4,21 @@ Newest first. Versions are the release archive names; `-test` means what it says
 Full release notes for each version are on the
 [releases page](https://github.com/vittorioromeo/th12_hfr/releases).
 
-## Unreleased
+## v0.10-test
 
 Touhou 8 out of experimental.
 
-- **TH08: sub-stepping on by default, and replay-safe.** The player's movement (`[hfr]
-  subtick_input`) and the bullets and lasers (`[hfr] substep`) step at the display's rate by
-  default (items now step once a frame: sliced, they fell and homed a fraction of a pixel off), read from the same switches as the other games (`[fixed60] subtick` and
-  `substep` are New Classic's alone now). Replays carry the rate, the settings and the input of
-  every step between frames, as on TH10–20; stock replays and the title demo play at 60 Hz,
-  unchanged. A pause does not shift how later frames are sliced, and the replay's own
-  fast-forward (dialogue) runs whole sequences of steps. Verified under Wine: a stage-1
-  recording and its playback agree on every frame at 120 Hz (a whole stage, 23769 frames, with
-  pauses and the boss dialogue's fast-forward, also played on a 60 Hz display) and at 144 Hz
-  (with a bomb, deaths and a pause); the projectiles and items agree with the 60 Hz game
-  through the demo until the point the finer collision is meant to change things.
+- **TH08: sub-stepping on by default, and replay-safe.** The player's movement
+  (`[hfr] subtick_input`) and the bullets and lasers (`[hfr] substep`) step at the display's
+  rate by default, read from the same switches as the other games (`[fixed60] subtick` and
+  `substep` are New Classic's alone now). Items step once a frame: sliced, they fell and homed
+  a fraction of a pixel off. Replays carry the rate, the settings and the input of every step
+  between frames, as on TH10–20; stock replays and the title demo play at 60 Hz, unchanged. A
+  pause does not shift how later frames are sliced, and the replay's own fast-forward
+  (dialogue) runs whole sequences of steps. Played on Windows at 360 Hz, with a replay
+  recorded and played back in sync. Under Wine a recording and its playback agree on every
+  frame at 120 Hz (a whole stage with pauses and the dialogue fast-forward, also played on a
+  60 Hz display), 144 Hz and 360 Hz (bombs, deaths, pauses).
 - TH08, closer to the stock game at every frame boundary: a bullet's off-screen test is made on
   the frame's last step (a bullet fired from just outside the screen was deleted before it came
   in), and a spawning bullet cancelled by a bomb turns into items where the stock game puts them.

@@ -8,6 +8,8 @@ simulation (§4 gives the reason) and slices only the two parts where the rate s
 player's movement (`[hfr] subtick_input`, §6) and the bullets and lasers (`[hfr] substep`, §9), both
 on by default. Everything else runs once a frame and is drawn at the display's rate (§5).
 Replays carry the rate, the settings and the per-tick input (§10), as the later games' do.
+Status (v0.10-test): measured under Wine (§2, §9, §10) and played on Windows at 360 Hz, with a
+replay recorded and played back in sync. It is no longer marked experimental.
 
 Implementation: `src/games/th08.c`, `src/games/th08_signatures.h` (35 signatures;
 `tools/th08_signatures.json`), `src/backends/d3d8.c`, `d3d8_bridge.cpp`,
@@ -522,7 +524,8 @@ back unchanged.
   one), up to eight a presentation, so the sequence of ticks is the one a normal-speed
   playback goes through. At one tick per frame the stock restart is left alone.
 
-**Measured under Wine** (the rig of §2, the trace of §8):
+**Measured under Wine** (the rig of §2, the trace of §8), and confirmed on Windows at 360 Hz
+with a replay recorded and played back in sync:
 
 - **A recording and its playback agree on every frame**, comparing the RNG, the player, every
   bullet slot's state, the summed bullet and item positions and the lasers:
@@ -567,10 +570,16 @@ Three profile mistakes were copied from game to game before the TH14 work found 
 - `th08e.exe`, other versions, and the Steam release have not been seen.
 - Not validated on Windows: texture upscaling, 9Ex, vsync pacing through the bridge,
   exclusive fullscreen, and how prediction feels at 240–480 Hz.
-- Lasers under `substep=1` have not been through the parity trace (§9): no stage reachable on
-  the rig fires one. Items have.
-- Everything in §10 is measured under Wine only.
-- The pause shift of §10 applies to the shared runner too (TH10–20): a pause at a rate that is
-  not a multiple of 60 (144, 165 Hz) can leave a recording sliced differently from its
-  playback after the pause. Not fixed there yet; TH18's and TH20's record-and-playback checks
-  did not pause.
+- Lasers under `substep=1` have no clean parity trace (§9): they were compared on stages 3 and
+  4B only after the runs had parted for other reasons. Items have been through it.
+- On Windows: a play session and a replay at 360 Hz. Not yet a 144 or 165 Hz display, where
+  the pause handling of §10 matters most.
+- Two things TH08 now handles and the shared runner (TH10–20) does not, both found here and
+  not yet checked there:
+  - **A pause at a rate that is not a multiple of 60** (144, 165 Hz). It can leave a recording
+    sliced differently from its playback after the pause. TH18's and TH20's
+    record-and-playback checks did not pause.
+  - **The replays' own fast-forward** ("run the list again", e.g. TH15 while shot is held
+    during playback). The runner re-runs the list inside a tick that is a fraction of a frame,
+    which gives the sub-stepped systems that fraction for a whole frame, and the per-tick
+    stream is read once for several frames.

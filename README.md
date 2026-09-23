@@ -263,6 +263,9 @@ so the video features and the F11 menu work.
   everything.
 - With both switches off, **game state is untouched**, verified frame by frame against the
   unpatched game, and replays work in both directions.
+- New in this build, out of experimental: measured under Wine (a recording and its playback
+  agree on every frame at 120, 144 and 360 Hz, with pauses, bombs, deaths and the replay's
+  dialogue fast-forward) and played on Windows at 360 Hz. Please report what you see.
 - Only the Japanese `th08.exe` v1.00d; for English, use [thcrap](docs/OTHER_MODS.md#thcrap), which
   works. Untested: thprac, texture upscaling, `d3d9ex`.
 
