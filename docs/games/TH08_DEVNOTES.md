@@ -1,13 +1,15 @@
-# TH08 — Imperishable Night (experimental)
+# TH08 — Imperishable Night
 
 TH08 belongs to the older engine family: Direct3D 8 (through a vendored d3d8to9), the TH06-era
 `Chain` of update and draw callbacks, and a simulation written to run at one speed. It shares
 the scheduler, the picture, the window and the menu with TH10–15. It differs in where the
-extra frames come from: TH10–15 run the simulation faster; TH08 keeps the simulation at 60 Hz
-and draws it at the display's rate (§4 and §5 give the reason). Two optional modes write game
-state and are off by default: `[fixed60] subtick=1` (§6) and `[fixed60] substep=1` (§9).
+extra frames come from. TH10–15 run the whole simulation faster; TH08 keeps it a 60 Hz
+simulation (§4 gives the reason) and slices only the two parts where the rate shows: the
+player's movement (`[hfr] subtick_input`, §6) and the bullets and lasers (`[hfr] substep`, §9), both
+on by default. Everything else runs once a frame and is drawn at the display's rate (§5).
+Replays carry the rate, the settings and the per-tick input (§10), as the later games' do.
 
-Implementation: `src/games/th08.c`, `src/games/th08_signatures.h` (31 signatures;
+Implementation: `src/games/th08.c`, `src/games/th08_signatures.h` (35 signatures;
 `tools/th08_signatures.json`), `src/backends/d3d8.c`, `d3d8_bridge.cpp`,
 `third_party/d3d8to9`.
 
@@ -49,7 +51,7 @@ manages about 120–180 presentations a second.
   cleanly, and the first differing line is the frame where a change stops agreeing with the
   60 Hz game. Every "state is identical" claim below is that diff over the whole demonstration.
 - Wine's HLSL compiler rejects all four pixel-art filters, so texture upscaling is not
-  exercised on the rig (§11).
+  exercised on the rig (§12).
 
 ## 3. The frame, the Chain and the scheduler
 
@@ -263,9 +265,9 @@ captured after `Background::OnUpdate` on every frame tick and, around the two ba
 callbacks only, replaced by this presentation's value and then restored. A component changing
 by more than 64 is a cut and is shown as one.
 
-## 6. Sub-tick player movement (`[fixed60] subtick=1`, off by default)
+## 6. Sub-tick player movement (`[hfr] subtick_input=1`, on by default)
 
-New Classic's option, for parity. `Player::OnUpdate` (`0x44c390`) stays a 60 Hz callback; only
+`Player::OnUpdate` (`0x44c390`) stays a 60 Hz callback; only
 the integration in `HandlePlayerInputs` (`0x44aec0`) is sliced. The two `fmul [multiplier]`
 operands are pointed at `th08_move_factor` (the game's own multiplier times the tick's
 length), and on the ticks between frame boundaries `th08_player_minor` repeats that
@@ -277,14 +279,17 @@ integration from the same fields:
 - the three hit boxes rewritten as position ∓ the half-sizes (offsets in §4's Player table).
 
 The scheduler leaves 60 Hz for this (`cfg.substep`), and live input is polled on the minor
-ticks.
+ticks through `Controller::GetInput` (`0x43d970`), which reads the keyboard and the pad,
+applies the key configuration and latches nothing.
 
-It is off by default because it **is not replay-safe and cannot be made so without a rate
-stamp in the file**. Slicing puts her at `P + v·dt` instead of `P + v` when the frame tick
-tests the bullets against her, so graze and hits land on different frames. Measured: with
-frame-sampled input and nothing else changed, the demonstration's RNG parts from the 60 Hz run
-at frame 505. The slices are switched off while a replay plays. Prediction (§5) gives the same
-picture without this cost.
+This changes the game, deliberately: she is at `P + v·dt` when the frame tick tests the
+bullets against her, and enemies that aim at her on the frame tick see where she is then. So
+graze and hits land on other frames than in the stock game, and aimed patterns point a
+fraction of a frame's movement elsewhere; with frame-sampled input and nothing else changed,
+the demonstration's RNG parts from the 60 Hz run at frame 505. It is the same trade TH10–20
+make, and it is replay-safe the same way: the file carries the rate, the settings and the
+input of every tick between frames (§10). A stock replay plays at 60, where none of this
+runs.
 
 ## 7. Other features
 
@@ -331,8 +336,15 @@ picture without this cost.
 
 All debug-only and behind environment variables, so a normal run pays nothing.
 
-- `TH08_FORCE_SUB=1` keeps sub-stepping on through a replay. Sub-stepping normally switches
-  itself off while one plays (§6); the demonstration is a replay, and it is the test.
+- `[hfr] replay_trace=1` keeps the display's rate for a replay that has none of its own (the
+  demonstration, any stock replay), so sub-stepping stays on through it: that is how the
+  demonstration is put through §9. A replay with a recorded rate plays at that rate, so a
+  recording and its playback can be traced side by side.
+- The trace marks the first frame of every stage (`stage N recording|playback`, and the frame
+  count restarts) and its end (`end`), writes no line for a frame that did not run (a pause),
+  and has, besides the bullets, a hash of the live lasers (position, angle, extent, width:
+  `lh=`) and the live items' count and summed positions (`ni=`, `ix=`, `iy=`), and the input
+  word (`in=`, which a recording and its playback hold a frame apart, so it is not compared).
 - `TH08_TEST_LASTTICK=1` makes the player's kill-box, graze and laser tests
   (`0x44a230`, `0x44a470`, `0x44a6a0`) answer "nothing" on every tick but a frame's last, which
   is when a whole-frame move would have been tested. With collision pinned to where the stock
@@ -340,6 +352,13 @@ All debug-only and behind environment variables, so a normal run pays nothing.
   `0x449ff0` is not hooked: it only raises a flag, which the frame tick's "animation finished"
   reads in the same call as the stock game does. Log line:
   `TH08 TEST: player collision confined to the last tick of each frame`.
+- `TH08_TEST_INVINCIBLE=1` makes the same three tests, and the enemies' bodies
+  (`Player::HandleCollisionWithPlayer`, `0x44a360`), answer "nothing" on every tick. A scripted
+  run then lasts to the stage's end, and a recording played back at another rate has nothing
+  left that finer slicing may change. (Returning from `Player::Die` instead does not work: the
+  hit is taken again on every frame and the game falls over within seconds.) `=N` with N ≥ 2
+  limits it to the stages below N, so a long run can still end in a game over, which is where
+  the game offers to save the replay (quitting from the pause menu does not).
 - `TH08_RNG_TRACE=1` hooks `Rng::GetRandomU16` (`0x43ecc0`) and counts, per game frame, who
   drew: the first return address up the frame-pointer chain that is not one of the RNG's own
   wrappers, and that caller's caller. "The RNG parted on frame 571" becomes "`SpawnItem`,
@@ -347,19 +366,38 @@ All debug-only and behind environment variables, so a normal run pays nothing.
   hazard.
 - `[hfr] replay_trace=2` dumps the bullets on the ticks between frames too.
 
-## 9. Sub-stepped projectiles (`[fixed60] substep=1`, off by default, experimental)
+## 9. Sub-stepped projectiles (`[hfr] substep=1`, on by default)
 
 `BulletManager::OnUpdate` (items, 1536 bullets, 256 lasers) is called on every tick, with the
 engine's multiplier set to the tick's length. The aim is New Classic's promise: at every frame
 boundary each bullet is where, and what, the stock game would have it, with its motion in
 between sliced and its collisions tested at every slice.
 
-**Parity measured.** With `TH08_FORCE_SUB` and `TH08_TEST_LASTTICK` at 120 Hz, the
+**Parity measured.** With `[hfr] subtick_input=0` and `TH08_TEST_LASTTICK` at 120 Hz, the
 demonstration's bullets agree with the 60 Hz run (every slot's state word, every position to
 0.02 px, across a bomb cancelling 600 of them) for 1698 frames, and the RNG to frame 571. At
 571 two *spawning* bullets are caught mid-frame by the bomb's radius, which the stock game's
 once-a-frame test misses. That is the difference the option exists to make, not an error. It
 is also the end of what this replay can prove, because the patterns after it are random.
+
+Re-measured with items stepped once a frame and the off-screen and cancelled-spawn changes
+below: the RNG, the player and every bullet slot's state agree to frame 535, the item count to
+492 -- the same bomb, now seen first in the items, which are exact at every frame instead of
+being carried a fraction of a frame by the slices. Item positions agree to 1e-4 px.
+
+A longer check: a whole game on Lunatic recorded at 60 Hz (`TH08_TEST_INVINCIBLE=5`, stages 1,
+2, 3 and 4B, then a game over in 5; 120 000 frames, up to 1181 bullets) and played back with
+the projectiles sliced at 120 Hz. Every stage starts from the replay's own stage data, so each
+is a separate comparison. They agree for 500–2500 frames each and then part on differences of
+rounding size (sums of positions off by one quarter-pixel, an item on the edge of the
+collection radius collected a frame apart), after which the stage's randomness takes over.
+Three causes found this way were real and are fixed: items integrated in slices (below), the
+off-screen test made mid-frame (frame 1108 of stage 1), and items from a cancelled spawning
+bullet placed where the first slice left it (frame 499 of stage 3). **Lasers**: stages 3 and
+4B fire them on about 3500 frames; on 4B, where Marisa's lasers do not depend on the RNG, the
+laser state (position, angle, extent and width, to a quarter-pixel) is identical to the 60 Hz
+game's on 1716 of 3579 frames even after the run had parted. No laser difference was
+isolated; this is weaker evidence than the bullets have.
 
 Four things are required for that parity:
 
@@ -393,38 +431,128 @@ Four things are required for that parity:
    two ticks unequal.
 4. **Counters that count calls.**
    - Gated to the frame tick with `gate_block`: the off-screen grace (`+0xda8`, site
-     `0x43147b`), the off-screen count (`+0xdba`, up at `0x431524` and down at `0x431578`)
-     and the two manager counters (`+0x6ba53c` at `0x432112`, `+0x6ba54c` at `0x432137`).
+     `0x43147b`) and the two manager counters (`+0x6ba53c` at `0x432112`, `+0x6ba54c` at
+     `0x432137`).
+   - The off-screen test itself (`0x4314b3`–`0x43159e`: out of bounds with no grace left is
+     deleted, or counts the off-screen count `+0xdba` up or down) is made on the **last** tick
+     of each frame only (`th08_bounds_now`), where the bullet stands where the stock game's
+     whole-frame move put it when it tested. Made on every tick (as it was until a stage-1
+     recording showed it on frame 1108), a bullet fired from just above the screen towards it
+     is out of bounds after the first slice of its first frame and is deleted before it has
+     come in; the stock game has it in bounds after the whole frame's move and keeps it.
    - The laser's graze test (`0x431f0c`) is `timer % 20 == 0`, true on *every* tick of such a
      frame. It is and-ed with "the timer's integer changed on the last tick" (`previous` at
      laser `+0x588`, `current` at `+0x590`).
    - A spawn or death animation's "finished" is only acted on at a frame tick:
      `ExecuteScript`'s (`0x45ea00`) result is zeroed on the other ticks at its four call
      sites (`0x4317f3`, `0x431904`, `0x431a16`, `0x431ad8`) and the frame tick asks again.
+     A spawning bullet the player's bomb or field caught (`+0xdbe`) turns into items at its
+     position when its animation ends, so for those the answer waits for the frame's *last*
+     tick instead, where the bullet has made the whole frame's move as in the stock game.
 
-Items need nothing: `ItemManager::OnUpdate` multiplies by the multiplier at every use. Lasers
-need only the graze test; their growth already reads the multiplier. **Neither has been
-through the trace**: the demonstration has no lasers and does not record items.
+Lasers need only the graze test; their growth already reads the multiplier. **Items are not
+sliced.** `ItemManager::OnUpdate` does multiply by the multiplier at every use, but a falling
+item is `velocity += gravity·m; position += velocity·m` and a collected one re-aims at the
+player on every call: sliced, both integrate a changing velocity over a finer grid, and land a
+fraction of a pixel elsewhere. In the demonstration that stayed within rounding (the items
+there are mostly being collected); in a stage-1 recording the sums drifted on frame 490, and
+which items are collected, and the score and power, would follow. So BulletManager's call to
+it (`0x43127b`) runs on the frame tick only, on the stock multiplier (`th08_items`), and items
+are drawn smoothed like the rest of the playfield. The trace has them (`ni`, `ix`, `iy`).
 
-While the option is on, bullets, lasers and items are drawn where they are (their pools are
-excluded from smoothing) and everything else in the playfield is predicted, as in §5. It
-switches itself off while a replay plays, for §6's reason: testing collisions more often
-changes what happens. All of these patches are inert at one tick per frame.
+While the option is on, bullets and lasers are drawn where they are (their pools are
+excluded from smoothing) and everything else in the playfield is predicted, as in §5. Testing
+collisions more often changes what happens, like §6, and replays carry what is needed to
+play that back (§10). All of these patches are inert at one tick per frame.
 
 `tools/test_th08_stubs.py` runs every emitted stub under Unicorn: both paths of the five
 gates with flags, registers and stack checked, the laser flag's four cases, the withheld
 "finished" at all four call sites, and the behaviour block's skip, enter and leave.
 
-## 10. Profile checks against known cross-game mistakes
+## 10. Replays: the rate, the settings and the input
+
+TH08's `.rpy` is the later games' shape: a header (magic `T8RP`, version 6) whose `+0xc` is the
+size of the game's own data, then a trailing block of `USER` chunks that `LoadReplayData`
+copies through untouched. `core/replay.c`'s chunks go on the end of it, as on TH10–20: `H`
+(the rate as text), `HFRM` (simulation revision, the switches -- `fixed_substep`, flag 4, is
+TH08's projectile switch -- the node mask and the logic rate) and `HFRI` (per stage, the
+movement and focus bits of every tick between frames, run-length coded). The reader starts at
+`+0xc`, so it only ever looks at the trailing block. Stage slots are 16 (`HFR_STAGES`): TH08
+numbers its stages 0–8, and the chunk names the stage, so files written with eight slots read
+back unchanged.
+
+| Address | Role |
+| --- | --- |
+| `0x18b8a28` | `g_ReplayManager`: `+0x10` what it was registered for (0 record, 1 play), `+0x14` the file |
+| `0x451f90` | `ReplayManager::RegisterChain(action, file)`, fastcall; called at the start of every stage |
+| `0x43b3a7`, `0x43b50b` | its two call sites, play and record, in `GameManager::AddedCallback` → `th08_register_chain` |
+| `0x4531f0` | `ReplayManager::SaveReplay(path, name)`, fastcall; `(NULL, NULL)` discards |
+| `0x457471` | the result screen's save → `th08_replay_save`: the save, then the extension |
+| `0x164d2cc` | the current stage |
+| `0x164d0b4` | GameManager flags: bit 1 the demonstration, bit 2 "not paused" |
+| `0x452310` / `0x452550` | the record (priority 17) and playback (6) nodes; the player is 9 |
+| `0x452490` | fast-forward during playback (priority 18): "run the list again" on 2 frames of 3 while a skippable dialogue is up, 4 of 5 in some boss-less stretches |
+
+- **Play or record.** The manager lives from a game's first stage to the save or the title.
+  On the first `RegisterChain` of a game, a playback reads the file's extension (the
+  demonstration is in `th08.dat`: it is a stock replay, 60 Hz), and a recording clears the
+  session's per-stage streams. `replay_playing` is "the manager exists and was registered to
+  play", which `replay_check` turns into the recorded settings and rate, as elsewhere. The
+  replay menu's peek goes through `LoadReplayData` directly and never registers anything.
+- **The first frame of a stage** is the first frame the player's callback runs on after a
+  `RegisterChain`. It is the first system that is stepped, so nothing sliced has run on that
+  frame yet: the rate is settled there (a playback may have begun on that very tick), the
+  sub-step sequence restarts, and the stage's stream starts over. The record node itself runs
+  after the player, which is why the replay node is not the marker here.
+- **The stream** is one entry per tick between frames that reaches the player with the player
+  sliced, whether she can move or not. Recording, the entry is the poll; playing, it is read
+  back over the frame's own word. A stream that runs out, or a stock replay played sub-stepped
+  (`replay_trace`), leaves the frame's word, which is the stock game's movement.
+- **A pause does not shift the slicing.** A pause cuts the list before the player; the ticks
+  go on. At a rate that is not a multiple of 60 the frames do not all have the same number of
+  ticks, so after a pause the recording would slice its frames differently from the playback,
+  which never paused, and the stream would be read into the wrong ticks. The scheduler's
+  state after the last tick the player ran on is kept, and the first frame after a gap
+  continues from it, as though the pause had taken no ticks (`th08_sched_resume`, logged). The
+  same shift is possible on TH10–20 (§12).
+- **Fast-forward.** "Run the list again" inside a tick a fraction of a frame long would give
+  the stepped systems that fraction for a whole extra frame. With the ticks sliced the answer
+  is counted instead, and after the presentation the extra frames are run as the ticks the
+  schedule would have run for them (the rest of the frame in progress, then the next whole
+  one), up to eight a presentation, so the sequence of ticks is the one a normal-speed
+  playback goes through. At one tick per frame the stock restart is left alone.
+
+**Measured under Wine** (the rig of §2, the trace of §8):
+
+- **A recording and its playback agree on every frame**, comparing the RNG, the player, every
+  bullet slot's state, the summed bullet and item positions and the lasers:
+  - 144 Hz, stage 1 practice on Lunatic, played until the game over (4493 frames, up to 275
+    bullets): moving in all eight directions, focused and not, a bomb, deaths and a pause.
+    Played back at 144 Hz, and again on a 60 Hz display (the replay keeps its 144 ticks a
+    second, the presentation catches up).
+  - 120 Hz, the whole of stage 1 with `TH08_TEST_INVINCIBLE` (23769 frames, up to 1181
+    bullets, items on 6824 frames): two pauses, and the boss dialogue, which the playback
+    fast-forwards (`TH08 replay fast-forward` in the log). Played back at 120 Hz and on a 60 Hz
+    display.
+- **The replay menu** lists a file with the extension and plays it; the title screen's
+  demonstrations play at 60 Hz as stock replays.
+- 360 Hz, the same stage-1 practice until the game over (4168 frames, up to 419 bullets, a
+  bomb, deaths and a pause), recorded and played back at 360 (the rig manages about 190
+  ticks a second, so both ran slow, which the schedule does not care about).
+- After the last changes to the bullets (off-screen test, cancelled spawns, items once a
+  frame), 144 Hz again: identical on every frame (3197 frames, up to 362 bullets, a pause).
+
+## 11. Profile checks against known cross-game mistakes
 
 Three profile mistakes were copied from game to game before the TH14 work found them
 ([DEVNOTES_RUNTIME.md](../DEVNOTES_RUNTIME.md)). Each was checked for TH08.
 
 - **`native_size_cycle`** is not set, which is right: F10 is the patch's on TH08, one
   `window: size cycle ->` line per press, confirmed in play.
-- **The replay loader's play and peek call sites** are not hooked at all; TH08 has no replay
-  extension (§6, §9). Adding one requires classifying every call into the loader first: a
-  peek site allocates a throwaway manager to read a header for the menu's list.
+- **The replay loader's play and peek call sites.** The loader itself (`LoadReplayData`) is not
+  hooked; `RegisterChain`'s two call sites are, and only a registration to play reads the
+  extension. The menu's peek allocates its own buffer, calls the loader and registers
+  nothing, so it cannot start or end a playback (§10).
 - **A discrete timer rewind scaled by the speed.** `ZunTimer::operator+=` (`0x41fdf0`) has one
   caller, in the ECL interpreter, which runs at 60 Hz. `operator--` (`0x418110`) is called
   four times in `BulletManager::OnUpdate`, once in each wrap behaviour and once in
@@ -432,14 +560,17 @@ Three profile mistakes were copied from game to game before the TH14 work found 
   by the tick's length. The player's shot cycle is in `Player::OnUpdate`, which is never
   sliced. Nothing of that shape is reachable from a sub-stepped path.
 
-## 11. Not done, and unverified on Windows
+## 12. Not done, and unverified on Windows
 
-- A replay extension: TH08's `.rpy` takes a trailing user block like the later games', so
-  `core/replay.c`'s USER chunks may carry over. Until something stamps the rate, anything that
-  writes game state stays off by default.
 - thprac and vpatch for TH08: no conflict sites recorded, no overlap audit. The module-name
   check is all there is.
 - `th08e.exe`, other versions, and the Steam release have not been seen.
 - Not validated on Windows: texture upscaling, 9Ex, vsync pacing through the bridge,
   exclusive fullscreen, and how prediction feels at 240–480 Hz.
-- Lasers and items under `substep=1` have not been through the parity trace (§9).
+- Lasers under `substep=1` have not been through the parity trace (§9): no stage reachable on
+  the rig fires one. Items have.
+- Everything in §10 is measured under Wine only.
+- The pause shift of §10 applies to the shared runner too (TH10–20): a pause at a rate that is
+  not a multiple of 60 (144, 165 Hz) can leave a recording sliced differently from its
+  playback after the pause. Not fixed there yet; TH18's and TH20's record-and-playback checks
+  did not pause.

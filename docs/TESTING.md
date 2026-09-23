@@ -106,7 +106,7 @@ installed games (`(TH10) ...`, `(TH14) ...`), it launches each one and judges th
 | before any launch | | every game carries the same runtime file, and it is `build\touhou_hfr.dll` |
 | `base` | 1 | F10: one step and one log line per press, through the three presets and borderless. F11: opens and closes in the log, and the picture changes while it is open. Presents/s against the target, target against the display. Attract-mode demo through the replay hooks (TH10–15) |
 | `-Matrix` | ~12 | one INI setting per launch: `cap-120`, `substep-off`, `plain-d3d9`, `vsync`, `internal-x2`, `texture-x2`, `sharpen-cas`, `filter-<each shader>`, `fixed-interp-off` (TH08), `launcher` (`touhou_hfr.exe` installs exactly once) |
-| `-Drive` | 1 | presses Z until the log reports a stage start, holds fire and alternates left/right for `-DriveSeconds`; then: no crash, ticks/s at the display's rate (60 on TH08), and on TH14 a steady `shots` rate in the `debug=1` site census (the shot-cycle regression) |
+| `-Drive` | 1 | presses Z until the log reports a stage start, holds fire and alternates left/right for `-DriveSeconds`; then: no crash, ticks/s at the display's rate, and on TH14 a steady `shots` rate in the `debug=1` site census (the shot-cycle regression) |
 
 How it works:
 
@@ -115,8 +115,8 @@ How it works:
 - **Keys** are sent with `SendInput` carrying both the virtual key, which the patch polls with
   `GetAsyncKeyState`, and the scan code, which DirectInput reads. A key goes down only while
   the game is the foreground window; losing focus abandons that step and says so.
-- **`-Drive` is not judged when the game never starts a stage** (`Drive=no stage`). TH08 logs no
-  stage start, so it is driven blind; check `TH08-drive-stage.png`.
+- **`-Drive` is not judged when the game never starts a stage** (`Drive=no stage`). Every game,
+  TH08 included, logs `stage N first frame (recording)` when one starts.
 - **Results** go to `<folder>\hfr-test-results\<time>\`: `summary.txt`, and each launch's log
   and screenshots.
 - Per-game differences the script depends on are in its `$Traits` table.

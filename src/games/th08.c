@@ -1,6 +1,6 @@
-/* TH08 1.00d: D3D8, native 60 Hz Chain ABI, interpolated 2D drawing.
- * See docs/games/TH08_DEVNOTES.md. Nothing in gameplay is sub-stepped by default; [fixed60]
- * subtick and substep slice the player and the projectiles, and are off unless asked for. */
+/* TH08 1.00d: D3D8, native 60 Hz Chain ABI, interpolated 2D drawing, the player's movement
+ * and the projectiles stepped at the display's rate ([hfr] subtick_input and substep), and
+ * replays that carry the rate and the per-tick input. See docs/games/TH08_DEVNOTES.md. */
 #include "../backends/fixed_clock.h"
 #include "../backends/fixed_history.h"
 #include "../backends/fixed_quad.h"
@@ -15,6 +15,7 @@ static int th08_projectiles_sub(void);
 static int th08_projectile_vm(const uint8_t* vm);
 static uint64_t th08_tick;
 static int th08_major, th08_guard_failed;
+static unsigned th08_ff_frames;            /* whole frames the replay's fast-forward asked for on this presentation */
 static unsigned th08_quads, th08_smoothed;
 /* One history per sprite VM: the quad it drew on the last two frame ticks. */
 
@@ -58,12 +59,13 @@ static uint32_t th08_draw_callback;       /* the draw callback running now, 0 ou
 #define TH08_INPUT    (*(const uint16_t*)0x164d52c)
 #define TH08_MULTIPLIER (*(float*)0x17ce8e0)
 float th08_move_factor = 1.0f;
-static uint64_t th08_player_tick, th08_world_tick, th08_replay_tick;   /* the last frame tick each of these ran on */
+static uint64_t th08_player_tick, th08_world_tick;   /* the last frame tick each of these ran on */
 static float th08_player_major[3];        /* where the last frame-boundary tick left the player */
-/* Not while a replay plays: the file holds one input word per 60 Hz frame and the position each
-   one led to, and slicing the movement puts her somewhere else when the bullets are tested. */
+/* A replay plays back with the settings and the rate it was recorded with (replay.c applies
+   them when playback starts), and the ticks between frames take their input from the replay's
+   own per-tick stream; a stock replay has neither and plays at 60, where this is off. */
 static int th08_player_sub(void) {
-    return cfg.subtick_input && cfg.substep && g_logic_rate != 60 && node_mode(0x44c390) == MODE_SUB && !(th08_replay_tick && th08_replay_tick + 1 >= th08_tick);
+    return cfg.subtick_input && cfg.substep && g_logic_rate != 60 && node_mode(0x44c390) == MODE_SUB;
 }
 /* The velocity HandlePlayerInputs would choose for this input word, in pixels per frame. The
    direction is a priority chain, not a sum: the four diagonals first, then down, up, left,
@@ -95,18 +97,120 @@ static int th08_player_movable(void) {
     if (*(const char*)0x160f534) return 0;                /* the callback's own early-out */
     return *p != 1 && *p != 2;                            /* dying or re-entering: the game is moving her */
 }
-/* What the player's input is right now: the replay's word while one is playing (it is the only
-   input there is), otherwise a fresh poll through the game's own Controller::GetInput, which
-   reads the keyboard and the pad, applies the key configuration and latches nothing. */
+/* ---- replays.
+ * ReplayManager (0x18b8a28) lives from the first stage of a game to the save or the return to
+ * the title; +0x10 is what it was registered for (0 record, 1 play), +0x14 the file it plays.
+ * RegisterChain (0x451f90) is called at the start of every stage, playing or recording, and is
+ * hooked at both call sites: the first call of a game clears this session's per-tick
+ * recording, or reads the extension of the file about to be played, and every call marks the
+ * next frame the player moves on as the stage's first. The result screen's SaveReplay
+ * (0x4531f0, at 0x457471) is followed by the extension being appended to the file. */
+#define TH08_REPLAY_MANAGER (*(uint8_t* volatile*)0x18b8a28)
+#define TH08_GM_FLAGS       (*(const volatile uint32_t*)0x164d0b4)
+#define TH08_STAGE          (*(const volatile int*)0x164d2cc)
+static int th08_replay_playing(void) {
+    uint8_t* rm = TH08_REPLAY_MANAGER;
+    return rm && *(const int*)(rm + 0x10) == 1;
+}
+static FILE* th08_trace_file;              /* debug trace (replay_trace=1), see th08_trace */
+static unsigned th08_trace_frame;
+static int th08_stage_pending;             /* RegisterChain ran: the next frame the player moves on starts a stage */
+static int th08_stream_stage = -1;         /* the stage the per-tick stream belongs to, -1 none */
+static uint32_t th08_stream_tick;          /* ticks between frames the player has been through this stage */
+typedef int (__attribute__((fastcall)) *Th08RegisterFn)(int action, const char* filename);
+static int __attribute__((fastcall, force_align_arg_pointer)) th08_register_chain(int action, const char* filename) {
+    if (!TH08_REPLAY_MANAGER) {                    /* the first stage of a game or of a playback */
+        if (action == 1) {
+            restore_replay_settings(); g_replay_playing = 0;
+            if (TH08_GM_FLAGS & 2) {               /* the title screen's demonstration: it is in th08.dat */
+                g_replay_rate = 0; g_replay_metadata = 0;
+                for (int s = 0; s < HFR_STAGES; ++s) g_play[s].n = 0;
+                LOG("TH08 demonstration replay: stock, 60 Hz");
+            } else if (filename) replay_loaded_path(filename);
+        } else {
+            for (int s = 0; s < HFR_STAGES; ++s) { g_rec[s].n = 0; g_rec[s].failed = 0; }
+        }
+    }
+    int r = ((Th08RegisterFn)0x451f90)(action, filename);
+    th08_stage_pending = 1;
+    return r;
+}
+static void __attribute__((fastcall, force_align_arg_pointer)) th08_replay_save(char* path, char* name) {
+    ((void (__attribute__((fastcall)) *)(char*, char*))0x4531f0)(path, name);
+    if (path && *path) replay_append_chunk_path(path, path);
+}
+/* The first frame of a stage, at the player -- the first system on the list that is stepped --
+   and before anything has been stepped on it: the rate is settled (a playback may have begun on
+   this very tick), the sub-step sequence restarts, so the recording and its playback slice
+   every frame of the stage the same way, and the per-tick stream starts over. */
+static void th08_stage_start(void) {
+    th08_stage_pending = 0;
+    replay_check();
+    schedule_reset_here();
+    int stage = TH08_STAGE, playing = th08_replay_playing();
+    th08_stream_stage = stage >= 0 && stage < HFR_STAGES ? stage : -1;
+    th08_stream_tick = 0;
+    if (th08_stream_stage >= 0 && !playing) { g_rec[stage].n = 0; g_rec[stage].failed = 0; }
+    if (cfg.debug && cfg.replay_trace) {
+        if (!th08_trace_file) th08_trace_file = fopen("th08_trace.txt", "w");
+        if (th08_trace_file) { fprintf(th08_trace_file, "stage %d %s\n", stage, playing ? "playback" : "recording"); th08_trace_frame = 1; }
+    }
+    LOG("stage %d first frame (%s): sub-step sequence restarted (TH08, logic %d Hz)%s", stage, playing ? "playback" : "recording", g_logic_rate,
+        playing && th08_stream_stage >= 0 && g_play[stage].n ? ", per-tick input available" : "");
+}
+/* A pause (or anything else that cuts the list before the player) stops the game's frames but
+   not the ticks, and at a rate that is not a multiple of 60 the frames do not all have the same
+   number of ticks: after the pause the frames would be sliced differently from the playback,
+   which never paused, and the per-tick input would be read into the wrong ticks. So the
+   sequence is put back where the last frame the player moved on left it, as though the pause
+   had taken no ticks at all. */
+static struct { unsigned acc, total, prev, last; int valid; } th08_sched;
+static int th08_player_ran;               /* the player's callback ran on this tick */
+static void th08_sched_save(void) {
+    th08_sched.acc = g_units_acc; th08_sched.total = g_units_total; th08_sched.prev = g_prev_frame; th08_sched.last = g_last_units; th08_sched.valid = 1;
+}
+static unsigned th08_resyncs;
+static void th08_sched_resume(void) {
+    if (!th08_sched.valid || !cfg.substep || g_logic_rate == 60) return;
+    g_units_acc = th08_sched.acc; g_units_total = th08_sched.total; g_prev_frame = th08_sched.prev; g_last_units = th08_sched.last;
+    advance_tick();
+    if (!g_major) { schedule_reset_here(); g_major = 1; }   /* cannot happen: the list is only ever cut on a frame tick */
+    if (th08_resyncs++ < 8) LOG("TH08: the game resumed after a pause; sub-step sequence continued from its last frame");
+}
+/* The player's input on a tick between frames. Recording, it is a fresh poll through the
+   game's own Controller::GetInput, which reads the keyboard and the pad, applies the key
+   configuration and latches nothing, and its movement and focus bits go into the stage's
+   stream; playing, it is the stream's, over the frame's own word. A stream that has run out,
+   or a stock replay with none, leaves the frame's word, which is the stock game's movement. */
+static unsigned th08_poll(void) { return ((uint16_t (__cdecl *)(void))0x43d970)(); }
+static unsigned th08_minor_input(void) {
+    int stage = th08_stream_stage;
+    if (th08_replay_playing()) {
+        unsigned in = TH08_INPUT;
+        if (stage >= 0 && th08_stream_tick < g_play[stage].n) {
+            in = (in & ~(IN_MOVE | IN_FOCUS)) | bits_decode(g_play[stage].d[th08_stream_tick]);
+            g_stat_subtick_applied++;
+        }
+        th08_stream_tick++;
+        return in;
+    }
+    unsigned in = th08_poll(); g_stat_subtick_polls++;
+    if (stage >= 0) { tickbuf_push(&g_rec[stage], bits_encode(in)); th08_stream_tick++; }
+    return in;
+}
+/* The same without consuming anything, for drawing: where the player is about to be. */
 static unsigned th08_live_input(void) {
-    if (th08_replay_tick == th08_tick) return TH08_INPUT;
-    return ((uint16_t (__cdecl *)(void))0x43d970)();
+    if (!th08_replay_playing()) return th08_poll();
+    int stage = th08_stream_stage;
+    if (th08_player_sub() && stage >= 0 && th08_stream_tick < g_play[stage].n)
+        return (TH08_INPUT & ~(IN_MOVE | IN_FOCUS)) | bits_decode(g_play[stage].d[th08_stream_tick]);
+    return TH08_INPUT;
 }
 static unsigned th08_player_minor_calls;
 static void th08_player_minor(void) {
     uint8_t* p = TH08_PLAYER;
+    unsigned in = th08_minor_input();     /* on every such tick, moving or not, so the stream stays in step */
     if (!th08_player_movable()) return;
-    unsigned in = th08_live_input();
     float v[2];
     /* Focus keeps the state the frame tick gave it: it is a state machine with frame counters,
        and only the speed table depends on it here. */
@@ -195,6 +299,7 @@ static void th08_camera_restore(void) { th08_camera_write(th08_cam_saved); }
 static float th08_vel_saved[0x600][3], th08_vel_scaled[0x600][3];
 static uint8_t th08_vel_live[0x600];        /* the state word before the pass; 0 = free slot */
 static float th08_pass_f = 1.0f, th08_pass_m = 1.0f;
+uint8_t th08_bounds_now = 1;                /* the off-screen test runs on this tick: the frame's last, or every tick unsliced */
 static uint8_t* th08_behaving;              /* the bullet between behaviours_enter and _leave */
 #define TH08_BULLETS ((uint8_t*)0xf54e90 + 0x1a880)
 __attribute__((force_align_arg_pointer)) void __cdecl th08_behaviours_enter(uint8_t* b) {
@@ -220,14 +325,16 @@ __attribute__((force_align_arg_pointer)) void __cdecl th08_behaviours_leave(uint
     if (!th08_vel_live[i]) th08_vel_live[i] = 1;
     TH08_MULTIPLIER = th08_pass_m * th08_pass_f;
 }
-/* Debug: TH08_FORCE_SUB in the environment keeps sub-stepping on through a replay, which is the
-   only way to put the title screen's demonstration through it and diff the trace. */
-static int th08_force_sub(void) { static int v = -1; if (v < 0) v = GetEnvironmentVariableA("TH08_FORCE_SUB", NULL, 0) != 0; return v; }
 static int th08_projectiles_sub(void) {
-    if (th08_force_sub()) return cfg.fixed_substep && cfg.substep && g_logic_rate != 60;
-    return cfg.fixed_substep && cfg.substep && g_logic_rate != 60 && node_mode(0x431240) == MODE_SUB && !(th08_replay_tick && th08_replay_tick + 1 >= th08_tick);
+    return cfg.fixed_substep && cfg.substep && g_logic_rate != 60 && node_mode(0x431240) == MODE_SUB;
 }
 int th08_test_hide;
+/* Debug: TH08_TEST_INVINCIBLE makes every player collision test -- bullets, graze, lasers,
+   enemies' bodies -- answer "nothing". A scripted run then lasts to the stage's end, and a
+   recording made at 60 Hz can be played back sub-stepped for as long as it lasts, with nothing
+   left that the finer slicing is allowed to change. */
+static int th08_test_never, th08_test_until = 99;   /* TH08_TEST_INVINCIBLE=N: while the stage is below N (any value < 2: always) */
+static int th08_never_now(void) { return th08_test_never && TH08_STAGE < th08_test_until; }
 /* Debug: TH08_RNG_TRACE in the environment counts, per game frame, who drew random numbers --
    the first return address up the frame-pointer chain that is not the RNG's own wrappers --
    and writes the table into the trace for the frames in the dump window. Two runs then say
@@ -250,6 +357,22 @@ __attribute__((force_align_arg_pointer)) void __cdecl th08_rng_seen(uint32_t* re
         }
     }
 }
+/* Items, which BulletManager::OnUpdate updates first (0x43127b), step once a frame, on the
+   stock multiplier. A falling item is `velocity += gravity * m; position += velocity * m`, and
+   an item homing on the player re-aims at her on every call: sliced, both integrate a changing
+   velocity over a finer grid and land a fraction of a pixel elsewhere -- enough, measured, to
+   change which items are collected a minute into stage 1. At one call a frame they are the
+   stock game's, collection included; they are drawn smoothed like the rest of the playfield. */
+static void __attribute__((fastcall, force_align_arg_pointer)) th08_items(void* items, void* unused) {
+    (void)unused;
+    if (th08_pass_f >= 1.0f) { ((Th08ThisFn)0x440500)(items); return; }   /* not sliced: as stock */
+    if (!g_major) return;
+    const float sliced = TH08_MULTIPLIER;
+    TH08_MULTIPLIER = th08_pass_m;
+    ((Th08ThisFn)0x440500)(items);
+    /* the item code does not set the multiplier; if it ever did, keep its value */
+    TH08_MULTIPLIER = TH08_MULTIPLIER == th08_pass_m ? sliced : TH08_MULTIPLIER * th08_pass_f;
+}
 static int th08_test_lasttick(void) { static int v = -1; if (v < 0) v = GetEnvironmentVariableA("TH08_TEST_LASTTICK", NULL, 0) != 0; return v; }
 static int th08_any_sub(void) { return th08_player_sub() || th08_projectiles_sub(); }
 static int th08_projectiles_pass(struct Th08Elem* e) {
@@ -269,11 +392,13 @@ static int th08_projectiles_pass(struct Th08Elem* e) {
        tick but the frame's last, which is when a whole-frame move would have been tested. With that the sliced
        projectiles have to reproduce the stock game's trace exactly; without it they are
        allowed to differ, and only by what testing more often finds. */
-    th08_test_hide = th08_test_lasttick() && g_phase + g_dt < 0.9999;
+    th08_test_hide = th08_never_now() || (th08_test_lasttick() && g_phase + g_dt < 0.9999);
+    th08_bounds_now = g_phase + g_dt > 0.9999;
     th08_unlock();
     int r = e->callback(e->arg);
     th08_lock();
-    th08_test_hide = 0;
+    th08_test_hide = th08_never_now();
+    th08_bounds_now = 1;
     TH08_MULTIPLIER = th08_pass_m;
     const float back = 1.0f / f;
     for (unsigned i = 0; i < 0x600; ++i) {
@@ -306,10 +431,16 @@ restart:
         if (calc) {
             node_seen(fn, e->priority);
             int mode = node_mode(fn);
-            if (fn == 0x452550 && g_major) th08_replay_tick = th08_tick;      /* replay playback is feeding the input */
             if (fn == 0x431240 && g_major) th08_world_tick = th08_tick;       /* the playfield is running, not paused */
+            if (fn == 0x44c390 && g_major) {
+                /* the first system that is stepped: where a stage starts, and where a frame
+                   that follows a pause picks up the sequence the last one left */
+                if (th08_stage_pending) th08_stage_start();
+                else if (th08_player_tick && th08_player_tick + 1 != th08_tick) th08_sched_resume();
+            }
             if (fn == 0x44c390) {
                 /* the player: a 60 Hz callback whose movement alone is sliced (see above) */
+                th08_player_ran = 1;
                 int sub = th08_player_sub();
                 th08_move_factor = TH08_MULTIPLIER * (sub ? g_dt : 1.0f);
                 if (!g_major) { if (sub) th08_player_minor(); count++; e = e->next; continue; }
@@ -338,6 +469,12 @@ restart:
             g_draw_prio = g_game->draw.world_prio; dim_at_callback(); g_draw_prio = -1; g_batch_class = DIM_NONE;
         }
         if (calc && fn == 0x44c390) memcpy(th08_player_major, TH08_PLAYER + 0x2b4, sizeof th08_player_major);
+        /* Replay fast-forward (dialogue, and the ends of stages with no boss): the node answers
+           "run the list again" on two frames of three, or four of five. Run again inside a tick
+           whose length is a fraction of a frame, the stepped systems would get that fraction
+           for a whole extra frame; so with the ticks sliced the request is counted instead, and
+           the extra frames are run as whole sequences of ticks once this presentation is drawn. */
+        if (calc && fn == 0x452490 && r == 6 && g_major && cfg.substep && g_logic_rate != 60) { ++th08_ff_frames; r = 1; }
         if (calc && fn == 0x407400 && g_major) th08_camera_tick();
         switch (r) {
         case 0: { struct Th08Elem* gone = e; e = e->next; ((Th08CutFn)0x43cf50)(TH08_CHAIN, gone); count++; continue; }
@@ -361,7 +498,6 @@ done:
    frame a sub-stepped system stopped agreeing with the 60 Hz game. The RNG is the strict part:
    it must match exactly. Positions are quantised, because a sub-stepped integration is allowed
    to differ in the last bits and is not allowed to differ by a pixel. */
-static FILE* th08_trace_file;
 static void th08_trace_bullets(void) {
     const uint8_t* bullets = (const uint8_t*)0xf54e90 + 0x1a880;
     for (unsigned i = 0; i < 0x600; ++i) {
@@ -374,10 +510,22 @@ static void th08_trace_bullets(void) {
                 *(const float*)(b + 0xd68), *(const float*)(b + 0xd74), *(const int*)(b + 0xd8c + 8), *(const float*)(b + 0xd8c + 4), *(const int*)(b + 0x2a4 + 0x40), *(const float*)(b + 0x2a4 + 0x3c));
     }
 }
-static unsigned th08_trace_frame;
+static void th08_trace_items(void) {
+    const uint8_t* items = (const uint8_t*)0x1653648;
+    for (unsigned i = 0; i < 0x831; ++i) {
+        const uint8_t* it = items + i * 0x2e4;
+        if (!it[0x2d5]) continue;
+        fprintf(th08_trace_file, "  i%u ty=%d st=%d pos=%.4f,%.4f v=%.4f,%.4f,%.4f t=%d+%.3f\n", i, (int)(int8_t)it[0x2d4], (int)(int8_t)it[0x2d7],
+                *(const float*)(it + 0x2a4), *(const float*)(it + 0x2a8), *(const float*)(it + 0x2b0), *(const float*)(it + 0x2b4), *(const float*)(it + 0x2b8),
+                *(const int*)(it + 0x2c8 + 8), *(const float*)(it + 0x2c8 + 4));
+    }
+}
 static void th08_trace(int in_stage) {
     if (!cfg.debug || !cfg.replay_trace) return;
-    if (!in_stage) { th08_trace_frame = 0; return; }
+    if (!in_stage) {
+        if (th08_trace_frame && th08_trace_file) { fprintf(th08_trace_file, "end\n"); fflush(th08_trace_file); }
+        th08_trace_frame = 0; return;
+    }
     if (!th08_trace_file) th08_trace_file = fopen("th08_trace.txt", "w");
     if (!th08_trace_file) return;
     const uint8_t* bullets = (const uint8_t*)0xf54e90 + 0x1a880;
@@ -392,11 +540,29 @@ static void th08_trace(int in_stage) {
     }
     const uint8_t* lasers = (const uint8_t*)0xf54e90 + 0x660938;
     for (unsigned i = 0; i < 0x100; ++i) if (*(const int*)(lasers + i * 0x59c + 0x584)) ++nl;
+    /* lasers: position, angle, length and width, quantised like the bullets */
+    int64_t lh = 0;
+    for (unsigned i = 0; i < 0x100; ++i) {
+        const uint8_t* l = lasers + i * 0x59c;
+        if (!*(const int*)(l + 0x584)) continue;
+        const float* f = (const float*)(l + 0x548);   /* position x, y, z, angle, start, end, length, width */
+        for (int k = 0; k < 8; ++k) lh = lh * 31 + lrintf(f[k] * 4.0f);
+    }
+    /* items: 2097 of 0x2e4 bytes, position at +0x2a4, in use at +0x2d5 */
+    const uint8_t* items = (const uint8_t*)0x1653648;
+    unsigned ni = 0; int64_t ix = 0, iy = 0;
+    for (unsigned i = 0; i < 0x831; ++i) {
+        const uint8_t* it = items + i * 0x2e4;
+        if (!it[0x2d5]) continue;
+        ++ni;
+        ix += (int64_t)lrintf(*(const float*)(it + 0x2a4) * 4.0f);
+        iy += (int64_t)lrintf(*(const float*)(it + 0x2a8) * 4.0f);
+    }
     const float* pp = (const float*)0x17d61ac;
-    fprintf(th08_trace_file, "f=%u rng=%04x/%u p=%.2f,%.2f nb=%u st=%08x bx=%lld by=%lld nl=%u\n",
+    fprintf(th08_trace_file, "f=%u rng=%04x/%u p=%.2f,%.2f nb=%u st=%08x bx=%lld by=%lld nl=%u lh=%llx ni=%u ix=%lld iy=%lld in=%04x\n",
             th08_trace_frame++, *(const uint16_t*)0x164d520, *(const uint32_t*)0x164d524,
-            pp[0], pp[1], nb, (unsigned)states, (long long)bx, (long long)by, nl);
-    if (cfg.replay_trace_to && (int)th08_trace_frame - 1 >= cfg.replay_trace_from && (int)th08_trace_frame - 1 <= cfg.replay_trace_to) th08_trace_bullets();
+            pp[0], pp[1], nb, (unsigned)states, (long long)bx, (long long)by, nl, (unsigned long long)lh, ni, (long long)ix, (long long)iy, (unsigned)TH08_INPUT);
+    if (cfg.replay_trace_to && (int)th08_trace_frame - 1 >= cfg.replay_trace_from && (int)th08_trace_frame - 1 <= cfg.replay_trace_to) { th08_trace_bullets(); th08_trace_items(); }
     if (th08_rng_trace()) {
         if (cfg.replay_trace_to && (int)th08_trace_frame - 1 >= cfg.replay_trace_from && (int)th08_trace_frame - 1 <= cfg.replay_trace_to)
             for (int i = 0; i < 64 && th08_rng_callers[i].caller; ++i)
@@ -412,14 +578,19 @@ static int th08_calc_pass(void) {
         fprintf(th08_trace_file, " minor phase=%.3f\n", g_phase);
         th08_trace_bullets();
     }
+    th08_player_ran = 0;
+    if (th08_test_never) th08_test_hide = th08_never_now();
     if (g_major) {
         th08_stop_elem = NULL; ++th08_tick;
         int in_stage = 0;
         if (cfg.debug && cfg.replay_trace)
             for (struct Th08Elem* e = TH08_CHAIN; e; e = e->next) if ((uintptr_t)e->callback == 0x44c390) in_stage = 1;
-        th08_trace(in_stage);
+        /* a frame that did not run (a pause) is not a frame of the recording: no line */
+        if (!in_stage || th08_player_tick + 1 == th08_tick) th08_trace(in_stage);
     }
-    return th08_walk(TH08_CHAIN, 1);
+    int r = th08_walk(TH08_CHAIN, 1);
+    if (th08_player_ran) th08_sched_save();
+    return r;
 }
 static int __attribute__((fastcall, force_align_arg_pointer)) th08_update(void* chain) {
     (void)chain;
@@ -526,12 +697,12 @@ static int th08_dim_class(const uint8_t* vm) {
     if (th08_draw_callback == 0x427f00 && !th08_player_vm(vm)) return DIM_EFFECTS;
     return DIM_NONE;
 }
-/* Bullets, lasers and items, by pool: drawn where they are when they are really being stepped. */
+/* Bullets and lasers, by pool: drawn where they are when they are really being stepped. Items
+   step once a frame (th08_items) and are smoothed with the rest of the playfield. */
 static int th08_projectile_vm(const uint8_t* vm) {
     const uint8_t* bm = (const uint8_t*)0xf54e90;
     if (vm >= bm + 0x1a880 && vm < bm + 0x1a880 + 0x600 * 0x10b8) return 1;
-    if (vm >= bm + 0x660938 && vm < bm + 0x660938 + 0x100 * 0x59c) return 1;
-    return vm >= (const uint8_t*)0x1653648 && vm < (const uint8_t*)0x1653648 + 0x17b088;
+    return vm >= bm + 0x660938 && vm < bm + 0x660938 + 0x100 * 0x59c;
 }
 static void th08_frame_lead(double alpha) {
     th08_lead_on = 0; th08_predict_on = 0;
@@ -673,12 +844,38 @@ static void __attribute__((thiscall, force_align_arg_pointer)) th08_snapshot(voi
     ((void (__attribute__((thiscall)) *)(void*, const char*))0x44748f)(supervisor, path);
     g_in_screenshot = 0;
 }
+/* The replay's fast-forward with the ticks sliced: each frame asked for is run here, after
+   the presentation, as the ticks the schedule would have run for it -- the rest of the frame in
+   progress, then the next one whole -- so the sequence of ticks, and with it the slicing and the
+   per-tick input, is the one a playback at normal speed goes through. A frame run here can ask
+   for another, as it can in the stock game; eight a presentation is plenty for 5x. */
+static int th08_fast_forward(void) {
+    unsigned done = 0;
+    while (th08_ff_frames && done < 8) {
+        --th08_ff_frames; ++done;
+        int majors = 0;
+        for (int guard = 0; guard < 1024; ++guard) {
+            int next_major = g_tick == 0 || (g_units_total / UNITS_PER_FRAME) != g_prev_frame;
+            if (!cfg.substep || g_logic_rate == 60) next_major = 1;
+            if (next_major && majors) break;
+            advance_tick(); g_skip_update = 0;
+            majors += g_major;
+            int r = th08_update_only();
+            if (r) { th08_ff_frames = 0; return r; }
+        }
+    }
+    th08_ff_frames = 0;
+    static unsigned logged;
+    if (done && logged < 4 && ++logged) LOG("TH08 replay fast-forward: %u extra frame(s) run as whole tick sequences", done);
+    return 0;
+}
 static int __attribute__((fastcall)) th08_frame_original(void* window) {
     static unsigned entered;
     if (entered++ < 3) LOG("TH08 frame entry: context=%p native hwnd=%p attached=%p dev=%p minimized=%d",window,*(void**)window,g_wnd,g_dev,g_minimized);
     th08_phase = th08_alpha();
     th08_frame_lead(th08_phase);
     int r = th08_render_original(window);
+    if (th08_ff_frames) { int f = th08_fast_forward(); if (f && !r) r = f; }
     static double report; double now = now_s();
     if (now - report >= 5.0) {
         LOG("TH08: tick=%llu, 2D quads=%u interpolated=%u, logic %d Hz, draw guard=%s",
@@ -699,17 +896,20 @@ static int __attribute__((fastcall)) th08_frame_original(void* window) {
 }
 static int th08_frame_original_c(void* window) { return th08_frame_original(window); }
 static void th08_install_presentation(void) {
-    /* This engine family keeps its settings where New Classic's are: the defaults have to be
-       the replay-safe ones, and [hfr] substep=1 -- right for TH10-15, which stamp the rate
-       into the replay -- would not be. */
+    /* The switches are the other games': [hfr] substep steps the projectiles, [hfr]
+       subtick_input the player's movement, both on by default now that the replays carry the
+       rate, the settings and the per-tick input. Smoothing keeps its [fixed60] keys, which it
+       shares with New Classic; [fixed60] subtick and substep are New Classic's alone. */
     cfg.enemy_interp = GetPrivateProfileIntA("fixed60", "interpolate", 1, g_ini_path) != 0;
     cfg.predict = GetPrivateProfileIntA("fixed60", "predict", 1, g_ini_path) != 0;
-    cfg.subtick_input = GetPrivateProfileIntA("fixed60", "subtick", 0, g_ini_path) != 0;
-    cfg.fixed_substep = GetPrivateProfileIntA("fixed60", "substep", 0, g_ini_path) != 0;
+    cfg.fixed_substep = GetPrivateProfileIntA("hfr", "substep", 1, g_ini_path) != 0;
+    cfg.subtick_input = GetPrivateProfileIntA("hfr", "subtick_input", 1, g_ini_path) != 0;
     cfg.substep = cfg.subtick_input || cfg.fixed_substep;   /* either takes the scheduler off 60 Hz */
     LOG("TH08 presentation: interpolate=%d predict=%d subtick=%d substep=%d", cfg.enemy_interp, cfg.predict, cfg.subtick_input, cfg.fixed_substep);
     th08_history = calloc(TH08_HISTORY_COUNT, sizeof *th08_history);
     if (!th08_history) LOG("TH08: pose history allocation failed; interpolation unavailable");
+    { char v[16] = ""; th08_test_never = GetEnvironmentVariableA("TH08_TEST_INVINCIBLE", v, sizeof v) != 0;
+      if (atoi(v) >= 2) th08_test_until = atoi(v); }
     th08_render_original = (Th08ThisFn)g_p;
     ECOPY(0x441e70, 6); EJMP(0x441e76); stub_end();
     /* The shared frame scheduler takes the game's frame function over, as on TH10-15: it
@@ -728,10 +928,18 @@ static void th08_install_presentation(void) {
     /* Sub-stepped projectiles: all of these are inert at one tick per frame (every tick is a
        frame tick). */
     gate_block(0x43147b, 21, 0x431490, 0, -1);      /* bullet +0xda8: off-screen grace, counts calls */
-    gate_block(0x431524, 24, 0x43153c, 0, -1);      /* bullet +0xdba: off-screen count, up */
-    gate_block(0x431578, 24, 0x431590, 0, -1);      /* ... and down */
+    /* The off-screen test -- delete, or count up or down the frames spent outside -- is made on
+       the last tick of each frame only, where the bullet stands where the stock game's
+       whole-frame move put it when it tested. Tested earlier, a bullet fired from just outside
+       the screen towards it is deleted on the tick it is spawned, before it has come in. */
+    STUB_BEGIN();
+    E(0x80,0x3d); E32((uint32_t)(uintptr_t)&th08_bounds_now); E(0x00);   /* cmp byte [th08_bounds_now],0 */
+    EJCC(0x84, 0x43159e);                                                  /* je: skip the whole test */
+    ECOPY(0x4314b3, 10); EJCC(0x85, 0x43159e); EJMP(0x4314c3);            /* mov edx,[ebp-0x20]; cmp [edx+0xda8],0; jne */
+    site_hook(0x4314b3, 16);
     gate_block(0x432112, 21, 0x432127, 0, -1);      /* manager +0x6ba53c */
     gate_block(0x432137, 21, 0x43214c, 0, -1);      /* manager +0x6ba54c */
+    site_call(0x43127b, th08_items);                /* items: once a frame, on the stock multiplier */
     /* lasers graze on frames where timer % 20 == 0: once, on the tick the timer reached it */
     STUB_BEGIN(); ECOPY(0x431f0c, 13);
     E(0x8b,0x4d,0xd8);                                /* mov ecx,[ebp-0x28]: the laser */
@@ -755,23 +963,45 @@ static void th08_install_presentation(void) {
        that it has finished. Stepped in fractions the script's clock passes its last instruction
        part way through a frame, so the answer arrived half a frame early -- the same "delay
        timers start a frame early" TH14 measured. The script still runs every tick; on the
-       ticks between frames the answer is withheld, and the frame tick gets it again. */
-    { uint8_t* stub = g_p;
-      E(0xff,0x74,0x24,0x04); ECALL(0x45ea00); E_not_major(); E(0x75,0x02, 0x31,0xc0, 0xc2,0x04,0x00); stub_end();
-      static const uintptr_t finished_calls[4] = {0x4317f3, 0x431904, 0x431a16, 0x431ad8};
-      for (int i = 0; i < 4; ++i) site_call(finished_calls[i], stub); }
-    if (th08_test_lasttick()) {
+       ticks between frames the answer is withheld, and the frame tick gets it again.
+       One exception: a bullet the player's bomb or field caught while it was spawning (+0xdbe)
+       turns into items when its animation ends, at its position -- so that answer waits for the
+       frame's last tick, where the bullet has made the whole frame's move as in the stock game,
+       rather than the first, where it has made a slice of it. */
+    { /* the three spawn states animate the VMs at +0x2a4, +0x548 and +0x7ec; the dying state's
+         answer only frees the bullet, and is given on the frame tick */
+      static const struct { uintptr_t site; int32_t vm; } finished_calls[4] = {{0x4317f3, 0x2a4}, {0x431904, 0x548}, {0x431a16, 0x7ec}, {0x431ad8, 0}};
+      for (int i = 0; i < 4; ++i) {
+        uint8_t* stub = g_p;
+        E(0xff,0x74,0x24,0x04); ECALL(0x45ea00);                              /* push vm; call ExecuteScript */
+        if (!finished_calls[i].vm) { E_not_major(); E(0x75,0x02, 0x31,0xc0, 0xc2,0x04,0x00); stub_end(); site_call(finished_calls[i].site, stub); continue; }
+        E(0x85,0xc0, 0x74,0x2f);                                                /* test eax,eax; jz done */
+        E(0x81,0x3d); E32((uint32_t)(uintptr_t)&th08_pass_f); E32(0x3f800000);  /* cmp [th08_pass_f],1.0f */
+        E(0x74,0x23);                                                           /* je done: not sliced, as stock */
+        E(0x8b,0x54,0x24,0x04);                                                 /* mov edx,[esp+4]: the VM */
+        E(0x80,0xba); E32((uint32_t)(0xdbe - finished_calls[i].vm)); E(0x00);   /* cmp byte [bullet+0xdbe],0 */
+        E(0x74,0x0b);                                                           /* je frame_tick */
+        E(0x80,0x3d); E32((uint32_t)(uintptr_t)&th08_bounds_now); E(0x00);      /* cmp byte [th08_bounds_now],0 */
+        E(0x75,0x0d, 0xeb,0x09);                                                /* jne done; jmp withhold */
+        E_not_major(); E(0x75,0x02);                                            /* frame_tick: jne done */
+        E(0x31,0xc0);                                                           /* withhold: xor eax,eax */
+        E(0xc2,0x04,0x00); stub_end();                                          /* done: ret 4 */
+        site_call(finished_calls[i].site, stub);
+      } }
+    if (th08_test_lasttick() || th08_test_never) {
         /* not 0x449ff0, the spawn-state test: it only raises a flag, which the frame tick's
-           "animation finished" then reads in the same call as the stock game does */
-        static const struct { uintptr_t fn; unsigned char len, pop; } tests[3] = {{0x44a230,6,8},{0x44a470,6,8},{0x44a6a0,9,0x14}};
-        for (int i = 0; i < 3; ++i) {
+           "animation finished" then reads in the same call as the stock game does. The fourth,
+           the enemies' bodies, only for TH08_TEST_INVINCIBLE. */
+        static const struct { uintptr_t fn; unsigned char len, pop; } tests[4] = {{0x44a230,6,8},{0x44a470,6,8},{0x44a6a0,9,0x14},{0x44a360,6,8}};
+        th08_test_hide = th08_test_never;
+        for (int i = 0; i < (th08_test_never ? 4 : 3); ++i) {
             STUB_BEGIN();
             E(0x83,0x3d); E32((uint32_t)(uintptr_t)&th08_test_hide); E(0x00);      /* cmp dword [th08_test_hide],0 */
             E(0x74,0x05, 0x31,0xc0, 0xc2,tests[i].pop,0x00);                         /* je run; xor eax,eax; ret n */
             ECOPY(tests[i].fn, tests[i].len); EJMP(tests[i].fn + tests[i].len);
             site_hook(tests[i].fn, tests[i].len);
         }
-        LOG("TH08 TEST: player collision confined to the last tick of each frame");
+        LOG(th08_test_never ? "TH08 TEST: nothing collides with the player" : "TH08 TEST: player collision confined to the last tick of each frame");
     }
     if (th08_rng_trace()) {
         STUB_BEGIN();
@@ -785,6 +1015,10 @@ static void th08_install_presentation(void) {
     }
     stub_end();
     site_call(0x44215b, th08_snapshot);
+    /* replays: RegisterChain at its two call sites (play, record) and the result screen's save */
+    site_call(0x43b3a7, th08_register_chain);
+    site_call(0x43b50b, th08_register_chain);
+    site_call(0x457471, th08_replay_save);
     /* Keep the original native argument and return address in place. Copies
        become the C hook's two stack arguments; ret 4 consumes the native one. */
     uint8_t* quad = g_p;
@@ -793,7 +1027,7 @@ static void th08_install_presentation(void) {
     site_call(0x462df2, quad);
     g_frame_hook_installed = 1;
     g_dim_available = 1;   /* no dispatch to wrap: the chain walker and the quad hook do the attributing */
-    LOG("TH08 experimental: D3D8 bridge, shared frame scheduler, %s", cfg.substep ? "sub-stepped gameplay" : "60 Hz gameplay with interpolated 2D quads");
+    LOG("TH08: D3D8 bridge, shared frame scheduler, %s", cfg.substep ? "sub-stepped gameplay" : "60 Hz gameplay with interpolated 2D quads");
 }
 static const struct node_class th08_classes[] = {
     {0x445453, MODE_FRAME, "supervisor"},
@@ -822,6 +1056,8 @@ static const struct GameProfile th08_profile = {
     .install_presentation = th08_install_presentation,
     .frame_original = th08_frame_original_c,
     .update_only = th08_update_only,
+    .replay_playing = th08_replay_playing,
+    .layout = { .focus_mask = 4 },
     .draw = { .world_prio = 8, .rules = th08_dim_rules, .rule_count = sizeof th08_dim_rules / sizeof *th08_dim_rules },
     .classes = th08_classes, .class_count = sizeof th08_classes / sizeof *th08_classes,
     .d3dx = "d3dx8.dll"

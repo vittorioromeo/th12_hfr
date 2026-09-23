@@ -20,7 +20,7 @@ No game file is modified. You add four files to the game's folder and delete the
 
 | Game | Version | Executables | State |
 | --- | --- | --- | --- |
-| Touhou 8 — Imperishable Night | v1.00d | `th08.exe` | experimental — [notes](#imperishable-night) |
+| Touhou 8 — Imperishable Night | v1.00d | `th08.exe` | supported, new — [notes](#imperishable-night) |
 | Touhou 10 — Mountain of Faith | v1.00a | `th10.exe`, `th10e.exe` | supported |
 | Touhou 11 — Subterranean Animism | v1.00a | `th11.exe`, `th11e.exe` | supported |
 | Touhou 12 — Undefined Fantastic Object | v1.00b | `th12.exe`, `th12e.exe` | supported |
@@ -158,15 +158,16 @@ Both are visual only: grazing, its score, the item slow-down and replays are unc
 
 ### `[fixed60]` — Imperishable Night and New Classic
 
-For the two games whose simulation stays at 60 Hz. `[hfr] fps` and `vsync` still set the
-presentation rate; `[hfr] substep`, `subtick_input` and `enemy_interp` are ignored.
+For the two games built on a 60 Hz simulation. `[hfr] fps` and `vsync` still set the
+presentation rate. On TH08, `[hfr] substep` and `subtick_input` switch its sub-stepping as on the
+other games and `subtick`/`substep` below are not read; `[hfr] enemy_interp` is ignored by both.
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
 | `interpolate` | `1` | Smooth sprite position, rotation and scale between 60 Hz frames |
 | `predict` | `1` | TH08 only. Extrapolate the playfield and draw the player from live input instead of showing them up to a frame late ([details](#imperishable-night)). Does not change game state |
-| `subtick` | `0` | Sub-tick player movement. Not replay-safe |
-| `substep` | `0` | Sub-stepped enemy bullets and lasers (and items, on TH08). Experimental, not replay-safe |
+| `subtick` | `0` | New Classic only. Sub-tick player movement. Not replay-safe |
+| `substep` | `0` | New Classic only. Sub-stepped enemy bullets and lasers. Experimental, not replay-safe |
 | `d3d9ex` | `0` | TH08 only. Direct3D 9Ex through the Direct3D 8 bridge. **INI only, restart**; unconfirmed on Windows |
 | `vsync` | `0` | New Classic only. D3D11 vsync |
 | `diag_seconds` | `0` | New Classic only. Diagnostic: log the draw and update lists for N seconds, then quit |
@@ -242,20 +243,26 @@ scaling is on, and internal-resolution sprite snapping.
 ## Imperishable Night
 
 TH08 uses an older engine (Direct3D 8, a simulation built for one speed), so the approach
-differs: **the simulation stays at 60 Hz, unchanged, and is drawn at the display's rate.**
-Direct3D 8 is translated to 9 inside the patch, so the video features and the F11 menu work.
+differs: **the simulation stays a 60 Hz simulation, and only the two parts where the rate shows
+are stepped at the display's rate: the player's movement and the bullets and lasers.**
+Everything else is drawn at the display's rate. Direct3D 8 is translated to 9 inside the patch,
+so the video features and the F11 menu work.
 
-- **Prediction** (`predict=1`, default). Interpolating between the last two 60 Hz states would
-  show the game up to a frame late. Instead, bullets, enemies and the stage are extrapolated
-  along their last step, and the player is drawn from the keys held right now. A sprite that
-  turns sharply is off for one frame. Menus and the HUD are interpolated. `predict=0`
-  interpolates everything.
-- **Game state is untouched**, verified frame by frame against the unpatched game. Replays work
-  in both directions.
-- `subtick=1` (off): real sub-tick player movement. Not replay-safe; disabled during playback.
-- `substep=1` (off, experimental): sub-stepped bullets, lasers and items with collision at every
-  step. Not replay-safe; disabled during playback.
-  [Measurements](docs/games/TH08_DEVNOTES.md#9-sub-stepped-projectiles-fixed60-substep1-off-by-default-experimental).
+- `[hfr] subtick_input=1` (default): the player moves at the display's rate from input read
+  every step. `[hfr] substep=1` (default): bullets and lasers move at the display's rate, with
+  collision at every step. At every 60 Hz frame boundary a bullet is where the stock game
+  would have it ([measurements](docs/games/TH08_DEVNOTES.md#9-sub-stepped-projectiles-hfr-substep1-on-by-default)).
+- **Replays** record the rate, the settings and the input of every step, as on the other games,
+  and play back the same at any display rate. Stock replays (and the title demo) play at 60 Hz,
+  unchanged. Replays recorded with sub-stepping on need the patch to play back correctly.
+- **Prediction** (`[fixed60] predict=1`, default), for what still runs at 60 Hz. Interpolating
+  between the last two 60 Hz states would show it up to a frame late. Instead enemies, items,
+  effects and the stage are extrapolated along their last step (and, with `substep=0`, the bullets;
+  with `subtick_input=0`, the player is drawn from the keys held right now). A sprite that turns
+  sharply is off for one frame. Menus and the HUD are interpolated. `predict=0` interpolates
+  everything.
+- With both switches off, **game state is untouched**, verified frame by frame against the
+  unpatched game, and replays work in both directions.
 - Only the Japanese `th08.exe` v1.00d; for English, use [thcrap](docs/OTHER_MODS.md#thcrap), which
   works. Untested: thprac, texture upscaling, `d3d9ex`.
 

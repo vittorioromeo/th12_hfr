@@ -90,8 +90,12 @@ static inline uint8_t bits_encode(uint32_t v) { return (uint8_t)(((v & IN_MOVE) 
 static inline uint32_t bits_decode(uint8_t b) { return ((uint32_t)(b & 0x1e) << 3) | ((b & 1) ? IN_FOCUS : 0); }
 
 struct TickBuf { uint8_t* d; uint32_t n, cap; int failed; };
-static struct TickBuf g_rec[8];    /* per stage: bits of every tick since the stage's first frame (this session) */
-static struct TickBuf g_play[8];   /* per stage: the same, loaded from the replay being played */
+/* Stage slots: TH10-20 number their stages 0..7, TH08 0..8 (six stages, two of them split,
+   and the Extra); sixteen leaves room. The replay chunk carries the stage number, so a file
+   written with fewer slots reads back unchanged. */
+#define HFR_STAGES 16
+static struct TickBuf g_rec[HFR_STAGES];    /* per stage: bits of every tick since the stage's first frame (this session) */
+static struct TickBuf g_play[HFR_STAGES];   /* per stage: the same, loaded from the replay being played */
 static int      g_frame_active;    /* the replay node ran on the current frame's boundary tick */
 static int      g_stream_stage = -1;
 static uint32_t g_stream_tick;     /* index of the current tick in the stage stream */
@@ -106,7 +110,7 @@ static void tickbuf_push(struct TickBuf* b, uint8_t v) {
 static void replay_stage_start(uint8_t* rm) {
     int stage = *(int*)(rm + g_game->layout.replay_stage); int playing = REPLAY_MODE(rm) == 1;
     schedule_reset_here();
-    g_stream_stage = (stage >= 0 && stage < 8) ? stage : -1;
+    g_stream_stage = (stage >= 0 && stage < HFR_STAGES) ? stage : -1;
     g_stream_tick = 0;
     if (g_stream_stage >= 0 && !playing) { g_rec[g_stream_stage].n = 0;g_rec[g_stream_stage].failed=0; }
     LOG("stage %d first frame (%s): sub-step sequence restarted%s", stage, playing ? "playback" : "recording",

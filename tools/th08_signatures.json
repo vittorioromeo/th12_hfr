@@ -52,16 +52,32 @@
   "bytes": "e8 2f 53 00 00"
  },
  {
+  "address": "0x43127b",
+  "bytes": "e8 80 f2 00 00"
+ },
+ {
+  "address": "0x43b3a7",
+  "bytes": "e8 e4 6b 01 00"
+ },
+ {
+  "address": "0x43b50b",
+  "bytes": "e8 80 6a 01 00"
+ },
+ {
+  "address": "0x457471",
+  "bytes": "e8 7a bd ff ff"
+ },
+ {
+  "address": "0x44a360",
+  "bytes": "55 8b ec 83 ec 1c"
+ },
+ {
   "address": "0x43147b",
   "bytes": "8b 45 e0 8b 88 a8 0d 00 00 83 e9 01 8b 55 e0 89 8a a8 0d 00 00"
  },
  {
-  "address": "0x431524",
-  "bytes": "8b 4d e0 66 8b 91 ba 0d 00 00 66 83 c2 01 8b 45 e0 66 89 90 ba 0d 00 00"
- },
- {
-  "address": "0x431578",
-  "bytes": "8b 55 e0 66 8b 82 ba 0d 00 00 66 2d 01 00 8b 4d e0 66 89 81 ba 0d 00 00"
+  "address": "0x4314b3",
+  "bytes": "8b 55 e0 83 ba a8 0d 00 00 00 0f 85 db 00 00 00"
  },
  {
   "address": "0x432112",

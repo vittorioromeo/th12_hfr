@@ -213,12 +213,12 @@ void hfr_ui_save(void) {
     ini_put_int("hfr", "fps", cfg.fps);
     ini_put_int("hfr", "vsync", cfg.vsync);
     if (ui_fixed_logic()) {
-        /* its own section, shared with New Classic: [hfr] substep=1 is the right default for
-           the games that stamp the rate into their replays and the wrong one for these */
+        /* TH08: smoothing in the section it shares with New Classic, the two gameplay switches
+           under the other games' names (its replays carry the rate and the input as theirs do) */
         ini_put_int("fixed60", "interpolate", cfg.enemy_interp);
         ini_put_int("fixed60", "predict", cfg.predict);
-        ini_put_int("fixed60", "subtick", cfg.subtick_input);
-        ini_put_int("fixed60", "substep", cfg.fixed_substep);
+        ini_put_int("hfr", "substep", cfg.fixed_substep);
+        ini_put_int("hfr", "subtick_input", cfg.subtick_input);
     } else {
         ini_put_int("hfr", "substep", cfg.substep);
         ini_put_int("hfr", "subtick_input", cfg.subtick_input);

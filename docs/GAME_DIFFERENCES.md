@@ -19,25 +19,25 @@ adapters in `src/games/`.
 | Loader | `dinput8.dll` | `dinput8.dll` | `dinput8.dll` | `dinput8.dll` | `dinput8.dll` | `dinput8.dll` | `dinput8.dll` | `dinput8.dll` | `dinput8.dll` | `dxgi.dll` |
 | `d3dx` | `d3dx8.dll` (static) | `d3dx9_31` | `d3dx9_37` | `d3dx9_40` | `d3dx9_43` | `d3dx9_43` | `d3dx9_43` | `d3dx9_43` | `d3dx9_43` | — |
 | Update structure | Chain of callbacks, walked by `th08_walk` | update runner | update runner | update runner | update runner | update runner | update runner | update runner | the game's own runner, wrapped at its entry, node call and exit (`runner_wrap`) | own lists |
-| Simulation rate | 60 Hz fixed | display | display | display | display | display | display | display | display | 60 Hz fixed |
-| Extra frames come from | prediction + interpolation (`install_presentation`) | sub-stepping | sub-stepping | sub-stepping | sub-stepping | sub-stepping | sub-stepping | sub-stepping | sub-stepping | interpolation |
-| INI section | `[fixed60]` | `[hfr]` | `[hfr]` | `[hfr]` | `[hfr]` | `[hfr]` | `[hfr]` | `[hfr]` | `[hfr]` | `[fixed60]` |
+| Simulation rate | 60 Hz, with the player's movement, the bullets and the lasers sliced at the display's rate | display | display | display | display | display | display | display | display | 60 Hz fixed |
+| Extra frames come from | sub-stepping of the player's movement, the bullets and the lasers; prediction + interpolation for the rest (`install_presentation`) | sub-stepping | sub-stepping | sub-stepping | sub-stepping | sub-stepping | sub-stepping | sub-stepping | sub-stepping | interpolation |
+| INI section | `[hfr]` (`substep`, `subtick_input`); `[fixed60]` for smoothing (`interpolate`, `predict`) | `[hfr]` | `[hfr]` | `[hfr]` | `[hfr]` | `[hfr]` | `[hfr]` | `[hfr]` | `[hfr]` | `[fixed60]` |
 | Frame entry | `frame_original`, `update_only` callbacks | `frame_fn` + `frame_calls` | same | same | same | same | same | `frame_fn` + `frame_calls`; the catch-up tick is the adapter's (`update_only`: the frame function's viewport select and cleanup around the runner) | `frame_fn` + `frame_calls`; the catch-up tick is the adapter's (`update_only`) | own clock hooks |
 
 ## 2. What runs at the display's rate (`classes`)
 
 | System | TH08 | TH10 | TH11 | TH12 | TH13 | TH14 | TH15 | TH18 | TH20 | New Classic |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Player | opt-in (`subtick`) | sub | sub | sub | sub | sub | sub | sub | sub | opt-in (`subtick`) |
-| Enemy bullets | opt-in (`substep`) | sub | sub | sub | sub | sub | sub | sub | sub | opt-in (`substep`) |
-| Lasers | opt-in (`substep`) | 60 Hz | sub | sub | sub | sub | sub | sub | sub | opt-in (`substep`) |
-| Items | opt-in (`substep`) | sub | sub | sub | sub | sub | sub | sub | sub | 60 Hz |
+| Player | movement sliced (`subtick_input`) | sub | sub | sub | sub | sub | sub | sub | sub | opt-in (`subtick`) |
+| Enemy bullets | sub (`substep`) | sub | sub | sub | sub | sub | sub | sub | sub | opt-in (`substep`) |
+| Lasers | sub (`substep`) | 60 Hz | sub | sub | sub | sub | sub | sub | sub | opt-in (`substep`) |
+| Items | 60 Hz, smoothed (sliced, they integrate gravity and homing differently) | sub | sub | sub | sub | sub | sub | sub | sub | 60 Hz |
 | Stage / background | camera smoothed | 60 Hz | sub | sub | sub | 60 Hz | 60 Hz | 60 Hz | 60 Hz | interpolated |
 | Sprite animation | interpolated quads | sub (World, UI) | sub | sub | sub | sub (Early, Late passes) | sub (Early, Late passes) | sub (Early, Late passes) | sub (Early, Late passes) | interpolated |
 | Enemies | predicted quads | 60 Hz, **not interpolated** (`place_enemy` NULL) | interpolated | interpolated | interpolated | interpolated | interpolated | interpolated | interpolated | interpolated |
 | Player options | predicted quads | 60 Hz | 60 Hz | 60 Hz | 60 Hz | interpolated (`place_options`) | interpolated (`place_options`) | interpolated (`place_options`) | carried with the player between frames (`th20_option_display`) | interpolated |
-| Sub-tick input (`addr.poll_input`, `addr.game_input`) | `th08_live_input` | yes | yes | yes | yes | yes | yes | yes | yes, through the adapter's own poll (`poll_raw`) | own |
-| Opt-in modes turn off during replay playback | yes | — | — | — | — | — | — | — | — | **no** |
+| Sub-tick input (`addr.poll_input`, `addr.game_input`) | `th08_minor_input`, recorded per stage like the others' | yes | yes | yes | yes | yes | yes | yes | yes, through the adapter's own poll (`poll_raw`) | own |
+| Replays carry the rate, settings and per-tick input | yes (`replay_playing`, own save and register hooks; magic `T8RP`) | yes | yes | yes | yes | yes | yes | yes | yes | **no** (its opt-in modes stay on during playback) |
 
 ## 3. Calling conventions and layout (profile fields)
 
@@ -104,8 +104,9 @@ investigated).
 | Debug site census (`E_count`) |  | — | — | — | — | 8 counters | — | — | — |
 
 TH08's hooks are of a different kind (§1): the 60 Hz time gate, the two chain runners, the quad
-draw site, the snapshot call, and — only with `substep=1` — five counter gates, the laser graze
-gate, four `ExecuteScript` call sites and the behaviour block.
+draw site, the snapshot call, the replay manager's registration (two call sites) and the result
+screen's save, and — with `substep=1` — the items' update (frame tick only), five counter gates, the laser graze gate, four
+`ExecuteScript` call sites and the behaviour block.
 
 ## 6. Dimming (`draw`)
 
@@ -125,7 +126,7 @@ gate, four `ExecuteScript` call sites and the behaviour block.
 | vpatch conflict sites (`*_conflicts.h`) | none | 5 | 4 | 4 | 4 | none | none | none | none |
 | English / Steam executables | no | yes | yes | yes | yes | unverified | unverified | unverified | Steam v1.00c only; the image is relocatable and the signatures are matched relocation-aware |
 | thprac, thcrap, THRotator | untested | yes | yes | yes | yes | untested | untested | untested | untested |
-| Frozen signatures | 31 | 82 | 67 | 70 | 102 | 75 | 61 | 58 | 75 |
+| Frozen signatures | 35 | 82 | 67 | 70 | 102 | 75 | 61 | 58 | 75 |
 
 ## 8. Game-specific branches outside `src/games/`
 
@@ -138,7 +139,7 @@ These are the places shared code knows about a kind of game. All test a profile 
 | `core/texscale.c` | `d3d8` | mipmapped textures are eligible for upscaling |
 | `backends/d3d9.c` | `d3d8` | show the window after converting exclusive presentation to windowed |
 | `backends/d3d9.c` | none (always) | release the menu when a game creates a second device (TH08 does) |
-| `ui/overlay.c` | `install_presentation` | map the menu's sub-step controls to `[fixed60]` |
+| `ui/overlay.c` | `install_presentation` | map the menu's sub-step controls to TH08's switches (`fixed_substep`, `subtick_input`) and save smoothing to `[fixed60]` |
 | `core/symbols.h` (`REPLAY_MODE`) | `layout.replay_mode` | TH15's replay manager is four bytes shorter in front; 0 means `+0x10` |
 | `core/dimming.c` | `draw.vm_slot_off` | TH15's sprite VM holds an ANM slot index, not a pointer; the name is read through `anm_table_off` |
 | `core/dimming.c` | `draw.emit_node`, `draw.anm_name` | TH20's draw runner keeps the node behind an iterator and an ANM record's name in a `std::string`; the adapter emits the load and reads the name |
@@ -160,10 +161,10 @@ Ordered by value. None is required for correctness.
 2. **The enemy hit-test guard is the same six-byte `cmp` in every game** and is always the
    first thing a port needs. Make it a profile field (`addr.hit_guard`, register, timer offset,
    the two exits) and emit it from shared code, like `movement_ftol`.
-3. **Two fields no profile uses.** `replay_playing` is NULL in every profile: TH08 tracks
-   playback inside its walker (callback `0x452550`). `native_size_cycle` is 0 in every profile:
-   no supported game has an F10 of its own. Delete both, with the branches that read them, and
-   re-add one if a game needs it.
+3. **A field no profile uses.** `native_size_cycle` is 0 in every profile: no supported game
+   has an F10 of its own. Delete it, with the branch that reads it, and re-add it if a game
+   needs it. (`replay_playing` has its user now: TH08, whose replay manager is not the
+   TH10–20 one.)
 4. **`fixed logic` is inferred from `install_presentation != NULL`** in three files. Add an
    explicit `int fixed_logic` (or `enum sim_model`) so that a future profile can have a
    presentation installer without being a 60 Hz game.
@@ -174,8 +175,7 @@ Ordered by value. None is required for correctness.
    and `emit_factor` calls. A static table per game (`struct GateSite[]`, `struct ScaleSite[]`)
    applied by one loop, as `speed_sites` already is, would make the per-game files mostly data
    and let `test-games`/the harness enumerate them.
-7. **Stage-start log line for TH08.** `-Drive` cannot confirm TH08 entered a stage. A
-   `stage first frame` line from the walker (the GameManager callback registering) would let
-   the test judge it like the others.
+7. **Stage-start log line for TH08.** Done: the walker logs `stage N first frame`, the same
+   line as the runner, and `-Drive` judges TH08 like the others.
 8. **TH14 and TH15 script-level dim rules.** `vm_script_off = 0` disables script rules on those two;
    finding the offset brings it level with TH10–13.

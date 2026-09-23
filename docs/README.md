@@ -22,7 +22,7 @@ patch site is and why, and the bugs met on the way.
 
 | Game | Record |
 | --- | --- |
-| Touhou 8 — Imperishable Night (experimental) | [games/TH08_DEVNOTES.md](games/TH08_DEVNOTES.md) |
+| Touhou 8 — Imperishable Night | [games/TH08_DEVNOTES.md](games/TH08_DEVNOTES.md) |
 | Touhou 10 — Mountain of Faith | [games/TH10_DEVNOTES.md](games/TH10_DEVNOTES.md) |
 | Touhou 11 — Subterranean Animism | [games/TH11_DEVNOTES.md](games/TH11_DEVNOTES.md) |
 | Touhou 12 — Undefined Fantastic Object | [games/TH12_DEVNOTES.md](games/TH12_DEVNOTES.md) |

@@ -43,7 +43,7 @@ struct GameIdentity {
    identity -- the same trap as a positional initialiser, and just as quiet. */
 enum { GI_TH08, GI_TH10, GI_TH11, GI_TH12, GI_TH13, GI_TH14, GI_TH15, GI_TH18, GI_TH20 };
 static const struct GameIdentity game_identities[] = {
-    [GI_TH08] = {8,0x14dc000,"TH08 v1.00d",NULL,NULL,{"th08e.exe","th08.exe"},th08_signatures,sizeof th08_signatures/sizeof *th08_signatures,NULL,0},
+    [GI_TH08] = {8,0x14dc000,"TH08 v1.00d",NULL,"T8RP",{"th08e.exe","th08.exe"},th08_signatures,sizeof th08_signatures/sizeof *th08_signatures,NULL,0},
     /* TH10 follows the same naming as the later games: th10.exe is the Japanese original and
        th10e.exe the English one (an earlier note here claimed a th10j.exe; that was a local
        rename, not a convention). The replay magic is unused while the simulation is

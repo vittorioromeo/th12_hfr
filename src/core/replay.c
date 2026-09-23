@@ -2,19 +2,20 @@
 /* A replay's rate is retained across device resets; no chunk means stock 60 Hz. */
 /* HFRM v1: identifies the simulation, not just the presentation rate.
    USER payload: magic[4], u16 schema, u16 game, u32 simulation revision,
-   u32 flags (substep=1, subtick_input=2), u32 node mask, u32 logic rate. */
+   u32 flags (substep=1, subtick_input=2, fixed_substep=4), u32 node mask, u32 logic rate.
+   fixed_substep is TH08's projectile switch; no other game sets it. */
 #define HFR_SIMULATION_REVISION 1
 #define HFR_META_CHUNK_TYPE 0x4a
 struct ReplaySettings { uint32_t flags, nodes, rate; };
 static struct ReplaySettings g_replay_settings, g_saved_settings;
 static int g_replay_metadata, g_settings_active;
 static struct ReplaySettings current_settings(void) {
-    struct ReplaySettings s={(cfg.substep?1u:0u)|(cfg.subtick_input?2u:0u),0,(uint32_t)g_logic_rate};
+    struct ReplaySettings s={(cfg.substep?1u:0u)|(cfg.subtick_input?2u:0u)|(cfg.fixed_substep?4u:0u),0,(uint32_t)g_logic_rate};
     for(size_t i=0;i<g_class_count;++i) if(g_sub_enabled[i]) s.nodes|=1u<<i;
     return s;
 }
 static void apply_settings(struct ReplaySettings s) {
-    cfg.substep=!!(s.flags&1);cfg.subtick_input=!!(s.flags&2);
+    cfg.substep=!!(s.flags&1);cfg.subtick_input=!!(s.flags&2);cfg.fixed_substep=!!(s.flags&4);
     for(size_t i=0;i<g_class_count;++i)g_sub_enabled[i]=!!(s.nodes&(1u<<i));
 }
 static void restore_replay_settings(void) {
@@ -33,7 +34,7 @@ static int replay_parse_metadata(const uint8_t* p,uint32_t size) {
     memcpy(&schema,p+16,2);memcpy(&game,p+18,2);memcpy(&revision,p+20,4);
     memcpy(&settings.flags,p+24,4);memcpy(&settings.nodes,p+28,4);memcpy(&settings.rate,p+32,4);
     if(schema!=1 || game!=g_game->identity->id || revision!=HFR_SIMULATION_REVISION ||
-        (settings.flags&~3u) || (g_class_count<32 && (settings.nodes>>g_class_count)) ||
+        (settings.flags&~7u) || (g_class_count<32 && (settings.nodes>>g_class_count)) ||
         settings.rate<60 || settings.rate>1000 || (!(settings.flags&1) && settings.rate!=60))return -1;
     g_replay_settings=settings;return 1;
 }
@@ -51,9 +52,11 @@ static void replay_check(void) {
            simulation the file was made with. That is right -- and it is also why "record a stock
            replay, play it back with sub-stepping on" proves nothing: this line quietly turns the
            sub-stepping off again, so the test compared stock with stock. `replay_trace` keeps the
-           current rate instead, which is what makes that test say something. */
+           current rate instead, which is what makes that test say something; a replay that recorded its
+           rate above 60 still plays at it, so a recording and its playback can be traced side by side;
+           one recorded at 60, where nothing was stepped, is treated like a stock one. */
         int want = playing ? (g_replay_rate ? g_replay_rate : 60) : g_refresh;
-        if (playing && cfg.replay_trace) want = g_logic_rate;
+        if (playing && cfg.replay_trace && g_replay_rate <= 60) want = g_logic_rate;
         if (cfg.fps > 0 && !playing) want = cfg.fps;
         LOG("replay playback %s -> logic rate %d", playing ? "started" : "ended", want);
         set_logic_rate(want);
@@ -80,9 +83,18 @@ static int replay_path(char* out, size_t n, const char* name) {
                                        then per stage: u8 stage, pad[3], u32 nticks, u32 npairs, npairs x {u8 bits, u8 run} */
 /* Build the complete extension before opening the replay. A failed allocation
    cannot produce a truncated USER chunk or a partially recorded stage stream. */
+/* Whether stage s is in the replay being saved. The later games keep one pointer per stage in
+   the replay manager; TH08's manager is gone by the time the result screen saves, and there a
+   stage is in the replay when this session recorded ticks for it (the adapter clears the
+   slots when a new game starts). */
+static int replay_stage_recorded(uint8_t* rm, int s) {
+    if (!g_rec[s].n) return 0;
+    if (!g_game->addr.replay_manager) return 1;
+    return rm && s < 8 && *(uint32_t*)(rm + g_game->layout.replay_stages + s * 4);
+}
 static uint8_t* replay_build_extension(uint32_t* out_size) {
-    size_t cap=128;uint8_t* rm=G_REPLAY_MANAGER;
-    if(cfg.subtick_input && rm) for(int i=0;i<8;++i) {
+    size_t cap=128;uint8_t* rm=g_game->addr.replay_manager?G_REPLAY_MANAGER:NULL;
+    if(cfg.subtick_input) for(int i=0;i<HFR_STAGES;++i) {
         if(g_rec[i].failed || g_rec[i].n>3600000 || (g_rec[i].n && !g_rec[i].d))return NULL;
         cap+=12+2*(size_t)g_rec[i].n;
     }
@@ -91,10 +103,10 @@ static uint8_t* replay_build_extension(uint32_t* out_size) {
     uint32_t used=(12+len+3)&~3u;
     memcpy(out,"USER",4);memcpy(out+4,&used,4);out[8]=HFR_CHUNK_TYPE;
     replay_write_metadata(out+used);used+=36;
-    if(cfg.subtick_input && rm && cfg.substep && g_logic_rate!=60) {
+    if(cfg.subtick_input && cfg.substep && g_logic_rate!=60) {
         uint32_t start=used;used+=24;int stages=0;
-        for(int s=0;s<8;++s) {
-            if(!*(uint32_t*)(rm+g_game->layout.replay_stages+s*4) || !g_rec[s].n)continue;
+        for(int s=0;s<HFR_STAGES;++s) {
+            if(!replay_stage_recorded(rm,s))continue;
             uint8_t* hdr=out+used;used+=12;uint32_t pairs=0;
             for(uint32_t i=0;i<g_rec[s].n;) {
                 uint8_t v=g_rec[s].d[i];uint32_t j=i;
@@ -112,10 +124,9 @@ static uint8_t* replay_build_extension(uint32_t* out_size) {
     }
     *out_size=used;return out;
 }
-static void replay_append_chunk(const char* name) {
+static void replay_append_chunk_path(const char* path, const char* name) {
     uint32_t size=0;uint8_t* extension=replay_build_extension(&size);
     if(!extension){LOG("Cannot build replay metadata/input: recording too large or out of memory");return;}
-    char path[MAX_PATH];if(!replay_path(path,sizeof path,name)){free(extension);return;}
     HANDLE h=CreateFileA(path,GENERIC_WRITE,FILE_SHARE_READ,NULL,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,NULL);
     if(h!=INVALID_HANDLE_VALUE) {
         DWORD start=SetFilePointer(h,0,NULL,FILE_END),written=0;
@@ -129,11 +140,15 @@ static void replay_append_chunk(const char* name) {
     }else LOG("Cannot open replay to append metadata: %s",path);
     free(extension);
 }
+static void replay_append_chunk(const char* name) {
+    char path[MAX_PATH];if(!replay_path(path,sizeof path,name))return;
+    replay_append_chunk_path(path,name);
+}
 static void replay_parse_input_chunk(const uint8_t* p, uint32_t size) {
-    for (int s = 0; s < 8; s++) g_play[s].n = 0;
+    for (int s = 0; s < HFR_STAGES; s++) g_play[s].n = 0;
     if (size < 24 || memcmp(p + 12, "HFRI", 4) != 0) return;
     uint16_t ver, rate; memcpy(&ver, p + 16, 2); memcpy(&rate, p + 18, 2); int nst = p[20];
-    if (ver != 1 || rate < 60 || rate > 1000 || nst > 8) {
+    if (ver != 1 || rate < 60 || rate > 1000 || nst > HFR_STAGES) {
         LOG("replay input chunk: unsupported header"); return;
     }
     /* Validate every RLE stage before allocating or accepting any stream. */
@@ -142,7 +157,7 @@ static void replay_parse_input_chunk(const uint8_t* p, uint32_t size) {
         if (check > size || size - check < 12) return;
         unsigned s = p[check]; uint32_t nt, np;
         memcpy(&nt,p+check+4,4); memcpy(&np,p+check+8,4); check+=12;
-        if (s>=8 || (seen & (1u<<s)) || nt>3600000 || np>(size-check)/2) return;
+        if (s>=HFR_STAGES || (seen & (1u<<s)) || nt>3600000 || np>(size-check)/2) return;
         seen |= 1u<<s;
         uint32_t sum=0;
         for (uint32_t i=0;i<np;++i) {
@@ -159,17 +174,16 @@ static void replay_parse_input_chunk(const uint8_t* p, uint32_t size) {
         struct TickBuf* b=&g_play[stage];
         if(nt>b->cap) {
             uint8_t* data=realloc(b->d,nt);
-            if(!data){for(int i=0;i<8;++i)g_play[i].n=0;return;}
+            if(!data){for(int i=0;i<HFR_STAGES;++i)g_play[i].n=0;return;}
             b->d=data;b->cap=nt;
         }
         for(uint32_t i=0;i<np;++i){unsigned run=p[off+2*i+1];memset(b->d+b->n,p[off+2*i],run);b->n+=run;}
         off+=2*np;
     }
 }
-static int replay_read_chunk(const char* name) {
+static int replay_read_chunk_path(const char* path) {
     g_replay_metadata=0;
-    for (int s = 0; s < 8; s++) g_play[s].n = 0;
-    char path[MAX_PATH]; if (!replay_path(path, sizeof path, name)) return 0;
+    for (int s = 0; s < HFR_STAGES; s++) g_play[s].n = 0;
     HANDLE h = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (h == INVALID_HANDLE_VALUE) return 0;
     DWORD sz = GetFileSize(h, NULL); int rate = 0;
@@ -201,6 +215,10 @@ static int replay_read_chunk(const char* name) {
     if(g_replay_metadata==1)rate=g_replay_settings.rate;
     return rate >= 60 && rate <= 1000 ? rate : 0;
 }
+static int replay_read_chunk(const char* name) {
+    char path[MAX_PATH]; if (!replay_path(path, sizeof path, name)) { g_replay_metadata=0; for (int s = 0; s < HFR_STAGES; s++) g_play[s].n = 0; return 0; }
+    return replay_read_chunk_path(path);
+}
 typedef void (__fastcall *ReplaySaveFn)(char* filename, char* name, int p3);
 typedef int (__stdcall *ReplayLoadFn)(void* mgr, char* filename);
 #define orig_replay_save ((ReplaySaveFn)g_game->addr.replay_save)
@@ -209,8 +227,12 @@ static void __fastcall hfr_replay_save(char* filename, char* name, int p3) {
     orig_replay_save(filename, name, p3);
     replay_append_chunk(filename);
 }
-static void replay_loaded(const char* filename) {
-    g_replay_rate = replay_read_chunk(filename);
+static void replay_loaded_rate(const char* filename, int rate);
+static void replay_loaded(const char* filename) { replay_loaded_rate(filename, replay_read_chunk(filename)); }
+/* The same for a game that hands over the file's own path (TH08: relative to the game's). */
+static void replay_loaded_path(const char* path) { replay_loaded_rate(path, replay_read_chunk_path(path)); }
+static void replay_loaded_rate(const char* filename, int rate) {
+    g_replay_rate = rate;
     LOG("replay %s loaded for playback: recorded rate %d", filename, g_replay_rate);
     if(g_replay_metadata<0) {
         LOG("WARNING: unsupported replay simulation metadata; playback may desynchronize");

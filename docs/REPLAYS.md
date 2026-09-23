@@ -30,9 +30,12 @@ frame.
 
 ## TH08
 
-Default settings do not change game state, so replays record and play back exactly as in the
-unpatched game, in both directions. `[fixed60] subtick` and `substep` are not replay-safe; both
-switch themselves off during playback, but a replay recorded with either on will not play back.
+As TH10–20: a replay recorded with the patch carries the rate, the settings (`[hfr] substep`,
+`subtick_input`) and the input of every step between frames, appended after the game's own
+data, and plays back at its recorded rate at any display rate. Stock replays and the title
+screen's demonstrations play at 60 Hz, unchanged. The replay's own fast-forward (during
+dialogue) works. With both switches off nothing in the game changes and replays are the stock
+game's in both directions. Details: [TH08_DEVNOTES.md](games/TH08_DEVNOTES.md) §10.
 
 ## New Classic
 

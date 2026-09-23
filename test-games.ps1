@@ -69,10 +69,11 @@ if ($Cases) { $Cases = @($Cases | ForEach-Object { $_ -split ',' } | ForEach-Obj
 # ------------------------------------------------------------------ what differs per game
 # Demo:  the attract-mode demo goes through the replay hooks and logs "replay playback".
 # Stage: a stage start is logged ("stage N first frame"), so -Drive can tell it got in.
-# Fixed: the simulation stays at 60 Hz ([fixed60]); [hfr] substep does not apply.
+# Fixed: an older engine, smoothed through [fixed60] (interpolate, predict); TH08 also takes its
+#        player's movement off [hfr] subtick_input, so substep=0 alone leaves it off 60 Hz.
 # Shots: debug=1 reports shots per game frame, so the shot cycle can be judged.
 $Traits = @{
-    TH08 = @{ Demo = $false; Stage = $false; Fixed = $true;  Shots = $false }
+    TH08 = @{ Demo = $false; Stage = $true;  Fixed = $true;  Shots = $false }
     TH10 = @{ Demo = $true;  Stage = $true;  Fixed = $false; Shots = $false }
     TH11 = @{ Demo = $true;  Stage = $true;  Fixed = $false; Shots = $false }
     TH12 = @{ Demo = $true;  Stage = $true;  Fixed = $false; Shots = $false }
@@ -550,7 +551,7 @@ $BaseBody = {
         $demo = Count-Lines $lines 'replay playback started'
         # Once the demo is playing the simulation is at the replay's 60; before it, the title
         # screen runs at the display's rate unless the game is a fixed-logic one.
-        $ticks = if ($traits.Fixed -or $demo -or -not [int](Get-IniValue $ctx.Ini 'hfr' 'substep' 1)) { $null } else { 'target' }
+        $ticks = if ($demo -or -not [int](Get-IniValue $ctx.Ini 'hfr' 'substep' 1)) { $null } else { 'target' }
         Test-Stats $ctx 1 $ticks
         if (-not $traits.Demo)  { $ctx.Cells.Demo = 'n/a' }
         elseif ($demo)          { $ctx.Cells.Demo = 'ok' }
@@ -566,7 +567,7 @@ $QuickBody = {
     $shot = Get-Shot $ctx.Proc; Save-Shot $shot "$($ctx.Prefix).png"
     if ($shot -and [Hfr.Pixels]::Spread($shot.Pixels) -lt 4) { $ctx.Cells.Picture = 'BLANK'; $ctx.Notes.Add('the window is one flat colour') } elseif ($shot) { $ctx.Cells.Picture = 'ok' }
     $substep = [int](Get-IniValue $ctx.Ini 'hfr' 'substep' 1)
-    $ticks = if ($traits.Fixed) { 60 } elseif ($substep) { 'target' } else { $null }
+    $ticks = if ($substep) { 'target' } else { $null }
     Test-Stats $ctx 0 $ticks ([int]$ctx.Case.Target)
 }
 
@@ -608,12 +609,12 @@ $DriveBody = {
 
     # In a stage the simulation runs at the display's rate when sub-stepping is on.
     $substep = [int](Get-IniValue $ctx.Ini 'hfr' 'substep' 1)
-    $ticks = if ($traits.Fixed) { 60 } elseif ($substep) { 'target' } else { $null }
+    $ticks = if ($substep) { 'target' } else { $null }
     Test-Stats $ctx $statsBefore $ticks
     $s = @(Get-Stats (Read-Log $log)) | Select-Object -Skip $statsBefore
     if ($s) { $ctx.Cells.Polls = ($s | Measure-Object -Property Polls -Maximum).Maximum }
     # Sub-tick input: every sub-stepped game polls between frame boundaries while a stage runs.
-    if ($s -and $in -and -not $traits.Fixed -and $substep -and $ctx.Cells.Polls -eq 0 -and [int](Get-IniValue $ctx.Ini 'hfr' 'subtick_input' 1)) {
+    if ($s -and $in -and $substep -and $ctx.Cells.Polls -eq 0 -and [int](Get-IniValue $ctx.Ini 'hfr' 'subtick_input' 1)) {
         $ctx.Notes.Add('no sub-tick input polls in a stage: the input path is not described, or the stage start was not seen')
     }
 
