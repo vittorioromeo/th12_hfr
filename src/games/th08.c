@@ -15,7 +15,6 @@ static int th08_projectiles_sub(void);
 static int th08_projectile_vm(const uint8_t* vm);
 static uint64_t th08_tick;
 static int th08_major, th08_guard_failed;
-static unsigned th08_ff_frames;            /* whole frames the replay's fast-forward asked for on this presentation */
 static unsigned th08_quads, th08_smoothed;
 /* One history per sprite VM: the quad it drew on the last two frame ticks. */
 
@@ -129,6 +128,7 @@ static int __attribute__((fastcall, force_align_arg_pointer)) th08_register_chai
             } else if (filename) replay_loaded_path(filename);
         } else {
             for (int s = 0; s < HFR_STAGES; ++s) { g_rec[s].n = 0; g_rec[s].failed = 0; }
+            g_speed_stages = 0;
         }
     }
     int r = ((Th08RegisterFn)0x451f90)(action, filename);
@@ -150,6 +150,8 @@ static void th08_stage_start(void) {
     int stage = TH08_STAGE, playing = th08_replay_playing();
     th08_stream_stage = stage >= 0 && stage < HFR_STAGES ? stage : -1;
     th08_stream_tick = 0;
+    g_stream_stage = th08_stream_stage;     /* for the shared bookkeeping (the game-speed note) */
+    if (th08_stream_stage >= 0 && !playing) g_speed_stages &= ~(1u << th08_stream_stage);
     if (th08_stream_stage >= 0 && !playing) { g_rec[stage].n = 0; g_rec[stage].failed = 0; }
     if (cfg.debug && cfg.replay_trace) {
         if (!th08_trace_file) th08_trace_file = fopen("th08_trace.txt", "w");
@@ -473,8 +475,9 @@ restart:
            "run the list again" on two frames of three, or four of five. Run again inside a tick
            whose length is a fraction of a frame, the stepped systems would get that fraction
            for a whole extra frame; so with the ticks sliced the request is counted instead, and
-           the extra frames are run as whole sequences of ticks once this presentation is drawn. */
-        if (calc && fn == 0x452490 && r == 6 && g_major && cfg.substep && g_logic_rate != 60) { ++th08_ff_frames; r = 1; }
+           the extra frames are run as whole sequences of ticks once this presentation is drawn
+           (frame.c, run_ff_frames, which the other games' runner shares). */
+        if (calc && fn == 0x452490 && r == 6 && g_major && ticks_sliced()) { ++g_ff_frames; r = 1; }
         if (calc && fn == 0x407400 && g_major) th08_camera_tick();
         switch (r) {
         case 0: { struct Th08Elem* gone = e; e = e->next; ((Th08CutFn)0x43cf50)(TH08_CHAIN, gone); count++; continue; }
@@ -831,7 +834,7 @@ static int __attribute__((fastcall, force_align_arg_pointer)) th08_quad(void* ma
    a Bresenham share of the presentation slots and the remainder is the phase. */
 static double th08_alpha(void) {
     double a = (cfg.substep && g_logic_rate != 60) ? g_phase + g_dt
-                                                   : (double)g_lacc / (double)(g_refresh > 0 ? g_refresh : 60);
+                                                   : schedule_fraction();
     return a < 0 ? 0 : a > 1 ? 1 : a;
 }
 /* Supervisor::TakeSnapshot(path), called from GameWindow::Present while Home reads as newly
@@ -844,38 +847,12 @@ static void __attribute__((thiscall, force_align_arg_pointer)) th08_snapshot(voi
     ((void (__attribute__((thiscall)) *)(void*, const char*))0x44748f)(supervisor, path);
     g_in_screenshot = 0;
 }
-/* The replay's fast-forward with the ticks sliced: each frame asked for is run here, after
-   the presentation, as the ticks the schedule would have run for it -- the rest of the frame in
-   progress, then the next one whole -- so the sequence of ticks, and with it the slicing and the
-   per-tick input, is the one a playback at normal speed goes through. A frame run here can ask
-   for another, as it can in the stock game; eight a presentation is plenty for 5x. */
-static int th08_fast_forward(void) {
-    unsigned done = 0;
-    while (th08_ff_frames && done < 8) {
-        --th08_ff_frames; ++done;
-        int majors = 0;
-        for (int guard = 0; guard < 1024; ++guard) {
-            int next_major = g_tick == 0 || (g_units_total / UNITS_PER_FRAME) != g_prev_frame;
-            if (!cfg.substep || g_logic_rate == 60) next_major = 1;
-            if (next_major && majors) break;
-            advance_tick(); g_skip_update = 0;
-            majors += g_major;
-            int r = th08_update_only();
-            if (r) { th08_ff_frames = 0; return r; }
-        }
-    }
-    th08_ff_frames = 0;
-    static unsigned logged;
-    if (done && logged < 4 && ++logged) LOG("TH08 replay fast-forward: %u extra frame(s) run as whole tick sequences", done);
-    return 0;
-}
 static int __attribute__((fastcall)) th08_frame_original(void* window) {
     static unsigned entered;
     if (entered++ < 3) LOG("TH08 frame entry: context=%p native hwnd=%p attached=%p dev=%p minimized=%d",window,*(void**)window,g_wnd,g_dev,g_minimized);
     th08_phase = th08_alpha();
     th08_frame_lead(th08_phase);
     int r = th08_render_original(window);
-    if (th08_ff_frames) { int f = th08_fast_forward(); if (f && !r) r = f; }
     static double report; double now = now_s();
     if (now - report >= 5.0) {
         LOG("TH08: tick=%llu, 2D quads=%u interpolated=%u, logic %d Hz, draw guard=%s",

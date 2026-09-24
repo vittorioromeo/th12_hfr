@@ -4,6 +4,28 @@ Newest first. Versions are the release archive names; `-test` means what it says
 Full release notes for each version are on the
 [releases page](https://github.com/vittorioromeo/th12_hfr/releases).
 
+## Unreleased
+
+Game speed.
+
+- **Slow motion and fast forward, in every supported game**, for practising a section or
+  watching a replay: 25% to 800%, from Page Down / Page Up / End or F11 → Timing, with a note
+  in the corner while the speed is not 100%. Only how many game frames run per second changes,
+  so replays stay in sync at any speed, including one recorded while practising (its patch
+  data notes that the speed was changed). The music keeps its own speed. New Classic can fast
+  forward up to its presentation rate over 60.
+- **TH10–20: a replay's own fast forward no longer desynchronises a sub-stepped replay.** The
+  games fast-forward by re-running their update list within a frame; inside a sliced tick
+  that ran the stepped systems for a fraction of each extra frame. The extra frames are now
+  run as whole sequences of ticks, as TH08's already were.
+- **TH10–20: pausing at a rate that is not a multiple of 60 (144, 165 Hz) no longer shifts how
+  the rest of the stage is sliced.** The slicing of every frame is now a function of the
+  replay's frame number, so a recording with pauses and its playback slice alike.
+- Verified under Wine at 144 Hz on TH18 and TH20: a stage recorded with two pauses and a speed
+  change, played back with the game's own fast forward and at 150–200%, agrees on every frame;
+  TH08 likewise with speed changes during recording and playback.
+- The F11 menu's TH08 texts no longer call sub-stepping experimental or replay-unsafe.
+
 ## v0.10-test
 
 Touhou 8 out of experimental.

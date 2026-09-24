@@ -28,6 +28,13 @@ Locations: TH13, TH14, TH15, TH18 and TH20 keep replays under `%APPDATA%\Shangha
 Full-run parity between the stock game and the patched game has not been compared frame by
 frame.
 
+**Watching at another speed.** The game speed (Page Down / Page Up / End, or F11 → Timing)
+slows a replay down or speeds it up without changing it, and the games' own fast forward
+(for example holding shot during playback on TH18 and TH20) keeps a sub-stepped replay in sync. A
+replay recorded while practising at another speed plays back normally; its patch data notes
+the speed change and the log mentions it on playback. Pausing, while recording or watching,
+does not change how the rest of the stage is sliced at any rate.
+
 ## TH08
 
 As TH10–20: a replay recorded with the patch carries the rate, the settings (`[hfr] substep`,

@@ -41,6 +41,11 @@ enum {
     UI_SUBSTEP_AVAILABLE,     /* read-only: this game's projectile update is described */
     UI_PREDICT,               /* fixed logic: show the playfield in the present (predicted) rather than a frame late */
     UI_PREDICT_AVAILABLE,     /* read-only: this backend can predict */
+    UI_GAME_SPEED,            /* percent of normal game speed: slow motion below 100, fast forward above */
+    UI_SPEED_KEY_SLOWER,      /* read-only: virtual-key codes of the speed hotkeys, 0 when unset */
+    UI_SPEED_KEY_FASTER,
+    UI_SPEED_KEY_RESET,
+    UI_REPLAY_SAFE,           /* read-only: the replays carry the sub-stepping settings (TH08; not New Classic) */
     UI_SETTING_COUNT
 };
 

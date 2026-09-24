@@ -98,6 +98,9 @@ static struct TickBuf g_rec[HFR_STAGES];    /* per stage: bits of every tick sin
 static struct TickBuf g_play[HFR_STAGES];   /* per stage: the same, loaded from the replay being played */
 static int      g_frame_active;    /* the replay node ran on the current frame's boundary tick */
 static int      g_stream_stage = -1;
+/* Stages of the game being recorded in which the game speed was not 100% (frame.c): only a
+   note in the replay, since the simulation is the same at any speed. */
+static uint32_t g_speed_stages;
 static uint32_t g_stream_tick;     /* index of the current tick in the stage stream */
 static unsigned g_stat_subtick_polls, g_stat_subtick_applied;
 static void tickbuf_push(struct TickBuf* b, uint8_t v) {
@@ -112,7 +115,7 @@ static void replay_stage_start(uint8_t* rm) {
     schedule_reset_here();
     g_stream_stage = (stage >= 0 && stage < HFR_STAGES) ? stage : -1;
     g_stream_tick = 0;
-    if (g_stream_stage >= 0 && !playing) { g_rec[g_stream_stage].n = 0;g_rec[g_stream_stage].failed=0; }
+    if (g_stream_stage >= 0 && !playing) { g_rec[g_stream_stage].n = 0;g_rec[g_stream_stage].failed=0; g_speed_stages &= ~(1u << g_stream_stage); }
     LOG("stage %d first frame (%s): sub-step sequence restarted%s", stage, playing ? "playback" : "recording",
         (playing && g_stream_stage >= 0 && g_play[g_stream_stage].n) ? ", per-tick input available" : "");
 }

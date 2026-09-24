@@ -42,18 +42,51 @@ typedef int (*NodeInvoke)(uint32_t fn, void* arg);
 static int invoke_thiscall(uint32_t fn, void* arg) { return ((NodeFn)fn)(arg); }
 static int invoke_cdecl(uint32_t fn, void* arg) { return ((int (__cdecl *)(void*))fn)(arg); }
 static void* g_stop_id;                 /* the node that returned "stop" on the last frame tick */
+/* A pause, at a rate that is not a multiple of 60, would change how the rest of the stage is
+   sliced. The game's frames stop and the ticks do not, and at 144 Hz the frames do not all
+   have the same number of ticks: after the pause the recording would slice its frames
+   differently from its playback, which never paused, and the per-tick input would be read
+   into the wrong ticks. So the slicing is made a function of the replay's frame number. On a
+   frame tick that follows a frame the replay did not advance on (a pause, a menu), the
+   schedule is moved -- before any system runs -- to where the canonical sequence has frame F,
+   F being the replay's frame counter. If this frame does not advance the replay either (still
+   paused), the move is taken back at the end of the pass, so a pause keeps its own pace. */
+static struct { unsigned acc, total, prev, last; float dt; double phase; int tentative; } g_resync;
+static unsigned g_stat_resyncs;
+static void pause_resync_begin(int was_active) {
+    g_resync.tentative = 0;
+    if (was_active || !ticks_sliced() || g_stream_stage < 0 || !g_game->addr.replay_manager) return;
+    uint8_t* rm = G_REPLAY_MANAGER;
+    if (!rm) return;
+    int f = *(int*)(rm + g_game->layout.replay_frame);
+    if (f <= 0) return;                       /* the stage's first frame: replay_stage_start resets */
+    g_resync.acc = g_units_acc; g_resync.total = g_units_total; g_resync.prev = g_prev_frame; g_resync.last = g_last_units;
+    g_resync.dt = g_dt; g_resync.phase = g_phase; g_resync.tentative = 1;
+    schedule_to_frame((unsigned)f);
+}
+static void pause_resync_end(void) {
+    if (!g_resync.tentative) return;
+    g_resync.tentative = 0;
+    if (g_frame_active) {                     /* the frame ran: the canonical slicing stays */
+        if (g_stat_resyncs++ < 8) LOG("resumed on replay frame %d: sub-step sequence continued from that frame", *(int*)(G_REPLAY_MANAGER + g_game->layout.replay_frame) - 1);
+        return;
+    }
+    g_units_acc = g_resync.acc; g_units_total = g_resync.total; g_prev_frame = g_resync.prev; g_last_units = g_resync.last;
+    g_dt = g_resync.dt; g_phase = g_resync.phase;
+}
 static void runner_pass_begin(void) {
     /* The desync trace samples here, before the frame's first tick runs, so it reads the state
        at a frame boundary in both modes. It used to sample at the end of the pass, which under
        sub-stepping is one sub-tick -- a sixth of a frame at 360Hz -- into the frame, and that
        put a constant offset of most of a frame's movement into every comparison and buried the
        small real differences the trace exists to find. */
-    if (g_major) { g_stop_id = NULL; g_frame_active = 0; replay_trace_frame(); }
+    if (g_major) { int was_active = g_frame_active; g_stop_id = NULL; g_frame_active = 0; pause_resync_begin(was_active); replay_trace_frame(); }
     else subtick_input_begin();
 }
 static void runner_pass_end(int is_update) {
     set_factor(1.0f);
     if (is_update) {
+        pause_resync_end();
         if (g_major && !g_skip_update) ++g_site_census_frames;
         subtick_input_end(); enemy_interp(g_phase);
     }
@@ -134,7 +167,11 @@ restart:
         case 4: count = 0; goto done;
         case 8: if (g_game->runner_return8_ends) { count = 0; goto done; } count++; break;
         case 5: count = -1; goto done;
-        case 6: n = *(struct ListNode**)(runner + 0x18); next_store(runner, n); count = 0; goto restart;
+        case 6:
+            /* A replay's fast-forward while the ticks are sliced: counted, and run as whole
+               frames after the presentation (frame.c, run_ff_frames). */
+            if (is_update && g_major && g_replay_playing && ticks_sliced()) { ++g_ff_frames; count++; break; }
+            n = *(struct ListNode**)(runner + 0x18); next_store(runner, n); count = 0; goto restart;
         case 7: if (uf->on_cleanup) uf->on_cleanup(node_arg(uf)); count++; break;
         default: count++; break;
         }
@@ -159,7 +196,9 @@ int __cdecl __attribute__((used)) hfr_wrap_node(uint32_t fn, void* arg) {
     switch (runner_node((void*)(uintptr_t)(fn ^ (uintptr_t)arg), fn, arg, 1, invoke_cdecl, &r)) {
     case RUNNER_CUT:  return 3;
     case RUNNER_SKIP: return 1;
-    default:          return r;
+    default:
+        if (r == 6 && g_major && g_replay_playing && ticks_sliced()) { ++g_ff_frames; return 1; }   /* as hfr_runner */
+        return r;
     }
 }
 void __cdecl __attribute__((used)) hfr_wrap_end(void) { runner_pass_end(1); }

@@ -2,10 +2,12 @@
 #include <dxgi.h>
 #include "ui_api.h"
 #include "menu_key.h"
+#include "speed_keys.h"
 static WNDPROC original_wndproc;
 static HWND window;
 static ID3D11Device* device;
 static struct menu_key key_state;
+static struct hfr_speed_keys speed_keys;
 static int toggle_requested;
 extern "C" void hfr_menu_requested(void) {toggle_requested=1;}
 extern "C" void hfr_menu_key_down(int down) {
@@ -43,6 +45,7 @@ extern "C" void hfr_d3d11_overlay(void* object) {
     if (!key || !original_wndproc) return;
     DWORD foreground_pid=0;GetWindowThreadProcessId(GetForegroundWindow(),&foreground_pid);
     if (menu_key_press(&key_state,(GetAsyncKeyState(key)&0x8000)!=0,foreground_pid==GetCurrentProcessId())) toggle_requested=1;
+    hfr_speed_keys_poll(&speed_keys,foreground_pid==GetCurrentProcessId());
     if (toggle_requested) {
         toggle_requested=0;hfr_menu_toggle();hfr_ui_report("menu: %s",hfr_menu_visible()?"opened":"closed");
     }

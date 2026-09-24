@@ -10,6 +10,7 @@
  */
 #include "../version.h"
 #include "ui_api.h"
+#include "speed_keys.h"
 #include "../../third_party/imgui/imgui.h"
 #include "menu_renderer.h"
 #include "../../third_party/imgui/backends/imgui_impl_win32.h"
@@ -330,7 +331,67 @@ void draw_display_section(void) {
     draw_dimming_controls();
 }
 
+/* A virtual-key code as the keyboard shows it. */
+const char* key_name(int vk, char* buf, int n) {
+    if (vk <= 0) { snprintf(buf, n, "(none)"); return buf; }
+    UINT sc = MapVirtualKeyA((UINT)vk, 0 /* MAPVK_VK_TO_VSC */);
+    LONG lp = (LONG)(sc << 16);
+    switch (vk) {   /* the extended keys print as their numpad twins without this bit */
+    case VK_PRIOR: case VK_NEXT: case VK_END: case VK_HOME: case VK_INSERT: case VK_DELETE:
+    case VK_LEFT: case VK_RIGHT: case VK_UP: case VK_DOWN: lp |= 1 << 24; break;
+    }
+    if (!sc || !GetKeyNameTextA(lp, buf, n)) snprintf(buf, n, "key 0x%02x", vk);
+    return buf;
+}
+
+/* Game speed: an independent control on top of the timing settings, and deliberately a
+   change to how fast the game plays. It changes how many ticks run per second of real time
+   and nothing else, so it is not locked during a stage: what is being recorded is the same
+   simulation at any speed. */
+void draw_speed_controls(void) {
+    int cur = hfr_ui_get(UI_GAME_SPEED);
+    char label[32];
+    snprintf(label, sizeof label, "%d%%%s", cur, cur == 100 ? " (normal)" : "");
+    if (ImGui::BeginCombo("Game speed", label)) {
+        for (int i = 0; i < HFR_SPEED_PRESET_COUNT; ++i) {
+            int p = hfr_speed_presets[i];
+            char name[32]; snprintf(name, sizeof name, "%d%%%s", p, p == 100 ? " (normal)" : p < 100 ? " (slow motion)" : " (fast forward)");
+            if (ImGui::Selectable(name, p == cur)) hfr_ui_set(UI_GAME_SPEED, p);
+            if (p == cur) ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
+    }
+    char a[40], b[40], c[40];
+    help("Plays the game slower or faster, for practising a section or watching a\n"
+         "replay. Only how many game frames run per second changes: every frame is\n"
+         "the same, so replays stay in sync at any speed, and one recorded while\n"
+         "practising plays back normally (it is marked as practice in its data).\n"
+         "The music keeps its own speed. Fast forward runs as fast as the computer\n"
+         "allows. Not saved: every start is at 100%.");
+    ImGui::TextDisabled("Keys: %s slower, %s faster, %s normal",
+                        key_name(hfr_ui_get(UI_SPEED_KEY_SLOWER), a, sizeof a),
+                        key_name(hfr_ui_get(UI_SPEED_KEY_FASTER), b, sizeof b),
+                        key_name(hfr_ui_get(UI_SPEED_KEY_RESET), c, sizeof c));
+}
+
+/* A small note in a corner while the game is not at normal speed, so it is never forgotten. */
+void draw_speed_note(void) {
+    int cur = hfr_ui_get(UI_GAME_SPEED);
+    ImGuiIO& io = ImGui::GetIO();
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - 8.0f * io.FontGlobalScale, 8.0f * io.FontGlobalScale),
+                            ImGuiCond_Always, ImVec2(1.0f, 0.0f));
+    ImGui::SetNextWindowBgAlpha(0.55f);
+    if (ImGui::Begin("##hfr_speed", nullptr,
+                     ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
+                     ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav |
+                     ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoInputs))
+        ImGui::Text("Speed %d%%", cur);
+    ImGui::End();
+}
+
 void draw_timing_section(void) {
+    draw_speed_controls();
+    ImGui::Separator();
     if (!hfr_ui_simulation_patched()) {
         ImGui::TextDisabled("This game's simulation is not described by the patch yet, so the");
         ImGui::TextDisabled("frame rate and sub-stepping settings below cannot take effect.");
@@ -373,12 +434,16 @@ void draw_timing_section(void) {
                            "exactly the stock distance per 60 Hz frame. Everything else -- collision, shooting, scripts, "
                            "enemies and bullets -- still runs at 60 Hz, and sprites are predicted forward instead of "
                            "interpolated back so they line up with where the player really is.");
-        ImGui::TextWrapped("This changes where the player is at each 60 Hz boundary, so a replay recorded with it on will "
-                           "not play back faithfully. Turn it off before watching a replay, and for score "
-                           "runs and anything you intend to submit.");
+        if (hfr_ui_get(UI_REPLAY_SAFE))
+            ImGui::TextWrapped("This changes where the player is when bullets are tested, as on the other games. Replays "
+                               "record it, with the rate and every step's input, and play back the same.");
+        else
+            ImGui::TextWrapped("This changes where the player is at each 60 Hz boundary, so a replay recorded with it on will "
+                               "not play back faithfully. Turn it off before watching a replay, and for score "
+                               "runs and anything you intend to submit.");
         ImGui::Spacing();
         ImGui::BeginDisabled(!hfr_ui_get(UI_SUBSTEP_AVAILABLE));
-        toggle("Sub-step projectiles (experimental)", UI_SUBSTEP);
+        toggle(hfr_ui_get(UI_REPLAY_SAFE) ? "Sub-step projectiles" : "Sub-step projectiles (experimental)", UI_SUBSTEP);
         ImGui::EndDisabled();
         ImGui::TextWrapped("Advances enemy bullets and lasers a fraction of a frame at a time instead of a whole frame "
                            "at once, and runs their culling, grazing and collision at each step. A projectile that would "
@@ -386,8 +451,11 @@ void draw_timing_section(void) {
                            "not just smoother. They are still where the stock game would put them at every 60 Hz boundary. "
                            "Enemies, your own shots and items still run at 60 Hz: their effects are applied once per 60 Hz "
                            "frame, so sub-stepping them could not change an outcome.");
-        ImGui::TextWrapped("This changes when bullets hit, so a replay recorded with it on will not play back faithfully. "
-                           "Turn it off before watching a replay, and for score runs.");
+        if (hfr_ui_get(UI_REPLAY_SAFE))
+            ImGui::TextWrapped("This changes when bullets hit, which is the point. Replays record it and play back the same.");
+        else
+            ImGui::TextWrapped("This changes when bullets hit, so a replay recorded with it on will not play back faithfully. "
+                               "Turn it off before watching a replay, and for score runs.");
         ImGui::Spacing();
         if (hfr_ui_get(UI_PREDICT_AVAILABLE)) {
             ImGui::BeginDisabled(!hfr_ui_get(UI_ENEMY_INTERP) && !subtick);
@@ -559,7 +627,8 @@ extern "C" void hfr_menu_draw_sections_for_test(void) {
 }
 
 extern "C" void hfr_menu_render(void* dev, int width, int height) {
-    if (!g_ready || g_menu_failed || (!g_visible && g_hint_frames <= 0)) return;
+    bool speed_note = hfr_ui_get(UI_GAME_SPEED) != 100;
+    if (!g_ready || g_menu_failed || (!g_visible && g_hint_frames <= 0 && !speed_note)) return;
     if (!g_objects) {
         if (!hfr_menu_renderer_create()) {
             static bool told = false;
@@ -583,6 +652,7 @@ extern "C" void hfr_menu_render(void* dev, int width, int height) {
     ImGui::NewFrame();
     if (g_visible) draw_window();
     else if (g_hint_frames > 0) { draw_hint(); --g_hint_frames; }
+    if (speed_note) draw_speed_note();
     ImGui::EndFrame();
     ImGui::Render();
     if (!g_menu_failed) hfr_menu_renderer_draw(ImGui::GetDrawData());

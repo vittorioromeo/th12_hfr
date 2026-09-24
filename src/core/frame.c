@@ -10,6 +10,37 @@ static int hfr_housekeeping(void) {
     return window_pump(g_dev);                        /* minimised, or resizing the swap chain */
 }
 
+static int ticks_sliced(void) { return cfg.substep && g_logic_rate != 60; }
+/* A replay's own fast-forward, while the ticks are sliced. The engines fast-forward a replay
+   by answering "run the list again" from a node near the end of it: another whole frame inside
+   the same pass. Obeyed inside a tick that is a fraction of a frame, that gives the stepped
+   systems the fraction for a whole frame and reads the per-tick input once for several frames,
+   and the playback parts from the recording. So the runner counts the request instead
+   (g_ff_frames), and here, after the presentation, each frame asked for is run as the ticks
+   the schedule would have run for it -- the rest of the frame in progress, then the next one
+   whole -- so the sequence of ticks is the one a normal-speed playback goes through. A frame
+   run here can ask for another, as it can in the game; sixteen a presentation is enough for
+   the fastest native fast-forward (8x). Returns what a catch-up tick returned when the game
+   asked to leave. */
+static int run_ff_frames(void) {
+    unsigned done = 0;
+    while (g_ff_frames && done < 16) {
+        --g_ff_frames; ++done;
+        int majors = 0;
+        for (int guard = 0; guard < 4096; ++guard) {
+            int next_major = !ticks_sliced() || g_tick == 0 || (g_units_total / UNITS_PER_FRAME) != g_prev_frame;
+            if (next_major && majors) break;
+            advance_tick(); g_skip_update = 0;
+            majors += g_major;
+            int r = update_only_tick();
+            if (r) { g_ff_frames = 0; return r; }
+        }
+    }
+    g_ff_frames = 0;
+    static unsigned logged;
+    if (done && logged < 4 && ++logged) LOG("replay fast-forward: %u extra frame(s) run as whole tick sequences", done);
+    return 0;
+}
 static int __stdcall hfr_frame(void* ctx);
 /* The same hook for a game whose frame callbacks are thiscall: the context arrives in ECX and
    the callee pops nothing, which is what fastcall with one argument compiles to. */
@@ -19,11 +50,17 @@ static int __stdcall hfr_frame(void* ctx) {
     if (hfr_housekeeping()) { Sleep(1); return 0; }
     replay_check();
     if (g_t0 == 0) { g_t0 = now; g_ticks_run = 0; }
-    /* how many ticks we should have run by now (long-term schedule) minus how many we did */
-    double expected = (now - g_t0) * (double)g_logic_rate;
+    /* how many ticks we should have run by now (long-term schedule) minus how many we did;
+       at a game speed other than 100% the schedule's clock runs that much faster or slower */
+    const double tick_rate = (double)g_logic_rate * (double)g_speed_pct / 100.0;
+    double expected = (now - g_t0) * tick_rate;
     long long deficit = (long long)floor(expected) - g_ticks_run;
-    if (deficit > 60 || deficit < -60) {              /* stall / clock jump: re-anchor instead of catching up */
-        g_t0 = now - (double)g_ticks_run / (double)g_logic_rate; deficit = 0;
+    /* stall / clock jump: re-anchor instead of catching up. It is also the ceiling on fast
+       forward: a machine that cannot run the ticks asked for falls behind by more than this
+       and is re-anchored, so it runs as fast as it can rather than ever further behind. */
+    const long long slack = 60 * (g_speed_pct > 100 ? g_speed_pct / 100 : 1);
+    if (deficit > slack || deficit < -slack) {
+        g_t0 = now - (double)g_ticks_run / tick_rate; deficit = 0;
     }
     if (!(cfg.vsync && g_vsync_effective)) {
         /* Pace presentation independently: stock replays still present at HFR. */
@@ -34,7 +71,7 @@ static int __stdcall hfr_frame(void* ctx) {
             if (rem > 0.0025) Sleep(1); else if (rem > 0.0008) Sleep(0); else YieldProcessor();
             now = now_s();
         }
-        expected = (now - g_t0) * (double)g_logic_rate;
+        expected = (now - g_t0) * tick_rate;
         deficit = (long long)floor(expected) - g_ticks_run;
         g_next = due + 1.0 / (double)g_refresh;
     }
@@ -50,6 +87,7 @@ static int __stdcall hfr_frame(void* ctx) {
     for (int i = 0; i + 1 < n; i++) { advance_tick(); int r = update_only_tick(); if (r) return r; }
     if (n >= 1) { advance_tick(); g_skip_update = 0; } else g_skip_update = 1;
     g_ticks_run += n;
+    if (n && g_speed_pct != 100 && !g_replay_playing && g_stream_stage >= 0 && g_stream_stage < HFR_STAGES) g_speed_stages |= 1u << g_stream_stage;
     /* Where a frame's time goes: inside the game's frame function (its draw and the present,
        vsync included) or outside it (its loop, its own waits). The stats line reports both. */
     if (g_frame_out_at > 0) { double outside = now - g_frame_out_at; if (outside > g_gap_outside_max) g_gap_outside_max = outside; if (outside > 0.008) g_gap_outside_long++; }
@@ -66,6 +104,7 @@ static int __stdcall hfr_frame(void* ctx) {
           double span[4] = { g_t_first_draw - t_in, g_t_present_in - g_t_first_draw, g_t_present_out - g_t_present_in, g_frame_out_at - g_t_present_out };
           for (int i = 0; i < 4; ++i) if (span[i] > g_span_max[i]) g_span_max[i] = span[i];
       } }
+    if (g_ff_frames) { int f = run_ff_frames(); if (f && !r) r = f; }
     g_skip_update = 0;
     return r;
 }

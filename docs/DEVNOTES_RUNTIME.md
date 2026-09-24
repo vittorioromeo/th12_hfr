@@ -923,8 +923,7 @@ Test suites are described in [TESTING.md](TESTING.md).
 
 1. **The alt-tab input fix** vpatch has and we do not: a foreground check on the DirectInput
    path. Cheap, and it affects all four supported games.
-2. **`ReplaySlowFPS`**: slow-motion replay on a held key. The tick-rate machinery makes this
-   nearly free.
+2. **`ReplaySlowFPS`**: done, as the game speed (§10a), for play as well as replays.
 3. **The `UI_*` settings live in four places**: the enum, both switches and the save function,
    with a `default:` that stops the compiler noticing an omission. A table of
    `{id, name, section, &cfg.field}` would collapse all four and the INI read, which is a fifth.
@@ -968,6 +967,56 @@ inside one 60 Hz frame cannot be constant. Measured over 200 frames:
 - **Rejected alternative:** fix N sub-steps per 60 Hz frame and present whenever the panel is
   ready. That makes the count uniform and the *spacing* non-uniform, and a presented frame no
   longer coincides with a tick, so every sub-stepped object would need interpolating to draw.
+
+### Frame-canonical slicing: pauses
+
+The 2-or-3 split has a consequence for replays. The scheduler's pattern runs on through a pause
+-- the game's frames stop, the ticks do not -- so after a pause at 144 Hz a recording slices
+its frames differently from a playback that never paused, and the per-tick input stream is
+read into different ticks. Nothing else needs to differ for the two to part.
+
+So the slicing is a function of the replay's frame number. `replay_stage_start` already
+restarts the pattern on a stage's first frame (frame 0); the pattern repeats every 60 frames
+(`R` ticks), so frame `f`'s slicing is fixed. `schedule_to_frame(f)` (`timing.c`) puts the
+schedule on frame `f`'s frame tick by walking at most one period from the reset.
+`update_runner.c` uses it at the start of a frame tick that follows a frame on which the replay
+did not advance (`g_frame_active` was clear): before any system runs, the schedule is moved to
+frame `f`, `f` being the replay's frame counter. If this frame does not advance the replay
+either -- still paused -- the move is taken back at the end of the pass, so a pause menu keeps
+its own pace. It is logged (`resumed on replay frame N`). TH08 does the equivalent in its own
+walker (`th08_sched_resume`, TH08_DEVNOTES §10).
+
+`tools/test_hfr.c` checks that walking to frame `f` tick by tick and `schedule_to_frame(f)`
+agree for 200 frames at 144 Hz. Under Wine, a TH18 and a TH20 stage recorded at 144 Hz with two
+pauses play back identically on every frame.
+
+## 10a. Game speed, and the replays' own fast forward
+
+**Game speed** (`g_speed_pct`, 10–1600) scales the schedule's clock and nothing else:
+`ticks_for_slot` accumulates `logic rate × speed` per presentation, and the long-term schedule
+in `frame.c` expects `(now - t0) × logic rate × speed` ticks. The ticks themselves -- their
+length, their slicing, the per-tick input -- are the ones 100% would run, so a replay is in
+sync at any speed and a recording made at another speed is the same simulation. Changing the
+speed restarts the long-term schedule from now. Fast forward is bounded by the machine: the
+stall guard, whose slack grows with the speed, re-anchors a schedule that has fallen behind,
+so a machine that cannot keep up runs as fast as it can. Below 100% presentations without a
+tick are the ordinary `g_skip_update` ones. The speed is not saved. Keys and the menu: the
+shared `ui/speed_keys.h`; the corner note: `menu.cpp`. A replay whose stages were played at
+another speed says `speed=changed` in its `H` chunk, which a reader that knows only `rate=`
+skips. New Classic has the same control on its own clock (`fixed_clock_step_at`): one native
+update per outer iteration, so it fast-forwards up to its presentation rate over 60.
+
+**The replays' own fast forward.** TH08 and TH10–20 fast-forward a replay by answering "run
+the list again" (6) from a node near the end of the update list: another whole frame inside
+the same pass (TH15's `0x45ceb0`, TH18's `0x462c30`: 7 frames of 8 while shot is held). Obeyed
+inside a tick that is a fraction of a frame, that gives the stepped systems the fraction for a
+whole frame and reads the per-tick input once for several frames, and the playback parts from
+the recording. So while the ticks are sliced and a replay plays, the runner (`hfr_runner`,
+`hfr_wrap_node` for TH20; TH08's walker) counts the request instead (`g_ff_frames`), and after
+the presentation `run_ff_frames` (`frame.c`) runs each frame asked for as the ticks the
+schedule would have run for it, through the catch-up tick: the rest of the frame in progress,
+then the next one whole. A frame run there can ask for another; sixteen a presentation are
+allowed. At one tick per frame the game's own restart is left alone.
 
 ### New Classic: the concern is live there
 

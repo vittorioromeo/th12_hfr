@@ -23,6 +23,7 @@ static HMODULE module;
 static FILE* logfile;
 static char ini[MAX_PATH];
 static int fps=0, rate=60, interpolate=1, vsync=0, debug=0, subtick=0, substep=0, diag_seconds=0;
+static int speed_pct=100, speed_keys[3]={VK_NEXT,VK_PRIOR,VK_END};   /* game speed and its hotkeys: slower, faster, reset */
 static int major=1, guard_failed=0, depth=0;
 static uint64_t ticks, frames, samples, blends;
 static double phase, frequency, deadline;
@@ -182,7 +183,7 @@ static uintptr_t sprite_vm_step(void* manager, void* vm) {
    one native update is made per outer loop; severe stalls retain native slowdown. */
 static uintptr_t update_first(void* result) {
     if (pending_rate) {pending_rate=0;set_rate();}
-    major=fixed_clock_step(&logic_clock,now(),frequency,rate,&phase);
+    major=fixed_clock_step_at(&logic_clock,now(),frequency,rate,speed_pct,&phase);
     if (major) {
         /* Finish the outgoing frame's projectile motion before the next frame's logic sees
            it, so the 60 Hz pass reads exactly the positions the unmodified game would. */
@@ -726,6 +727,9 @@ __declspec(dllexport) DWORD WINAPI hfr_start(void* unused) {
     debug=GetPrivateProfileIntA("hfr","debug",0,ini)!=0;
     menu_key_code=GetPrivateProfileIntA("video","menu_key",VK_F11,ini);
     if (menu_key_code<0 || menu_key_code>255) menu_key_code=VK_F11;
+    speed_keys[0]=GetPrivateProfileIntA("video","speed_slower_key",VK_NEXT,ini)&0xff;
+    speed_keys[1]=GetPrivateProfileIntA("video","speed_faster_key",VK_PRIOR,ini)&0xff;
+    speed_keys[2]=GetPrivateProfileIntA("video","speed_reset_key",VK_END,ini)&0xff;
     LARGE_INTEGER q;QueryPerformanceFrequency(&q);frequency=(double)q.QuadPart;
     timer=CreateWaitableTimerExW(NULL,NULL,2,TIMER_ALL_ACCESS);
     if (!timer) timer=CreateWaitableTimerW(NULL,FALSE,NULL);

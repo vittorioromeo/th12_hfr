@@ -38,6 +38,7 @@ adapters in `src/games/`.
 | Player options | predicted quads | 60 Hz | 60 Hz | 60 Hz | 60 Hz | interpolated (`place_options`) | interpolated (`place_options`) | interpolated (`place_options`) | carried with the player between frames (`th20_option_display`) | interpolated |
 | Sub-tick input (`addr.poll_input`, `addr.game_input`) | `th08_minor_input`, recorded per stage like the others' | yes | yes | yes | yes | yes | yes | yes | yes, through the adapter's own poll (`poll_raw`) | own |
 | Replays carry the rate, settings and per-tick input | yes (`replay_playing`, own save and register hooks; magic `T8RP`) | yes | yes | yes | yes | yes | yes | yes | yes | **no** (its opt-in modes stay on during playback) |
+| Game speed (`g_speed_pct`) | shared scheduler | shared scheduler | same | same | same | same | same | same | same | own clock (`fixed_clock_step_at`), fast forward up to the presentation rate over 60 |
 
 ## 3. Calling conventions and layout (profile fields)
 
@@ -83,8 +84,8 @@ TH08 sets none of these: it has no update runner. Its equivalents are constants 
 | Directory (`data_dir`) | game folder (the path the game passes) | game folder | game folder | game folder | `%APPDATA%\ShanghaiAlice\th13\` | `...\th14\` | `...\th15\` | `...\th18\` | `...\th20\` | — |
 | Desync trace (`trace_state`, `trace_dump`) | own (`th08_trace`: bullets, lasers, items, stage and end markers, no line for a paused frame) | — | — | — | — | yes | yes | `trace_state` (bullets, items, lasers, the player's state and shots) | `trace_state` | — |
 | Stage start (first frame of the stream) | the first frame the player runs after `RegisterChain` (the record node runs after her) | the replay node's first frame (`replay_stage_start`) | same | same | same | same | same | same | same | — |
-| A pause at a rate that is not a multiple of 60 | the schedule continues from the last frame the player ran on (`th08_sched_resume`) | not handled: later frames may be sliced differently from the playback | same | same | same | same | same | same | same | — |
-| The replay's own fast-forward ("run the list again") | counted; the extra frames run as whole tick sequences after the presentation (`th08_fast_forward`) | re-run inside the current tick: not replay-safe while sub-stepped | same | same | same | same | same | same | same | — |
+| A pause at a rate that is not a multiple of 60 | the schedule continues from the last frame the player ran on (`th08_sched_resume`) | the slicing is moved to the replay frame's canonical place on the first frame after it (`pause_resync_begin`, `schedule_to_frame`) | same | same | same | same | same | same | same | — |
+| The replay's own fast-forward ("run the list again") | counted by the walker; run by the shared `run_ff_frames` | counted by `hfr_runner`; the extra frames run as whole tick sequences after the presentation (`run_ff_frames`) | same | same | same | same | same | same | same, counted in `hfr_wrap_node` | — |
 
 ## 5. Per-game hooks, by kind
 

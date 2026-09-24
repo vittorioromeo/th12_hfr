@@ -343,10 +343,12 @@ static void window_enforce(void) {
     }
 }
 #include "../ui/menu_key.h"
+#include "../ui/speed_keys.h"
 
 static int g_menu_request;          /* set by anything that wants the menu toggled once */
 static struct menu_key g_menu_key;
 static struct menu_key g_cycle_key;
+static struct hfr_speed_keys g_speed_keys;
 
 void hfr_menu_requested(void) { g_menu_request = 1; }
 void hfr_menu_key_down(int down) {
@@ -381,6 +383,7 @@ static void poll_menu_key(void) {
         int cheld = (GetAsyncKeyState(cfg.size_cycle_key) & 0x8000) != 0;
         if (menu_key_press(&g_cycle_key, cheld, focus)) window_cycle_size();
     }
+    if (g_game) hfr_speed_keys_poll(&g_speed_keys, focus);
 }
 /* Called from the frame hook. Returns non-zero when the frame should be skipped. */
 static int window_pump(IDirect3DDevice9* dev) {

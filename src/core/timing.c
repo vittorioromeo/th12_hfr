@@ -4,7 +4,20 @@ static int    g_refresh = 60;      /* presents per second (display) */
 static int    g_logic_rate = 60;   /* logic ticks per second (== g_refresh normally; a replay's recording rate during playback) */
 static int g_replay_rate, g_replay_playing;
 static int    g_skip_update = 0;   /* present without running the update list (duplicate frame) */
-static unsigned g_lacc = 0;        /* Bresenham remainder: logic ticks per present */
+static unsigned g_lacc = 0;        /* Bresenham remainder: logic ticks per present, in units of g_refresh * 100 */
+/* Game speed, in percent: how many logic ticks run per second of real time, relative to the
+   logic rate. It changes nothing but that: every tick is the same length and runs the same
+   code, so the simulation, the per-tick input and a replay are what they are at 100%; slow
+   motion shows each tick for longer and fast forward shows fewer of them. */
+#define SPEED_MIN 10
+#define SPEED_MAX 1600
+static int g_speed_pct = 100;
+/* Whole game frames a replay's own fast-forward asked for on this presentation (the list's
+   "run again" answer, counted instead of obeyed while the ticks are sliced: frame.c). */
+static unsigned g_ff_frames;
+/* The ticks are sliced: a tick is a fraction of a game frame, so "run the list again inside
+   this tick" would give the stepped systems that fraction for a whole extra frame. */
+static int ticks_sliced(void);
 static float  g_dt = 1.0f;         /* game frames per tick for SUB nodes */
 static unsigned g_tick = 0;        /* sub-tick counter */
 static float g_ptf_prev, g_ptf_cur;   /* player state timer (float) before/after the last Player node call */
@@ -35,6 +48,16 @@ static float  g_pause_shadow = 1.0f;
 #define UNITS_PER_FRAME 256
 static unsigned g_units_acc;   /* Bresenham remainder */
 static unsigned g_units_total; /* units elapsed at the start of the current tick (mod 60 frames) */
+static void set_game_speed(int pct) {
+    if (pct < SPEED_MIN) pct = SPEED_MIN;
+    if (pct > SPEED_MAX) pct = SPEED_MAX;
+    if (pct == g_speed_pct) return;
+    g_speed_pct = pct;
+    g_t0 = 0; g_lacc = 0;              /* the long-term schedule starts again from now */
+    LOG("game speed: %d%%", pct);
+}
+/* The fraction of a presentation slot the schedule has accumulated towards the next tick. */
+static double schedule_fraction(void) { return (double)g_lacc / ((double)(g_refresh > 0 ? g_refresh : 60) * 100.0); }
 static void set_logic_rate(int rate) {
     if (!cfg.substep) rate = 60;
     if (rate < 60) rate = 60;
@@ -60,9 +83,10 @@ static void recompute_rate(int refresh) {
 }
 /* number of logic ticks to run for the next present slot */
 static int ticks_for_slot(void) {
-    g_lacc += (unsigned)g_logic_rate;
-    int n = (int)(g_lacc / (unsigned)g_refresh);
-    g_lacc -= (unsigned)n * (unsigned)g_refresh;
+    unsigned slot = (unsigned)g_refresh * 100u;
+    g_lacc += (unsigned)g_logic_rate * (unsigned)g_speed_pct;
+    int n = (int)(g_lacc / slot);
+    g_lacc -= (unsigned)n * slot;
     return n;
 }
 static void advance_tick(void) {
@@ -95,4 +119,22 @@ static void schedule_reset_here(void) {
     g_units_acc -= u * (unsigned)g_logic_rate;
     g_units_total = u; g_last_units = u; g_prev_frame = 0; g_phase = 0;
     g_dt = (float)u / (float)UNITS_PER_FRAME;
+}
+/* Put the schedule where the canonical sequence has it on the frame tick of frame f of a stage
+   (frame 0 being the one schedule_reset_here starts). The sequence repeats every 60 frames,
+   so this walks at most one period. Unlike the reset it leaves the movement residuals alone:
+   it is used in the middle of a stage (update_runner.c, after a pause). */
+static void schedule_to_frame(unsigned f) {
+    if (!cfg.substep || g_logic_rate == 60) return;
+    float residual[2]; memcpy(residual, g_move_residual, sizeof residual);
+    float ptf_prev = g_ptf_prev, ptf_cur = g_ptf_cur;
+    unsigned tick = g_tick;
+    schedule_reset_here();
+    memcpy(g_move_residual, residual, sizeof residual); g_ptf_prev = ptf_prev; g_ptf_cur = ptf_cur;
+    g_tick = tick ? tick : 1; g_major = 1;
+    f %= 60;
+    for (unsigned k = 0; f && k < 60000; ++k) {
+        advance_tick();
+        if (g_major && g_prev_frame == f) break;
+    }
 }

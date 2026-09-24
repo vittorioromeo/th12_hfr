@@ -518,11 +518,15 @@ back unchanged.
   continues from it, as though the pause had taken no ticks (`th08_sched_resume`, logged). The
   same shift is possible on TH10–20 (§12).
 - **Fast-forward.** "Run the list again" inside a tick a fraction of a frame long would give
-  the stepped systems that fraction for a whole extra frame. With the ticks sliced the answer
-  is counted instead, and after the presentation the extra frames are run as the ticks the
-  schedule would have run for them (the rest of the frame in progress, then the next whole
-  one), up to eight a presentation, so the sequence of ticks is the one a normal-speed
-  playback goes through. At one tick per frame the stock restart is left alone.
+  the stepped systems that fraction for a whole extra frame. With the ticks sliced the walker
+  counts the answer instead (`g_ff_frames`), and after the presentation the shared
+  `run_ff_frames` (`frame.c`) runs the extra frames as the ticks the schedule would have run for
+  them (the rest of the frame in progress, then the next whole one), so the sequence of ticks is
+  the one a normal-speed playback goes through. At one tick per frame the stock restart is left
+  alone. TH10–20 do the same since this was found here (DEVNOTES_RUNTIME §10a).
+- **Game speed** (DEVNOTES_RUNTIME §10a) needs nothing from the adapter: it only changes how
+  many ticks run a second. TH08's smoothing reads the schedule's fraction through
+  `schedule_fraction()`.
 
 **Measured under Wine** (the rig of §2, the trace of §8), and confirmed on Windows at 360 Hz
 with a replay recorded and played back in sync:
@@ -574,12 +578,5 @@ Three profile mistakes were copied from game to game before the TH14 work found 
   4B only after the runs had parted for other reasons. Items have been through it.
 - On Windows: a play session and a replay at 360 Hz. Not yet a 144 or 165 Hz display, where
   the pause handling of §10 matters most.
-- Two things TH08 now handles and the shared runner (TH10–20) does not, both found here and
-  not yet checked there:
-  - **A pause at a rate that is not a multiple of 60** (144, 165 Hz). It can leave a recording
-    sliced differently from its playback after the pause. TH18's and TH20's
-    record-and-playback checks did not pause.
-  - **The replays' own fast-forward** ("run the list again", e.g. TH15 while shot is held
-    during playback). The runner re-runs the list inside a tick that is a fraction of a frame,
-    which gives the sub-stepped systems that fraction for a whole frame, and the per-tick
-    stream is read once for several frames.
+- The pause handling of §10 and the replays' fast forward were found here and have since been
+  carried to the shared runner (DEVNOTES_RUNTIME §10 and §10a).

@@ -28,6 +28,10 @@ int hfr_ui_get(int id) {
     case UI_DIM_SPECIAL: case UI_DIM_PLAYER_SHOTS:
         return dim_percent[id-UI_DIM_BACKGROUND];
     case UI_DEBUG: return debug;
+    case UI_GAME_SPEED: return speed_pct;
+    case UI_SPEED_KEY_SLOWER: return speed_keys[0];
+    case UI_SPEED_KEY_FASTER: return speed_keys[1];
+    case UI_SPEED_KEY_RESET: return speed_keys[2];
     default: return 0;
     }
 }
@@ -45,6 +49,10 @@ void hfr_ui_set(int id,int value) {
     case UI_DIM_SPECIAL: case UI_DIM_PLAYER_SHOTS:
         dim_percent[id-UI_DIM_BACKGROUND]=value<0?0:(value>100?100:value);break;
     case UI_DEBUG: debug=!!value;break;
+    case UI_GAME_SPEED:
+        value=value<10?10:(value>1600?1600:value);
+        if (value!=speed_pct) {speed_pct=value;LOG("game speed: %d%%",speed_pct);}
+        break;
     }
 }
 static void save_int(const char* section,const char* key,int value) {

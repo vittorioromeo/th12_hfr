@@ -49,8 +49,29 @@ static void test_schedule(void) {
     recompute_rate(360);
     assert(g_logic_rate==144 && g_tick==tick && g_units_acc==acc);
     g_replay_playing=0;g_replay_rate=0;
+    /* Game speed: a second of presentation runs speed% of a second's ticks, and the ticks are
+       the same ones -- the slicing does not depend on how fast they are shown. */
+    const int speeds[]={25,50,75,100,150,200,300,400,800};
+    for(size_t k=0;k<sizeof speeds/sizeof *speeds;++k)
+        for(size_t a=0;a<sizeof rates/sizeof *rates;++a) {
+            g_refresh=rates[a];set_logic_rate(rates[a]);set_game_speed(speeds[k]);
+            unsigned ticks=0;
+            for(int i=0;i<g_refresh*4;++i)ticks+=ticks_for_slot();
+            assert(ticks==(unsigned)(g_logic_rate*4*speeds[k]/100));
+        }
+    set_game_speed(100);
+    {   /* the slicing of frame f is a function of f alone: walking there tick by tick and
+           jumping there with schedule_to_frame agree, for every frame of the period */
+        set_logic_rate(144);schedule_reset_here();g_tick=1;   /* g_tick 0 would make the next tick a frame tick */
+        for(unsigned f=1;f<200;++f) {
+            do advance_tick(); while(!g_major);
+            unsigned acc=g_units_acc,total=g_units_total,prev=g_prev_frame; float dt=g_dt; double phase=g_phase;
+            schedule_to_frame(f);
+            assert(g_units_acc==acc && g_units_total==total && g_prev_frame==prev && g_dt==dt && g_phase==phase && g_major);
+        }
+    }
     g_game = schedule_real;
-    puts("PASS: scheduler at every integer rate 60..1000, cross-rate presentation, stage reset, stock mode");
+    puts("PASS: scheduler at every integer rate 60..1000, cross-rate presentation, stage reset, stock mode, game speed, frame-canonical slicing");
 }
 static void test_replay_parser(void) {
     uint8_t chunk[40]={0};memcpy(chunk+12,"HFRI",4);

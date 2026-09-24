@@ -79,8 +79,27 @@ Upgrading from the old `th11_hfr` / `th12_hfr` patches: see [docs/UPGRADING.md](
 | --- | --- |
 | **F11** | Settings menu. Changes apply immediately; **Save** writes them to `touhou_hfr.ini`. Options that cannot work in the current setup are disabled, with the reason |
 | **F10** | Cycles the window: 640x480, 960x720, 1280x960, borderless fullscreen |
+| **Page Down / Page Up / End** | Game speed: slower, faster, back to normal ([below](#game-speed)) |
 
-Both keys can be rebound or disabled in the INI.
+All of these keys can be rebound or disabled in the INI.
+
+### Game speed
+
+Slow motion and fast forward for practising a section or watching a replay, in every supported
+game: 25%, 50%, 75%, 100%, 150%, 200%, 300%, 400% and 800%, from the keys above or F11 → Timing.
+A small note in the corner shows the speed whenever it is not 100%. It is not saved: every
+start is at normal speed.
+
+Only how many game frames run per second changes. Every frame is the same as at 100%, so:
+
+- a replay stays in sync at any speed, and can be slowed down or sped up while it plays;
+- a replay recorded while practising at another speed plays back normally. The patch's data
+  in it notes that the speed was changed, and the log says so when it is played.
+
+The music keeps its own speed. Fast forward runs as fast as the computer allows (on New
+Classic, at most the presentation rate divided by 60). In slow motion, a stock replay or
+`substep=0` runs at 60 updates a second of game time, so at 50% it moves 30 times a second;
+sub-stepped play at a high refresh rate stays smooth.
 
 To check that it works, open F11 → Timing: the presented rate should be your refresh rate (or
 `fps`), and the simulated rate 60. The game's own FPS counter shows the presented rate.
@@ -130,6 +149,7 @@ Edit `touhou_hfr.ini` beside the game and restart; every setting is commented in
 | `cursor` | `2` | Mouse pointer in borderless fullscreen: `0` never, `1` always, `2` while it moves. Always shown while the menu is open |
 | `menu_key` | `122` | Virtual-key code of the in-game menu (F11); `0` disables it. **INI only** |
 | `size_cycle_key` | `121` | Virtual-key code of the window-size cycle (F10); `0` disables it. **INI only** |
+| `speed_slower_key`, `speed_faster_key`, `speed_reset_key` | `34`, `33`, `35` | Virtual-key codes of the game-speed keys (Page Down, Page Up, End); `0` disables one. **INI only** |
 | `warn_wrapper` | `1` | Say at startup when a d3d9 wrapper is presenting the game. **INI only** |
 | `external_renderer` | `-1` | Hand the picture to a rotation wrapper such as THRotator: `-1` when one is recognised, `1` always, `0` never. **INI only** |
 | `own_present` | `-1` | Which swap chain reaches the screen; `-1` decides automatically |
@@ -195,6 +215,8 @@ only this patch installed. Details: [docs/OTHER_MODS.md](docs/OTHER_MODS.md).
   unmodified game or in another build of this patch. To record a replay the stock game can
   play, set `substep=0`. Replays recorded without the patch play normally.
 - **Scores are not comparable** with the unmodified game. Do not submit them to leaderboards.
+- **Game speed** is practice and viewing only: a run played at another speed is noted as such
+  in the replay's patch data.
 - **Sub-stepping can change outcomes.** Collision is tested several times per frame, so a
   bullet that would skip past the hitbox between two 60 Hz frames can now hit. Some timers
   also start a frame early. Patterns may differ slightly from 60 Hz play.

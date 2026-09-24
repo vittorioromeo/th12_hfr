@@ -54,6 +54,9 @@ static void read_config(void) {
     cfg.fullscreen_mode = GetPrivateProfileIntA("video", "fullscreen_mode", 1, ini);
     cfg.menu_key = GetPrivateProfileIntA("video", "menu_key", VK_F11, ini);
     cfg.size_cycle_key = GetPrivateProfileIntA("video", "size_cycle_key", VK_F10, ini);
+    cfg.speed_slower_key = GetPrivateProfileIntA("video", "speed_slower_key", VK_NEXT, ini) & 0xff;
+    cfg.speed_faster_key = GetPrivateProfileIntA("video", "speed_faster_key", VK_PRIOR, ini) & 0xff;
+    cfg.speed_reset_key = GetPrivateProfileIntA("video", "speed_reset_key", VK_END, ini) & 0xff;
     cfg.own_present = GetPrivateProfileIntA("video", "own_present", -1, ini);
     cfg.warn_wrapper = GetPrivateProfileIntA("video", "warn_wrapper", 1, ini);
     for (size_t i = 0; g_game && i < g_class_count; i++) {

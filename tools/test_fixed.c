@@ -20,7 +20,19 @@ static void test_clock(void) {
     assert(updates==600);
     assert(fixed_clock_step(&c,1e12,60000000.0,360,&alpha));
     assert(!fixed_clock_step(&c,1e12+1,60000000.0,360,&alpha));
-    puts("PASS: fixed clock 60..1000 FPS, VSync blocking, phase bounds and long stalls");
+    /* Game speed: over ten seconds at 360 FPS, 50% makes 300 native updates and 25% 150; 200%
+       makes 1200, and 800% is capped at one update per presentation (3600). At 60 FPS and
+       50% half the presentations are presentation-only. */
+    const int speeds[]={25,50,200,800};const unsigned want[]={150,300,1200,3600};
+    for (unsigned k=0;k<4;++k) {
+        struct FixedClock s={0};unsigned n=0;
+        for (int i=0;i<3600;++i) n+=fixed_clock_step_at(&s,1000.0+i*60000000.0/360,60000000.0,360,speeds[k],&alpha);
+        assert(n>=want[k]-1 && n<=want[k]+1);
+    }
+    { struct FixedClock s={0};unsigned n=0;
+      for (int i=0;i<600;++i) n+=fixed_clock_step_at(&s,1000.0+i*1000000.0,60000000.0,60,50,&alpha);
+      assert(n>=299 && n<=301); }
+    puts("PASS: fixed clock 60..1000 FPS, VSync blocking, phase bounds and long stalls, game speed");
 }
 static void test_history(void) {
     struct FixedPose h={0};float p[3]={10,20,0},out[3];

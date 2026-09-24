@@ -99,7 +99,14 @@ static uint8_t* replay_build_extension(uint32_t* out_size) {
         cap+=12+2*(size_t)g_rec[i].n;
     }
     uint8_t* out=calloc(1,cap);if(!out)return NULL;
-    int len=snprintf((char*)out+12,52,"touhou_hfr rate=%d",g_logic_rate)+1;
+    /* " speed=changed": some stage in this replay was played at a game speed other than 100%.
+       The simulation is the same at any speed, so this is a note for whoever watches it, and
+       a reader that knows only "rate=" skips it. */
+    int speed=0;
+    for(int s=0;s<HFR_STAGES;++s) if((g_speed_stages>>s)&1u) {
+        if(!g_game->addr.replay_manager || (rm && s<8 && *(uint32_t*)(rm+g_game->layout.replay_stages+s*4))) speed=1;
+    }
+    int len=snprintf((char*)out+12,52,"touhou_hfr rate=%d%s",g_logic_rate,speed?" speed=changed":"")+1;
     uint32_t used=(12+len+3)&~3u;
     memcpy(out,"USER",4);memcpy(out+4,&used,4);out[8]=HFR_CHUNK_TYPE;
     replay_write_metadata(out+used);used+=36;
@@ -201,6 +208,7 @@ static int replay_read_chunk_path(const char* path) {
                     char t[64]; size_t len=csize-12; if(len>=sizeof t)len=sizeof t-1;
                     memcpy(t,d+i+12,len);t[len]=0; const char* k = strstr(t, "rate=");
                     if (k) rate = atoi(k + 5);
+                    if (strstr(t, "speed=changed")) LOG("replay note: recorded with the game speed changed in some stage (practice); it plays back the same");
                 } else if(d[i+8]==HFR_META_CHUNK_TYPE) {
                     g_replay_metadata=replay_parse_metadata(d+i,csize);
                 } else if (d[i + 8] == HFR_INPUT_CHUNK_TYPE) {

@@ -46,6 +46,11 @@ int hfr_ui_get(int id) {
     case UI_SUBSTEP:            return ui_fixed_logic() ? cfg.fixed_substep : cfg.substep;
     case UI_PREDICT:            return cfg.predict;
     case UI_PREDICT_AVAILABLE:  return ui_fixed_logic();
+    case UI_GAME_SPEED:         return g_speed_pct;
+    case UI_SPEED_KEY_SLOWER:   return cfg.speed_slower_key;
+    case UI_SPEED_KEY_FASTER:   return cfg.speed_faster_key;
+    case UI_SPEED_KEY_RESET:    return cfg.speed_reset_key;
+    case UI_REPLAY_SAFE:        return 1;
     /* Which classes this game can actually fade: the background whenever the world's priority
        is known, and every category some rule mentions. It used to answer "all of them", which
        was true of TH10-13 and is not true of a game whose rules are still being written -- and
@@ -120,6 +125,7 @@ void hfr_ui_set(int id, int value) {
         if (ui_fixed_logic()) { cfg.substep = cfg.subtick_input || cfg.fixed_substep; g_pending_rate = 1; }
         break;
     case UI_PREDICT:         cfg.predict = !!value; break;
+    case UI_GAME_SPEED:      set_game_speed(value); break;
     case UI_ENEMY_INTERP:    cfg.enemy_interp = !!value; break;
     case UI_DEBUG:           cfg.debug = !!value; break;
     case UI_DIM_BACKGROUND: case UI_DIM_ITEMS: case UI_DIM_EFFECTS: case UI_DIM_SPECIAL: case UI_DIM_PLAYER_SHOTS:

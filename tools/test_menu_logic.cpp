@@ -112,8 +112,17 @@ int main(void) {
     for (auto& d : DIMS)
         if (!g_read[d.id]) { char m[128]; snprintf(m,sizeof m,"with no dimming rules: the %s control vanished",d.name); fail(m); }
 
+    /* The game speed is offered whatever the backend and whether or not the simulation is
+       described: it only changes how often ticks run. */
+    for (int video = 0; video < 2; ++video) {
+        memset(g_read, 0, sizeof g_read);
+        g_value[UI_VIDEO_AVAILABLE] = video; g_value[UI_GAME_SPEED] = 100;
+        frame();
+        if (!g_read[UI_GAME_SPEED]) fail(video ? "the game speed control is missing" : "the game speed control is missing without a video backend");
+    }
+
     ImGui::DestroyContext();
     printf(g_failed ? "FAIL: menu contents\n"
-                    : "PASS: menu sections offer dimming with and without a video backend, scaler only with one\n");
+                    : "PASS: menu sections offer dimming with and without a video backend, scaler only with one, and the game speed\n");
     return g_failed ? 1 : 0;
 }
