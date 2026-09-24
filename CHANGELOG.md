@@ -4,7 +4,7 @@ Newest first. Versions are the release archive names; `-test` means what it says
 Full release notes for each version are on the
 [releases page](https://github.com/vittorioromeo/th12_hfr/releases).
 
-## Unreleased
+## v0.11-test
 
 Game speed.
 
@@ -23,7 +23,8 @@ Game speed.
   replay's frame number, so a recording with pauses and its playback slice alike.
 - Verified under Wine at 144 Hz on TH18 and TH20: a stage recorded with two pauses and a speed
   change, played back with the game's own fast forward and at 150–200%, agrees on every frame;
-  TH08 likewise with speed changes during recording and playback.
+  TH08 likewise with speed changes during recording and playback. Played on Windows in every
+  game.
 - The F11 menu's TH08 texts no longer call sub-stepping experimental or replay-unsafe.
 
 ## v0.10-test
