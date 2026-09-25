@@ -4,7 +4,9 @@ Newest first. Versions are the release archive names; `-test` means what it says
 Full release notes for each version are on the
 [releases page](https://github.com/vittorioromeo/th12_hfr/releases).
 
-## Unreleased
+## v0.12-test
+
+Game speed, from feedback on v0.11-test.
 
 - **Any game speed from 10% to 1600%.** F11 → Timing now has a slider (logarithmic, so 50% and
   200% sit equally far from 100%); Ctrl+click or double-click it to type an exact value. The
