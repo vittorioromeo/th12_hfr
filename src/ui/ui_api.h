@@ -45,7 +45,8 @@ enum {
     UI_SPEED_KEY_SLOWER,      /* read-only: virtual-key codes of the speed hotkeys, 0 when unset */
     UI_SPEED_KEY_FASTER,
     UI_SPEED_KEY_RESET,
-    UI_REPLAY_SAFE,           /* read-only: the replays carry the sub-stepping settings (TH08; not New Classic) */
+    UI_REPLAY_SAFE,
+    UI_SPEED_KEYS,            /* the game speed hotkeys are listened to (saved; off leaves the keys to the game) */           /* read-only: the replays carry the sub-stepping settings (TH08; not New Classic) */
     UI_SETTING_COUNT
 };
 
@@ -101,6 +102,7 @@ int  hfr_menu_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, LRESULT* result
 void hfr_menu_toggle(void);
 int  hfr_menu_visible(void);
 int  hfr_menu_ready(void);
+int  hfr_menu_typing(void);   /* a text field in the menu has the keyboard (typing_block.h) */
 #else
 static int  hfr_menu_init(void* dev, HWND hwnd) { (void)dev; (void)hwnd; return 0; }
 static void hfr_menu_shutdown(void) {}
@@ -111,6 +113,7 @@ static int  hfr_menu_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, LRESULT*
 static void hfr_menu_toggle(void) {}
 static int  hfr_menu_visible(void) { return 0; }
 static int  hfr_menu_ready(void) { return 0; }
+static int  hfr_menu_typing(void) { return 0; }
 #endif
 
 #ifdef __cplusplus

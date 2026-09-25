@@ -25,8 +25,11 @@ struct hfr_speed_keys { struct menu_key slower, faster, reset; };
 static int hfr_speed_key_down(int vk) {
     return vk > 0 && vk < 256 && (GetAsyncKeyState(vk) & 0x8000) != 0;
 }
-/* Call once a presentation with whether the game has the keyboard. */
+/* Call once a presentation with whether the game has the keyboard. With the keys switched off
+   (F11 -> Timing, [video] speed_keys=0) every press is ignored, so a stray press of a key that
+   sits beside the arrows on a compact keyboard does nothing. */
 static void hfr_speed_keys_poll(struct hfr_speed_keys* k, int focus) {
+    if (!hfr_ui_get(UI_SPEED_KEYS)) focus = 0;   /* also forgets any key held when they were switched off */
     int cur = hfr_ui_get(UI_GAME_SPEED), want = cur;
     if (menu_key_press(&k->slower, hfr_speed_key_down(hfr_ui_get(UI_SPEED_KEY_SLOWER)), focus)) want = hfr_speed_step(cur, -1);
     if (menu_key_press(&k->faster, hfr_speed_key_down(hfr_ui_get(UI_SPEED_KEY_FASTER)), focus)) want = hfr_speed_step(cur, +1);

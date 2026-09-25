@@ -4,6 +4,19 @@ Newest first. Versions are the release archive names; `-test` means what it says
 Full release notes for each version are on the
 [releases page](https://github.com/vittorioromeo/th12_hfr/releases).
 
+## Unreleased
+
+- **Any game speed from 10% to 1600%.** F11 → Timing now has a slider (logarithmic, so 50% and
+  200% sit equally far from 100%); Ctrl+click or double-click it to type an exact value. The
+  presets are one-click buttons underneath.
+- **The speed keys can be switched off** (F11 → Timing → Speed keys, saved as
+  `[video] speed_keys=0`), for keyboards where Page Up, Page Down and End sit next to the
+  arrows.
+- **Typing into the menu no longer reaches the game.** While a value is typed (the speed, or any
+  slider after Ctrl+click), the game sees no keys held; a key down then stays hidden until it is
+  let go, so the Enter that confirms a value does not also start a game or pick a pause-menu
+  item. The gamepad is not affected.
+
 ## v0.11-test
 
 Game speed.

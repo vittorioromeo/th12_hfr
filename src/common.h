@@ -72,6 +72,7 @@ static struct {
     int menu_key;           /* virtual-key code that opens the in-game menu */
     int size_cycle_key;     /* cycles the window size, for games without their own F10 (0 = off) */
     int speed_slower_key, speed_faster_key, speed_reset_key;   /* game speed hotkeys (0 = off) */
+    int speed_keys;         /* whether those hotkeys are listened to at all */
     int own_present;        /* -1 auto, 0 present through the game's chain, 1 through ours */
     int internal_scale;     /* the game draws at N times 640x480 (1 = as shipped) */
     int texture_scale;      /* textures magnified N times at load with texture_filter (0/1 = off) */
@@ -88,5 +89,5 @@ static struct {
     .max_frame_latency = 1, .flipex = 0,
     .scaling = 1, .filter = FILTER_SHARP, .filter_name = "", .sharpen_name = "none", .sharpen = -1, .sharpen_strength = 50, .cursor = 2,
     .resizable = 1, .window_scale = 0, .snap_aspect = 0, .fullscreen_mode = 1,
-    .menu_key = VK_F11, .size_cycle_key = VK_F10, .speed_slower_key = VK_NEXT, .speed_faster_key = VK_PRIOR, .speed_reset_key = VK_END, .own_present = -1, .internal_scale = 1, .texture_scale = 0, .texture_filter_name = "xbr-lv2",
+    .menu_key = VK_F11, .size_cycle_key = VK_F10, .speed_slower_key = VK_NEXT, .speed_faster_key = VK_PRIOR, .speed_reset_key = VK_END, .speed_keys = 1, .own_present = -1, .internal_scale = 1, .texture_scale = 0, .texture_filter_name = "xbr-lv2",
 };

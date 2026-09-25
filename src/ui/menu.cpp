@@ -12,6 +12,7 @@
 #include "ui_api.h"
 #include "speed_keys.h"
 #include "../../third_party/imgui/imgui.h"
+#include "../../third_party/imgui/imgui_internal.h"   /* TempInputIsActive: a typed speed applies once confirmed */
 #include "menu_renderer.h"
 #include "../../third_party/imgui/backends/imgui_impl_win32.h"
 #include <cstdio>
@@ -102,6 +103,10 @@ extern "C" void hfr_menu_toggle(void) {
 }
 extern "C" int  hfr_menu_visible(void) { return g_ready && g_visible; }
 extern "C" int  hfr_menu_ready(void) { return g_ready; }
+/* Whether a text field had the keyboard when the menu was last drawn: the runtimes then keep
+   the keys from the game (typing_block.h). A closed menu types nothing. */
+static bool g_typing;
+extern "C" int  hfr_menu_typing(void) { return g_ready && g_visible && g_typing; }
 
 extern "C" int hfr_menu_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, LRESULT* result) {
     if (!g_ready) return 0;
@@ -350,28 +355,43 @@ const char* key_name(int vk, char* buf, int n) {
    simulation at any speed. */
 void draw_speed_controls(void) {
     int cur = hfr_ui_get(UI_GAME_SPEED);
-    char label[32];
-    snprintf(label, sizeof label, "%d%%%s", cur, cur == 100 ? " (normal)" : "");
-    if (ImGui::BeginCombo("Game speed", label)) {
-        for (int i = 0; i < HFR_SPEED_PRESET_COUNT; ++i) {
-            int p = hfr_speed_presets[i];
-            char name[32]; snprintf(name, sizeof name, "%d%%%s", p, p == 100 ? " (normal)" : p < 100 ? " (slow motion)" : " (fast forward)");
-            if (ImGui::Selectable(name, p == cur)) hfr_ui_set(UI_GAME_SPEED, p);
-            if (p == cur) ImGui::SetItemDefaultFocus();
-        }
-        ImGui::EndCombo();
-    }
-    char a[40], b[40], c[40];
+    /* Any value from 10% to 1600%: dragged on a logarithmic scale, so 50% and 200% sit
+       equally far from 100%, or typed after Ctrl+click (double-click works too). */
+    /* A dragged value applies as it moves; a typed one only once it is confirmed (Enter or
+       clicking away), so typing "150" does not run the game at 1% and 15% on the way there. */
+    static int typed = 100;
+    const ImGuiID id = ImGui::GetID("Game speed");
+    const bool typing = ImGui::TempInputIsActive(id);
+    int v = typing ? typed : cur;
+    bool moved = ImGui::SliderInt("Game speed", &v, 10, 1600, "%d%%", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_AlwaysClamp);
+    if (ImGui::TempInputIsActive(id)) typed = v;                  /* still typing: hold the value */
+    else if (typing || moved) { if (v != cur) hfr_ui_set(UI_GAME_SPEED, v); }
     help("Plays the game slower or faster, for practising a section or watching a\n"
-         "replay. Only how many game frames run per second changes: every frame is\n"
-         "the same, so replays stay in sync at any speed, and one recorded while\n"
+         "replay. Drag, or Ctrl+click to type a value from 10%% to 1600%% and\n"
+         "press Enter. Typing in the menu is kept from the game.\n"
+         "Only how many game frames run per second changes: every frame is the\n"
+         "same, so replays stay in sync at any speed, and one recorded while\n"
          "practising plays back normally (it is marked as practice in its data).\n"
          "The music keeps its own speed. Fast forward runs as fast as the computer\n"
-         "allows. Not saved: every start is at 100%.");
-    ImGui::TextDisabled("Keys: %s slower, %s faster, %s normal",
-                        key_name(hfr_ui_get(UI_SPEED_KEY_SLOWER), a, sizeof a),
-                        key_name(hfr_ui_get(UI_SPEED_KEY_FASTER), b, sizeof b),
-                        key_name(hfr_ui_get(UI_SPEED_KEY_RESET), c, sizeof c));
+         "allows. Not saved: every start is at 100%%.");
+    /* the presets, one click each */
+    for (int i = 0; i < HFR_SPEED_PRESET_COUNT; ++i) {
+        int p = hfr_speed_presets[i];
+        char name[16]; snprintf(name, sizeof name, "%d%%", p);
+        if (i) ImGui::SameLine(0.0f, 4.0f);
+        if (p == cur) ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+        if (ImGui::SmallButton(name)) hfr_ui_set(UI_GAME_SPEED, p);
+        if (p == cur) ImGui::PopStyleColor();
+    }
+    char a[40], b[40], c[40], label[160];
+    snprintf(label, sizeof label, "Speed keys: %s slower, %s faster, %s normal",
+             key_name(hfr_ui_get(UI_SPEED_KEY_SLOWER), a, sizeof a),
+             key_name(hfr_ui_get(UI_SPEED_KEY_FASTER), b, sizeof b),
+             key_name(hfr_ui_get(UI_SPEED_KEY_RESET), c, sizeof c));
+    toggle(label, UI_SPEED_KEYS);
+    help("Off: those keys do nothing here, for keyboards where they sit next to the\n"
+         "arrows and get pressed by accident. The keys themselves can be changed\n"
+         "in touhou_hfr.ini. Saved with the other settings.");
 }
 
 /* A small note in a corner while the game is not at normal speed, so it is never forgotten. */
@@ -654,6 +674,7 @@ extern "C" void hfr_menu_render(void* dev, int width, int height) {
     else if (g_hint_frames > 0) { draw_hint(); --g_hint_frames; }
     if (speed_note) draw_speed_note();
     ImGui::EndFrame();
+    { ImGuiContext& g = *GImGui; g_typing = g_visible && g.ActiveId != 0 && g.InputTextState.ID == g.ActiveId; }
     ImGui::Render();
     if (!g_menu_failed) hfr_menu_renderer_draw(ImGui::GetDrawData());
     (void)dev;

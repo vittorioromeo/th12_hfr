@@ -32,6 +32,7 @@ int hfr_ui_get(int id) {
     case UI_SPEED_KEY_SLOWER: return speed_keys[0];
     case UI_SPEED_KEY_FASTER: return speed_keys[1];
     case UI_SPEED_KEY_RESET: return speed_keys[2];
+    case UI_SPEED_KEYS: return speed_keys_on;
     default: return 0;
     }
 }
@@ -49,6 +50,7 @@ void hfr_ui_set(int id,int value) {
     case UI_DIM_SPECIAL: case UI_DIM_PLAYER_SHOTS:
         dim_percent[id-UI_DIM_BACKGROUND]=value<0?0:(value>100?100:value);break;
     case UI_DEBUG: debug=!!value;break;
+    case UI_SPEED_KEYS: speed_keys_on=!!value;break;
     case UI_GAME_SPEED:
         value=value<10?10:(value>1600?1600:value);
         if (value!=speed_pct) {speed_pct=value;LOG("game speed: %d%%",speed_pct);}
@@ -65,6 +67,7 @@ void hfr_ui_save(void) {
     save_int("fixed60","subtick",subtick);save_int("fixed60","substep",substep);
     for (int i=0;i<DIM_COUNT;++i) {char key[32];snprintf(key,sizeof key,"dim_%s",DIM_NAMES[i]);
                                   save_int("video",key,dim_percent[i]);}
+    save_int("video","speed_keys",speed_keys_on);
 }
 void hfr_ui_status(char* out,int n) {
     snprintf(out,n,"%s | %d FPS target | 60 Hz gameplay%s",game->name,rate,guard_failed?" | DRAW GUARD FAILED":"");

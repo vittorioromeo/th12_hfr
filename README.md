@@ -86,9 +86,16 @@ All of these keys can be rebound or disabled in the INI.
 ### Game speed
 
 Slow motion and fast forward for practising a section or watching a replay, in every supported
-game: 25%, 50%, 75%, 100%, 150%, 200%, 300%, 400% and 800%, from the keys above or F11 → Timing.
-A small note in the corner shows the speed whenever it is not 100%. It is not saved: every
-start is at normal speed.
+game. F11 → Timing has a slider from 10% to 1600%; Ctrl+click it (or double-click) to type an
+exact value, then press Enter or click elsewhere. Below it are one-click presets: 25%, 50%,
+75%, 100%, 150%, 200%, 300%, 400% and 800%, which the keys above also step through. A small
+note in the corner shows the speed whenever it is not 100%. The speed is not saved: every start
+is at normal speed.
+
+The keys sit next to the arrows on some keyboards, so they are easy to press by accident. The
+**Speed keys** switch under the slider turns all three off; it is saved with the other
+settings (`speed_keys=0`). While a value is being typed into the menu, the game does not see
+the keyboard, so the Enter that confirms it does not also pick a menu item in the game.
 
 Only how many game frames run per second changes. Every frame is the same as at 100%, so:
 
@@ -149,6 +156,7 @@ Edit `touhou_hfr.ini` beside the game and restart; every setting is commented in
 | `cursor` | `2` | Mouse pointer in borderless fullscreen: `0` never, `1` always, `2` while it moves. Always shown while the menu is open |
 | `menu_key` | `122` | Virtual-key code of the in-game menu (F11); `0` disables it. **INI only** |
 | `size_cycle_key` | `121` | Virtual-key code of the window-size cycle (F10); `0` disables it. **INI only** |
+| `speed_keys` | `1` | Whether the game-speed keys are listened to; `0` switches all three off |
 | `speed_slower_key`, `speed_faster_key`, `speed_reset_key` | `34`, `33`, `35` | Virtual-key codes of the game-speed keys (Page Down, Page Up, End); `0` disables one. **INI only** |
 | `warn_wrapper` | `1` | Say at startup when a d3d9 wrapper is presenting the game. **INI only** |
 | `external_renderer` | `-1` | Hand the picture to a rotation wrapper such as THRotator: `-1` when one is recognised, `1` always, `0` never. **INI only** |

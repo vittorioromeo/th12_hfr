@@ -199,6 +199,26 @@ static void test_import_redirection(void) {
          "      and no library's exports are altered for the rest of the process");
 }
 
+/* The menu's typing is kept from the game's keyboard (ui/typing_block.h): every key reads up
+   while typing, and a key down then stays up until the game has seen it released. */
+static void test_typing_block(void) {
+    struct typing_block t; memset(&t, 0, sizeof t);
+    assert(typing_block_key(&t, 0, 0x0d, 1) == 1);     /* not typing: as it is */
+    assert(typing_block_key(&t, 1, 0x0d, 1) == 0);     /* typing: nothing */
+    assert(typing_block_key(&t, 1, 0x41, 0) == 0);
+    assert(typing_block_key(&t, 0, 0x0d, 1) == 0);     /* the Enter that confirmed it, still held */
+    assert(typing_block_key(&t, 0, 0x0d, 1) == 0);
+    assert(typing_block_key(&t, 0, 0x0d, 0) == 0);     /* let go */
+    assert(typing_block_key(&t, 0, 0x0d, 1) == 1);     /* the next press is a press */
+    assert(typing_block_key(&t, 0, 0x41, 0) == 0);     /* a key up at the end of typing is free */
+    assert(typing_block_key(&t, 0, 0x41, 1) == 1);     /* from the next read on */
+    unsigned char keys[256]; memset(keys, 0, sizeof keys); keys[0x0d] = 0x81; keys[0x14] = 0x01;
+    memset(&t, 0, sizeof t); t.held_back[0x0d] = 1;
+    typing_block_state(&t, keys, 0);                   /* HFR_NO_UI: the menu types nothing */
+    assert(keys[0x0d] == 0x01 && keys[0x14] == 0x01);  /* the down bit goes, the toggle bit stays */
+    printf("PASS: typing into the menu is kept from the game, and a held key until it is let go\n");
+}
+
 int main(int argc,char**argv) {
     /* Unbuffered, so that a run which hangs still shows how far it got. Under Wine stdout is
        block-buffered into a pipe and a hang otherwise prints nothing at all. */
@@ -342,7 +362,7 @@ int main(int argc,char**argv) {
        simulation at 60 Hz. The runner tests build their own class table and hold either way;
        the replay round-trip drives a real sub-step switch and needs a real class. */
     int subs = sim && g_class_count;
-    test_fixed_quad();test_schedule();test_calling_conventions();test_speed_sites();test_movement_residual();test_replay_parser();test_scale_rect();test_snap_client();test_menu_key();
+    test_fixed_quad();test_schedule();test_calling_conventions();test_speed_sites();test_movement_residual();test_replay_parser();test_scale_rect();test_snap_client();test_menu_key();test_typing_block();
     if (sim && g_game->runner_wrap) test_runner_wrapped();   /* the game keeps its own runner: no list, lock or ending of ours */
     else if (sim) { test_runner();test_runner_undescribed();test_runner_tail(); }
     else puts("SKIP: the shared runner (this game's simulation is not described)");
@@ -402,9 +422,9 @@ int main(int argc,char**argv) {
         dump(argv[2],".patches.json",w,n);free(w);
     }
     char info[1024];snprintf(info,sizeof info,
-        "{\"stub_base\":%u,\"major\":%u,\"factor\":%u,\"logical\":%u,\"residual\":%u,\"ptf_prev\":%u,\"ptf_cur\":%u}",
+        "{\"stub_base\":%u,\"major\":%u,\"factor\":%u,\"logical\":%u,\"residual\":%u,\"ptf_prev\":%u,\"ptf_cur\":%u,\"xmm_scratch\":%u}",
         (unsigned)g_stub_mem,(unsigned)&g_major,(unsigned)&g_factor,(unsigned)&g_logical,
-        (unsigned)g_move_residual,(unsigned)&g_ptf_prev,(unsigned)&g_ptf_cur);
+        (unsigned)g_move_residual,(unsigned)&g_ptf_prev,(unsigned)&g_ptf_cur,(unsigned)g_xmm_scratch);
     /* this game's own switches, by INI key, so a stub test can flip them */
     for(size_t i=0;i<g_game->toggle_count;++i) {
         size_t n=strlen(info)-1;

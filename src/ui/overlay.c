@@ -50,6 +50,7 @@ int hfr_ui_get(int id) {
     case UI_SPEED_KEY_SLOWER:   return cfg.speed_slower_key;
     case UI_SPEED_KEY_FASTER:   return cfg.speed_faster_key;
     case UI_SPEED_KEY_RESET:    return cfg.speed_reset_key;
+    case UI_SPEED_KEYS:         return cfg.speed_keys;
     case UI_REPLAY_SAFE:        return 1;
     /* Which classes this game can actually fade: the background whenever the world's priority
        is known, and every category some rule mentions. It used to answer "all of them", which
@@ -126,6 +127,7 @@ void hfr_ui_set(int id, int value) {
         break;
     case UI_PREDICT:         cfg.predict = !!value; break;
     case UI_GAME_SPEED:      set_game_speed(value); break;
+    case UI_SPEED_KEYS:      cfg.speed_keys = !!value; break;
     case UI_ENEMY_INTERP:    cfg.enemy_interp = !!value; break;
     case UI_DEBUG:           cfg.debug = !!value; break;
     case UI_DIM_BACKGROUND: case UI_DIM_ITEMS: case UI_DIM_EFFECTS: case UI_DIM_SPECIAL: case UI_DIM_PLAYER_SHOTS:
@@ -215,6 +217,7 @@ void hfr_ui_save(void) {
     ini_put_int("video", "fullscreen_mode", cfg.fullscreen_mode);
     for (int i = 0; i < DIM_COUNT; ++i) { char key[32]; snprintf(key, sizeof key, "dim_%s", DIM_NAMES[i]); ini_put_int("video", key, cfg.dim[i]); }
     for (size_t i = 0; g_game && i < g_game->toggle_count; ++i) ini_put_int("game", g_game->toggles[i].key, *g_game->toggles[i].value);
+    ini_put_int("video", "speed_keys", cfg.speed_keys);
     ini_put_int("hfr", "max_frame_latency", cfg.max_frame_latency);
     ini_put_int("hfr", "fps", cfg.fps);
     ini_put_int("hfr", "vsync", cfg.vsync);

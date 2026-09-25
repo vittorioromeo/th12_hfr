@@ -23,8 +23,8 @@ def wf(address,value):u.mem_write(address,struct.pack('<f',value))
 def rf(address):return struct.unpack('<f',u.mem_read(address,4))[0]
 for name,base in (('game',0x400000),('stubs',meta['stub_base'])):
     data=Path(prefix+'.'+name).read_bytes();map_region(base,len(data));u.mem_write(base,data)
-for name,address in meta.items():
-    if name!='stub_base':map_region(address,8)
+for name,address in meta.items():   # the runtime's variables the stubs use (the scratch is 32 bytes)
+    if name!='stub_base' and isinstance(address,int):map_region(address,32)
 ARENA=0x20000000;STACK=ARENA+0xf0000;BOOT=ARENA+0xe0000
 map_region(ARENA,0x100000)
 regs=[UC_X86_REG_EAX,UC_X86_REG_EBX,UC_X86_REG_ECX,UC_X86_REG_EDX,UC_X86_REG_ESI,UC_X86_REG_EDI,UC_X86_REG_EBP]

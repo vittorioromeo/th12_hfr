@@ -57,6 +57,7 @@ static void read_config(void) {
     cfg.speed_slower_key = GetPrivateProfileIntA("video", "speed_slower_key", VK_NEXT, ini) & 0xff;
     cfg.speed_faster_key = GetPrivateProfileIntA("video", "speed_faster_key", VK_PRIOR, ini) & 0xff;
     cfg.speed_reset_key = GetPrivateProfileIntA("video", "speed_reset_key", VK_END, ini) & 0xff;
+    cfg.speed_keys = GetPrivateProfileIntA("video", "speed_keys", 1, ini) != 0;
     cfg.own_present = GetPrivateProfileIntA("video", "own_present", -1, ini);
     cfg.warn_wrapper = GetPrivateProfileIntA("video", "warn_wrapper", 1, ini);
     for (size_t i = 0; g_game && i < g_class_count; i++) {
@@ -68,8 +69,7 @@ static void read_config(void) {
 
 
 /* ------------------------------------------------------------------ dinput8.dll proxy mode */
-typedef HRESULT (WINAPI *DirectInput8CreateFn)(HINSTANCE, DWORD, REFIID, LPVOID*, LPUNKNOWN);
-static DirectInput8CreateFn real_DirectInput8Create;
+static DirectInput8CreateFn real_DirectInput8Create;   /* the type is in typing_block.c */
 __declspec(dllexport) HRESULT WINAPI DirectInput8Create(HINSTANCE hinst, DWORD ver, REFIID riid, LPVOID* out, LPUNKNOWN outer) {
     if (!real_DirectInput8Create) {
         char path[MAX_PATH]; GetSystemDirectoryA(path, MAX_PATH); strcat(path, "\\dinput8.dll");
@@ -77,7 +77,9 @@ __declspec(dllexport) HRESULT WINAPI DirectInput8Create(HINSTANCE hinst, DWORD v
         if (m) real_DirectInput8Create = (DirectInput8CreateFn)GetProcAddress(m, "DirectInput8Create");
     }
     if (!real_DirectInput8Create) return E_FAIL;
-    return real_DirectInput8Create(hinst, ver, riid, out, outer);
+    HRESULT r = real_DirectInput8Create(hinst, ver, riid, out, outer);
+    typing_block_wrap_dinput(r, out);   /* the menu's typing is kept from the game's keyboard */
+    return r;
 }
 
 /* ------------------------------------------------------------------ the late entry point

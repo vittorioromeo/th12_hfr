@@ -324,6 +324,11 @@ static int install(void) {
     }
     /* Sub-tick input feeds the simulation, so it belongs with the rest of it. */
     hook_import("winmm.dll","joyGetPosEx",hook_joyGetPosEx,(void**)&orig_joyGetPosEx);   /* always: the real call stalls the game thread (input.c) */
+    /* What is typed into the menu stays out of the game's keyboard (typing_block.c). Through
+       the proxy, DirectInput8Create is this DLL's own export and wraps the interface already;
+       the import hook covers the launcher, and chains to the export otherwise. */
+    hook_import("user32.dll","GetKeyboardState",hook_GetKeyboardState,(void**)&orig_GetKeyboardState);
+    hook_import("dinput8.dll","DirectInput8Create",hook_import_DirectInput8Create,(void**)&orig_import_DirectInput8Create);
     /* The pointer in borderless fullscreen (window.c): both calls or neither, since one without the other leaves it half hidden. */
     if (hook_import("user32.dll","ShowCursor",hook_ShowCursor,(void**)&orig_ShowCursor) && hook_import("user32.dll","SetCursor",hook_SetCursor,(void**)&orig_SetCursor)) g_cursor_hooked = 1;
     else LOG("window: the game's cursor calls are not in its import table; the pointer stays as the game leaves it");

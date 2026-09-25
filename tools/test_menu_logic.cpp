@@ -119,6 +119,7 @@ int main(void) {
         g_value[UI_VIDEO_AVAILABLE] = video; g_value[UI_GAME_SPEED] = 100;
         frame();
         if (!g_read[UI_GAME_SPEED]) fail(video ? "the game speed control is missing" : "the game speed control is missing without a video backend");
+        if (!g_read[UI_SPEED_KEYS]) fail("the switch for the game speed keys is missing");
     }
 
     ImGui::DestroyContext();

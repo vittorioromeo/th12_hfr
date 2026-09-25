@@ -36,5 +36,6 @@
 #include "games/th15.c"
 #include "games/th18.c"
 #include "games/th20.c"
+#include "core/typing_block.c"
 #include "core/install.c"
 #include "core/entry.c"

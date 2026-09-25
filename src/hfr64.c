@@ -12,6 +12,8 @@
 #include "ui/ui_api.h"
 #include "backends/fixed_history.h"
 #include "backends/fixed_clock.h"
+#include "ui/typing_block.h"
+static void hook_keyboard_import(void);
 #include "backends/subtick.h"
 #include "backends/substep.h"
 #include "fixed_identity.h"
@@ -23,7 +25,7 @@ static HMODULE module;
 static FILE* logfile;
 static char ini[MAX_PATH];
 static int fps=0, rate=60, interpolate=1, vsync=0, debug=0, subtick=0, substep=0, diag_seconds=0;
-static int speed_pct=100, speed_keys[3]={VK_NEXT,VK_PRIOR,VK_END};   /* game speed and its hotkeys: slower, faster, reset */
+static int speed_pct=100, speed_keys[3]={VK_NEXT,VK_PRIOR,VK_END}, speed_keys_on=1;   /* game speed, its hotkeys (slower, faster, reset) and whether they are listened to */
 static int major=1, guard_failed=0, depth=0;
 static uint64_t ticks, frames, samples, blends;
 static double phase, frequency, deadline;
@@ -730,6 +732,7 @@ __declspec(dllexport) DWORD WINAPI hfr_start(void* unused) {
     speed_keys[0]=GetPrivateProfileIntA("video","speed_slower_key",VK_NEXT,ini)&0xff;
     speed_keys[1]=GetPrivateProfileIntA("video","speed_faster_key",VK_PRIOR,ini)&0xff;
     speed_keys[2]=GetPrivateProfileIntA("video","speed_reset_key",VK_END,ini)&0xff;
+    speed_keys_on=GetPrivateProfileIntA("video","speed_keys",1,ini)!=0;
     LARGE_INTEGER q;QueryPerformanceFrequency(&q);frequency=(double)q.QuadPart;
     timer=CreateWaitableTimerExW(NULL,NULL,2,TIMER_ALL_ACCESS);
     if (!timer) timer=CreateWaitableTimerW(NULL,FALSE,NULL);
@@ -746,8 +749,44 @@ __declspec(dllexport) DWORD WINAPI hfr_start(void* unused) {
         LOG("Sprite hook installation failed");MH_Uninitialize();return 0;
     }
     if (!patch_commit()) {LOG("Code patch commit failed");MH_Uninitialize();return 0;}
+    hook_keyboard_import();
     LOG("Installed at image=%p relay=%p; original executable unchanged",(void*)base,relay_page);
     return 1;
+}
+/* What is typed into the menu stays out of the game's keyboard (ui/typing_block.h). New
+   Classic reads its keys one at a time with GetAsyncKeyState; its import is redirected, which
+   leaves this DLL's own calls (the menu and speed keys) reading the real keyboard. */
+static SHORT (WINAPI *orig_GetAsyncKeyState)(int);
+static struct typing_block typing_keys;
+static SHORT WINAPI hook_GetAsyncKeyState(int vk) {
+    SHORT r=orig_GetAsyncKeyState(vk);
+    int typing=hfr_menu_typing(),down=(r&0x8000)!=0;
+    int held=typing||typing_keys.held_back[vk&255];
+    return held && !typing_block_key(&typing_keys,typing,vk,down) ? 0 : r;
+}
+static void** import_slot64(const char* dll,const char* func) {
+    uint8_t* b=(uint8_t*)base;
+    IMAGE_NT_HEADERS64* nt=(void*)(b+((IMAGE_DOS_HEADER*)b)->e_lfanew);
+    IMAGE_DATA_DIRECTORY dir=nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
+    if (!dir.VirtualAddress) return NULL;
+    for (IMAGE_IMPORT_DESCRIPTOR* imp=(void*)(b+dir.VirtualAddress);imp->Name;imp++) {
+        if (_stricmp((const char*)(b+imp->Name),dll) || !imp->OriginalFirstThunk) continue;
+        IMAGE_THUNK_DATA64* thunk=(void*)(b+imp->FirstThunk);
+        IMAGE_THUNK_DATA64* name=(void*)(b+imp->OriginalFirstThunk);
+        for (;name->u1.AddressOfData;thunk++,name++) {
+            if (name->u1.Ordinal&IMAGE_ORDINAL_FLAG64) continue;
+            if (!strcmp((const char*)((IMAGE_IMPORT_BY_NAME*)(b+name->u1.AddressOfData))->Name,func)) return (void**)&thunk->u1.Function;
+        }
+    }
+    return NULL;
+}
+static void hook_keyboard_import(void) {
+    void** slot=import_slot64("user32.dll","GetAsyncKeyState");
+    DWORD old;
+    if (!slot || !*slot || !VirtualProtect(slot,sizeof *slot,PAGE_READWRITE,&old)) {LOG("menu: GetAsyncKeyState is not imported; typed values also reach the game");return;}
+    orig_GetAsyncKeyState=(SHORT (WINAPI*)(int))*slot;
+    *slot=(void*)hook_GetAsyncKeyState;
+    VirtualProtect(slot,sizeof *slot,old,&old);
 }
 BOOL WINAPI DllMain(HINSTANCE self,DWORD reason,LPVOID reserved) {
     (void)reserved;
