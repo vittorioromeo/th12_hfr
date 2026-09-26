@@ -29,7 +29,7 @@ No game file is modified. You add four files to the game's folder and delete the
 | Touhou 15 — Legacy of Lunatic Kingdom | v1.00b | `th15.exe` | supported, new — [notes](#touhou-14-and-15) |
 | Touhou 18 — Unconnected Marketeers | v1.00a | `th18.exe` | supported, new — [notes](#touhou-18) |
 | Touhou 20 — Fossilized Wonders | v1.00c (Steam) | `th20.exe` | supported, new — [notes](#touhou-20) |
-| Touhou Koumakyou: New Classic | [see notes](docs/games/TH06NC_DEVNOTES.md#2-product-and-inspected-build) | `th06nc.exe` | experimental — [notes](#new-classic) |
+| Touhou Koumakyou: New Classic | release build and the Steam update of 2026-09-25 ([notes](docs/games/TH06NC_DEVNOTES.md#24-the-steam-update-of-2026-09-25)) | `th06nc.exe` | experimental — [notes](#new-classic) |
 
 - Requires Windows and a display above 60 Hz. On a 60 Hz display the patch does nothing.
 - Steam releases of TH10–13 are supported. **Start them from Steam**: the Steam executable is

@@ -1373,3 +1373,46 @@ Not mapped:
 - The complete laser layout; node field `+0x30`; nodes `0x75af0`/`0x76280`.
 - The `player+0x7898` conflict ([§7](#7-engine-objects)).
 - A Steam-verified executable fingerprint and short stock replays from the owner.
+
+## 24. The Steam update of 2026-09-25
+
+Steam shipped a new `th06nc.exe` on 2026-09-25: 5,857,792 bytes, PE timestamp 2026-09-14,
+image size `0xcbc000`, SHA-256
+`48630a42a2eb6762d0db2a7e0d151203efbe67220fef7d2f9d0d51857928ac82`. The runtime identifies
+executables by hash, so the patch declined it until it had a profile of its own:
+`src/games/th06nc_0914.c`. The build of §2 keeps `th06nc.c`; both are listed in
+`src/fixed_identity.h`.
+
+**How it was ported.** It is a rebuild, not a rewrite. `.text` grew by `0x35000` and `.data`
+moved by `0x4ac50`–`0x4c228` depending on the region. Both executables' `.pdata` functions were
+disassembled and normalised (RIP-relative displacements and branch targets out of the
+function replaced by placeholders, labels inside it kept as offsets): 3,410 of 4,365 old
+functions matched exactly and uniquely, and 147 more once jump-table constants and label
+offsets were ignored. Every hooked function but the frame's is among them, at the same
+offsets, so every site kept its bytes apart from displacements. Data addresses came from the
+RIP-relative references those matched functions make (9,083 pairs); the few never referenced
+directly (the bounds, the bullets after the manager's counters, the shot pool, the item pool's
+first VM) take their neighbours' delta, which is constant within each region. The matched
+functions include their struct displacements, so the player, bullet, item and VM layouts are
+unchanged. The three draw callbacks named by the dimming rules were rewritten; the new ones
+were found through the calls that register them (`0x78290` → `0x79b80`, `0x78390` →
+`0x79d60`, `0x2b310` → `0x2b1c0`).
+
+**What did change: the frame.** The old main loop called the update runner, then the draw
+runner (`0x3bf70`) and the frame wait (`0x3c330`). The new build moves the update loop into a
+frame function of its own (`0x3d8b0`) and inlines the draw runner into it, between the call
+that opens it (`0x3d9fd`, to the old runner's first callee, now `0x19d0`) and the call to the
+frame wait (`0x3db06`, to `0x3db50`). Three profile fields cover it:
+
+- `draw_end_call` / `draw_end`. With no draw function to wrap, the draw guard hashes the
+  gameplay state at the opening call and checks it at the call after the draw.
+- `post_update_size` / `post_update_skip`. The post-update site is 13 bytes, not 12, and it
+  zeroes `ebp`, which the inlined draw then uses as its zero (`cmp [rdi+8],rbp`,
+  `mov [rsi+0x37064],ebp`). A presentation-only iteration jumps from the relay straight to the
+  draw, past that instruction, so it runs `xor ebp,ebp` first.
+- `draw_node_modrm`. The inlined runner keeps the node in `rdi`, not `rbx`, so the draw
+  dispatch relay stores `rdi`.
+
+Verified statically: all 31 signatures match the new executable, every dimming rule is a
+`.pdata` function entry, and the old executable still passes the old profile's 29. Played on
+Windows with both builds (2026-09-26); there is no 64-bit Wine on the test rig.

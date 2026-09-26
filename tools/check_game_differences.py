@@ -40,7 +40,7 @@ for f in sorted((fields - ignore) | optional_addr):
 
 for src in sorted((root / 'src/games').glob('th*.c')):
     tag = src.stem.upper()
-    label = 'New Classic' if tag == 'TH06NC' else tag
+    label = 'New Classic' if tag.startswith('TH06NC') else tag  # one column for every New Classic build
     if label not in doc: errors.append(f'{src.name} has no column ({label})')
 
 row = re.search(r'^\| Frozen signatures \|(.*)\|\s*$', doc, flags=re.M)

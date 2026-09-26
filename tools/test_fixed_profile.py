@@ -11,12 +11,19 @@ import pefile
 root = Path(__file__).resolve().parent.parent
 exe = Path(sys.argv[1]).resolve()
 data = exe.read_bytes()
-source = (root / "src/games/th06nc.c").read_text()
-expected_hash = re.search(r'\.sha256 = "([0-9a-f]{64})"', source)[1]
-assert hashlib.sha256(data).hexdigest() == expected_hash, "Unsupported executable fingerprint"
+# One profile per build; the executable's fingerprint says which file describes it.
+digest = hashlib.sha256(data).hexdigest()
+for profile in sorted((root / "src/games").glob("th06nc*.c")):
+    source = profile.read_text()
+    if re.search(r'\.sha256 = "([0-9a-f]{64})"', source)[1] == digest:
+        break
+else:
+    raise AssertionError("Unsupported executable fingerprint")
+expected_hash = digest
 pe = pefile.PE(data=data)
-assert pe.FILE_HEADER.Machine == 0x8664 and pe.OPTIONAL_HEADER.SizeOfImage == 0xC6B000
-table = source.split("th06nc_signatures[] = {", 1)[1].split("};", 1)[0]
+image_size = int(re.search(r"\.image_size = (0x[0-9a-f]+)", source)[1], 16)
+assert pe.FILE_HEADER.Machine == 0x8664 and pe.OPTIONAL_HEADER.SizeOfImage == image_size
+table = re.split(r"_signatures\[\] = \{", source, 1)[1].split("};", 1)[0]
 count = 0
 for rva, size, values in re.findall(r"\{(0x[0-9a-f]+), (\d+), \{([^}]+)\}\}", table):
     frozen = bytes(int(x.strip(), 16) for x in values.split(","))
@@ -56,10 +63,11 @@ for helper in helpers:
 with tempfile.TemporaryDirectory(prefix="hfr-profile-test-") as directory:
     altered = Path(directory) / "th06nc.exe"
     mutation = bytearray(data)
-    mutation[pe.get_offset_from_rva(0x45D82)] ^= 1
+    first_update_call = int(re.search(r"\.update_calls = \{(0x[0-9a-f]+)", source)[1], 16)
+    mutation[pe.get_offset_from_rva(first_update_call)] ^= 1
     altered.write_bytes(mutation)
     for helper in helpers:
         assert check(helper, altered) == 2
 assert hashlib.sha256(exe.read_bytes()).hexdigest() == expected_hash
-print(f"PASS: {count} x64 signatures, {len(rules)} dim rules, {len(pools)} dim pools, "
+print(f"PASS: {profile.name}: {count} x64 signatures, {len(rules)} dim rules, {len(pools)} dim pools, "
       f"both launcher checks, modified/non-PE rejection, original unchanged")

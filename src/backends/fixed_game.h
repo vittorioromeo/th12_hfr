@@ -25,6 +25,18 @@ struct FixedGame {
     size_t signature_count;
     uint32_t update, update_calls[2], draw, draw_call;
     uint32_t post_update, post_update_resume, audio_counter;
+    /* The post-update site is a `mov ebx,[rip+audio_counter]` and the register set-up after
+       it, relocated whole: `post_update_size` bytes (0 means 12). On a presentation-only
+       iteration the relay jumps straight to `draw_call`, first running `post_update_skip`
+       for whatever the draw expects the skipped set-up to have left (the build of 2026-09-14
+       uses ebp as its zero register there). */
+    unsigned post_update_size;
+    const unsigned char* post_update_skip; unsigned post_update_skip_size;
+    /* Where the draw ends, for a build whose draw runner is inlined into the frame function
+       (2026-09-14): `draw_call` is then the call that opens the draw and `draw` its target,
+       and `draw_end_call` the call that follows the draw, to `draw_end`. 0 for a build whose
+       whole draw is the one function `draw`. */
+    uint32_t draw_end_call, draw_end;
     uint32_t wait_site, wait_resume, frame_epilogue;
     unsigned wait_patch_size;
     uint32_t present_call, graphics_api, no_vsync;
@@ -40,6 +52,8 @@ struct FixedGame {
     /* The draw runner's per-node dispatch, relocated so the runtime knows which callback is
        drawing; that is what a sprite is classified by. Same shape as the update runner's. */
     uint32_t draw_dispatch, draw_dispatch_resume; unsigned draw_dispatch_size;
+    /* The ModRM byte of `mov [rip+x],<node register>`: 0x1d for rbx (0 means that), 0x3d rdi. */
+    unsigned char draw_node_modrm;
     const struct DimRule* dim_rules; size_t dim_rule_count;
     const struct DimPool* dim_pools; size_t dim_pool_count;
     uint32_t fps_counter;             /* the game's own presented-frame count for its readout */

@@ -266,15 +266,26 @@ static void log_lists(const char* when) {
         }
     }
 }
-static void draw_frame(void) {
-    uint64_t before=guard_hash();
-    ((DrawFn)(base+game->draw))();
+/* The draw must leave the gameplay state alone. Hashed before it starts and checked once it
+   is over: at the end of `draw`, or where the frame function carries on after an inlined draw
+   (`draw_end_call`). */
+static uint64_t draw_before;
+static void draw_check(void) {
     ++frames;
-    if (!guard_failed && before!=guard_hash()) {
+    if (!guard_failed && draw_before!=guard_hash()) {
         guard_failed=1;
         LOG("DRAW GUARD FAILED at frame=%llu tick=%llu; reverting to 60 Hz without interpolation",(unsigned long long)frames,(unsigned long long)ticks);
         set_rate();
     }
+}
+static void draw_frame(void) {
+    draw_before=guard_hash();
+    ((DrawFn)(base+game->draw))();
+    if (!game->draw_end_call) draw_check();
+}
+static void draw_end_frame(void) {
+    draw_check();
+    ((DrawFn)(base+game->draw_end))();
 }
 static struct FixedPose* history_slot(uintptr_t key,int create) {
     size_t index=((key>>4)*11400714819323198485ull)>>(64-14);
@@ -504,7 +515,8 @@ static int prepare_patches(void) {
     proj_minor=NULL;proj_dt=NULL;proj_ran=NULL;draw_node=NULL;
     patch_begin();
     if (!queue_call(game->update_calls[0],update_first) || !queue_call(game->update_calls[1],update_extra) ||
-        !queue_call(game->draw_call,draw_frame) || !queue_call(game->present_call,present)) return 0;
+        !queue_call(game->draw_call,draw_frame) || !queue_call(game->present_call,present) ||
+        (game->draw_end_call && !queue_call(game->draw_end_call,draw_end_frame))) return 0;
     unsigned char b[32];memset(b,0x90,sizeof b);
     b[0]=0xe8;
     if (!rel32(b+1,base+game->wait_site+5,(uintptr_t)relay(wait_frame))) return 0;
@@ -515,17 +527,26 @@ static int prepare_patches(void) {
         !patch_bytes(base+game->wait_site,b,game->wait_patch_size,NULL)) return 0;
     /* Skip the native fast-forward/audio work on a presentation-only iteration.
        On real ticks reproduce the three displaced instructions exactly. */
-    unsigned char* p=relay_page+relay_used;relay_used+=32;
-    p[0]=0x84;p[1]=0xe4; /* test ah,ah */
-    p[2]=0x0f;p[3]=0x85;
-    if (!rel32(p+4,(uintptr_t)p+8,base+game->draw_call)) return 0;
-    p[8]=0x8b;p[9]=0x1d;
-    if (!rel32(p+10,(uintptr_t)p+14,base+game->audio_counter)) return 0;
-    const unsigned char displaced[]={0x40,0x32,0xf6,0x41,0x8b,0xfd,0xe9};
-    memcpy(p+14,displaced,sizeof displaced);
-    if (!rel32(p+21,(uintptr_t)p+25,base+game->post_update_resume)) return 0;
-    memset(b,0x90,12);b[0]=0xe9;
-    if (!rel32(b+1,base+game->post_update+5,(uintptr_t)p) || !patch_bytes(base+game->post_update,b,12,NULL)) return 0;
+    /* test ah,ah; jnz skip; mov ebx,[rip+audio_counter]; <the rest of the site, copied>;
+       jmp resume; skip: <post_update_skip>; jmp draw_call. */
+    unsigned post_size=game->post_update_size?game->post_update_size:12;
+    if (post_size<6 || post_size>sizeof b || game->post_update_skip_size>8) return 0;
+    unsigned char* p=relay_page+relay_used;relay_used+=64;size_t k=0;
+    p[k++]=0x84;p[k++]=0xe4;
+    p[k++]=0x0f;p[k++]=0x85;unsigned char* to_skip=p+k;k+=4;
+    p[k++]=0x8b;p[k++]=0x1d;
+    if (!rel32(p+k,(uintptr_t)p+k+4,base+game->audio_counter)) return 0;
+    k+=4;
+    memcpy(p+k,(const void*)(base+game->post_update+6),post_size-6);k+=post_size-6;
+    p[k++]=0xe9;
+    if (!rel32(p+k,(uintptr_t)p+k+4,base+game->post_update_resume)) return 0;
+    k+=4;
+    if (!rel32(to_skip,(uintptr_t)to_skip+4,(uintptr_t)p+k)) return 0;
+    if (game->post_update_skip_size) {memcpy(p+k,game->post_update_skip,game->post_update_skip_size);k+=game->post_update_skip_size;}
+    p[k++]=0xe9;
+    if (!rel32(p+k,(uintptr_t)p+k+4,base+game->draw_call)) return 0;
+    memset(b,0x90,post_size);b[0]=0xe9;
+    if (!rel32(b+1,base+game->post_update+5,(uintptr_t)p) || !patch_bytes(base+game->post_update,b,post_size,NULL)) return 0;
     /* Player movement. The two multiplies that turn a held direction into this frame's step
        gain a factor the sub-tick pass owns; the site is relocated whole so the store between
        them -- the facing direction the animation triggers already consumed -- keeps its place.
@@ -641,7 +662,7 @@ static int prepare_patches(void) {
         draw_node=(const unsigned char**)(data_page+24); *draw_node=NULL;
         if (relay_used+64>4096) return 0;
         unsigned char* d=relay_page+relay_used;relay_used+=64;size_t k=0;
-        d[k]=0x48;d[k+1]=0x89;d[k+2]=0x1d;                      /* mov [rip+draw_node],rbx */
+        d[k]=0x48;d[k+1]=0x89;d[k+2]=game->draw_node_modrm?game->draw_node_modrm:0x1d;   /* mov [rip+draw_node],rbx (or rdi) */
         if (!rel32(d+k+3,(uintptr_t)(d+k+7),(uintptr_t)draw_node)) return 0;
         k+=7;
         memcpy(d+k,(const void*)(base+game->draw_dispatch),game->draw_dispatch_size);
