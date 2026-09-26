@@ -4,13 +4,15 @@ Newest first. Versions are the release archive names; `-test` means what it says
 Full release notes for each version are on the
 [releases page](https://github.com/vittorioromeo/th12_hfr/releases).
 
-## Unreleased
+## v0.13-test
+
+New Classic after its Steam update.
 
 - **New Classic: the Steam update of 2026-09-25 is supported.** The patch recognises
   executables by fingerprint and declined the new `th06nc.exe`. It now has a profile of its
   own; the release build keeps working. The new build inlines the draw into the frame
   function, so the x64 runtime learned to hook a draw that has a start and an end instead of
-  a function to call.
+  a function to call. Played on Windows with both builds.
 
 ## v0.12-test
 

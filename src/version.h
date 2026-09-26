@@ -4,5 +4,5 @@
    own, so this lives in its own header rather than in common.h. */
 #ifndef HFR_VERSION_H
 #define HFR_VERSION_H
-#define HFR_VERSION "0.12-test"
+#define HFR_VERSION "0.13-test"
 #endif
