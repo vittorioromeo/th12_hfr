@@ -75,6 +75,11 @@ Upgrading from the old `th11_hfr` / `th12_hfr` patches: see [docs/UPGRADING.md](
 
 ## Using it
 
+New Classic's supported Steam update also has optional [mouse controls](docs/MOUSE_CONTROLS.md),
+disabled by default. Enable them under F11 > Mouse: left click fires, right click focuses,
+and a side button bombs. Choose native-speed cursor following or direct movement, with an
+optional character-speed cap. Direct movement cannot be reproduced by native replays.
+
 | Key | |
 | --- | --- |
 | **F11** | Settings menu. Changes apply immediately; **Save** writes them to `touhou_hfr.ini`. Options that cannot work in the current setup are disabled, with the reason |

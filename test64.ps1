@@ -17,6 +17,11 @@ try {
     if($LASTEXITCODE){throw 'x64 harness build failed (run build64.ps1 first)'}
     & ./build/tests/test_fixed.exe build/tests/fixed-plan.json
     if($LASTEXITCODE){throw 'x64 native regression failed'}
+    & $compilerPath -std=gnu11 -O2 -Wall -Wextra -Wno-unused-function -Wno-unused-parameter -static-libgcc tools/test_mouse.c `
+        build/obj64/buffer.o build/obj64/hook.o build/obj64/trampoline.o build/obj64/hde64.o -lbcrypt -o build/tests/test_mouse.exe
+    if($LASTEXITCODE){throw 'Mouse controller harness build failed'}
+    & ./build/tests/test_mouse.exe $fixture
+    if($LASTEXITCODE){throw 'Mouse controller regression failed'}
     & $pythonPath tools/test_fixed_stubs.py build/tests/fixed-plan.json
     if($LASTEXITCODE){throw 'x64 machine-code regression failed'}
     # The dxgi proxy against this machine's real dxgi.dll.

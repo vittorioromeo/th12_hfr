@@ -47,6 +47,14 @@ enum {
     UI_SPEED_KEY_RESET,
     UI_REPLAY_SAFE,
     UI_SPEED_KEYS,            /* the game speed hotkeys are listened to (saved; off leaves the keys to the game) */           /* read-only: the replays carry the sub-stepping settings (TH08; not New Classic) */
+    UI_MOUSE_AVAILABLE,
+    UI_MOUSE_ENABLED,
+    UI_MOUSE_BOMB_BUTTON,
+    UI_MOUSE_ACTIVE,
+    UI_MOUSE_TARGET_X,       /* target as millionths of the render surface */
+    UI_MOUSE_TARGET_Y,
+    UI_MOUSE_DIRECT,
+    UI_MOUSE_SPEED_LIMIT,
     UI_SETTING_COUNT
 };
 

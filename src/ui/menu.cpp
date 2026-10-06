@@ -146,6 +146,47 @@ void help(const char* text) {
     ImGui::TextDisabled("(?)");
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", text);
 }
+void draw_mouse_controls() {
+    bool enabled=hfr_ui_get(UI_MOUSE_ENABLED)!=0;
+    if (ImGui::Checkbox("Mouse control (F10)",&enabled)) hfr_ui_set(UI_MOUSE_ENABLED,enabled);
+    bool direct=hfr_ui_get(UI_MOUSE_DIRECT)!=0;
+    if (ImGui::Checkbox("Direct movement",&direct)) hfr_ui_set(UI_MOUSE_DIRECT,direct);
+    bool limited=hfr_ui_get(UI_MOUSE_SPEED_LIMIT)!=0;
+    ImGui::BeginDisabled(!direct);
+    if (ImGui::Checkbox("Limit to normal character speed",&limited)) hfr_ui_set(UI_MOUSE_SPEED_LIMIT,limited);
+    ImGui::EndDisabled();
+    if (direct && limited) ImGui::TextWrapped("Movement updates at the game's native 60 Hz, capped at normal or focused character speed. Each update discards excess swipe distance; there is no catch-up across later frames.");
+    ImGui::TextWrapped(direct ? (limited ? "The crosshair stays on the character. Right-click halves mouse sensitivity and uses focused speed."
+        : "Move the mouse to move the character immediately. The crosshair stays on the character. Right-click halves movement sensitivity for precise dodges.")
+        : "The character follows the cursor at normal game speed.");
+    ImGui::BulletText("Hold left mouse: fire");
+    ImGui::BulletText("Hold right mouse: slow / focus");
+    int bomb=hfr_ui_get(UI_MOUSE_BOMB_BUTTON)-1;
+    if (ImGui::Combo("Bomb button",&bomb,"Side 1 (Back)\0Side 2 (Forward)\0"))
+        hfr_ui_set(UI_MOUSE_BOMB_BUTTON,bomb+1);
+    ImGui::Spacing();
+    ImGui::TextWrapped("Keyboard directions take priority while held. Use the keyboard in game menus. Mouse control pauses while this settings menu is open or the game is unfocused.");
+    ImGui::TextWrapped(direct ? (limited ? "Direct movement stays within the speed limit, but replays still cannot reproduce it. Turn mouse control off before watching replays." : "Direct movement has no normal speed limit. Replays cannot reproduce it; turn mouse control off before watching replays.")
+        : "Movement follows normal character speed.");
+}
+void draw_mouse_target() {
+    ImGuiIO& io=ImGui::GetIO();
+    auto* draw=ImGui::GetForegroundDrawList();
+    bool enabled=hfr_ui_get(UI_MOUSE_ENABLED)!=0;
+    const char* text=enabled?"Mouse ON  |  F10 toggle":"Mouse OFF  |  F10 toggle";
+    ImVec2 label(12.0f,io.DisplaySize.y-26.0f*io.FontGlobalScale);
+    ImVec2 extent=ImGui::CalcTextSize(text);
+    draw->AddRectFilled(ImVec2(label.x-5,label.y-3),ImVec2(label.x+extent.x+5,label.y+extent.y+3),IM_COL32(0,0,0,170),4);
+    draw->AddText(label,enabled?IM_COL32(120,240,255,255):IM_COL32(210,210,210,255),text);
+    if (!hfr_ui_get(UI_MOUSE_ACTIVE)) return;
+    ImVec2 p(hfr_ui_get(UI_MOUSE_TARGET_X)*io.DisplaySize.x/1000000.0f,
+             hfr_ui_get(UI_MOUSE_TARGET_Y)*io.DisplaySize.y/1000000.0f);
+    float radius=5.0f*io.FontGlobalScale;
+    draw->AddCircle(p,radius,IM_COL32(0,0,0,220),20,4.0f);
+    draw->AddCircle(p,radius,IM_COL32(100,245,255,245),20,1.5f);
+    draw->AddLine(ImVec2(p.x-radius-4,p.y),ImVec2(p.x+radius+4,p.y),IM_COL32(100,245,255,200));
+    draw->AddLine(ImVec2(p.x,p.y-radius-4),ImVec2(p.x,p.y+radius+4),IM_COL32(100,245,255,200));
+}
 bool toggle(const char* label, int id) {
     bool v = hfr_ui_get(id) != 0;
     if (ImGui::Checkbox(label, &v)) { hfr_ui_set(id, v); return true; }
@@ -615,6 +656,7 @@ void draw_window(void) {
         ImGui::BeginChild("##hfr_body", ImVec2(0, -footer));
         ImGui::PushItemWidth(240.0f * k);   /* leave the labels room instead of filling the row */
         if (ImGui::BeginTabBar("##hfr_tabs")) {
+            if (hfr_ui_get(UI_MOUSE_AVAILABLE) && ImGui::BeginTabItem("Mouse")) { ImGui::Spacing(); draw_mouse_controls(); ImGui::EndTabItem(); }
             if (ImGui::BeginTabItem("Display"))      { ImGui::Spacing(); draw_display_section();      ImGui::EndTabItem(); }
             if (ImGui::BeginTabItem("Timing"))       { ImGui::Spacing(); draw_timing_section();       ImGui::EndTabItem(); }
             if (ImGui::BeginTabItem("Presentation")) { ImGui::Spacing(); draw_presentation_section(); ImGui::EndTabItem(); }
@@ -648,7 +690,8 @@ extern "C" void hfr_menu_draw_sections_for_test(void) {
 
 extern "C" void hfr_menu_render(void* dev, int width, int height) {
     bool speed_note = hfr_ui_get(UI_GAME_SPEED) != 100;
-    if (!g_ready || g_menu_failed || (!g_visible && g_hint_frames <= 0 && !speed_note)) return;
+    bool mouse_note = hfr_ui_get(UI_MOUSE_AVAILABLE) != 0;
+    if (!g_ready || g_menu_failed || (!g_visible && g_hint_frames <= 0 && !speed_note && !mouse_note)) return;
     if (!g_objects) {
         if (!hfr_menu_renderer_create()) {
             static bool told = false;
@@ -673,6 +716,7 @@ extern "C" void hfr_menu_render(void* dev, int width, int height) {
     if (g_visible) draw_window();
     else if (g_hint_frames > 0) { draw_hint(); --g_hint_frames; }
     if (speed_note) draw_speed_note();
+    if (mouse_note && !g_visible) draw_mouse_target();
     ImGui::EndFrame();
     { ImGuiContext& g = *GImGui; g_typing = g_visible && g.ActiveId != 0 && g.InputTextState.ID == g.ActiveId; }
     ImGui::Render();

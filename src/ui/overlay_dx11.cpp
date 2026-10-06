@@ -9,6 +9,7 @@ static ID3D11Device* device;
 static struct menu_key key_state;
 static struct hfr_speed_keys speed_keys;
 static int toggle_requested;
+extern "C" void hfr_mouse_window(HWND hwnd);
 extern "C" void hfr_menu_requested(void) {toggle_requested=1;}
 extern "C" void hfr_menu_key_down(int down) {
     if (down) key_state.msg_tapped=1;
@@ -26,6 +27,7 @@ extern "C" void hfr_d3d11_overlay(void* object) {
     DXGI_SWAP_CHAIN_DESC desc;
     ID3D11Device* current=nullptr;
     if (FAILED(swap->GetDesc(&desc)) || FAILED(swap->GetDevice(__uuidof(ID3D11Device),reinterpret_cast<void**>(&current)))) return;
+    hfr_mouse_window(desc.OutputWindow);
     if (current!=device || desc.OutputWindow!=window) {
         hfr_menu_shutdown();
         if (window && original_wndproc && reinterpret_cast<WNDPROC>(GetWindowLongPtrA(window,GWLP_WNDPROC))==window_proc)

@@ -16,6 +16,7 @@
 static void hook_keyboard_import(void);
 #include "backends/subtick.h"
 #include "backends/substep.h"
+#include "backends/mouse_follow.h"
 #include "fixed_identity.h"
 void hfr_d3d11_overlay(void* swap);
 
@@ -87,6 +88,7 @@ static void report(const char* fmt, ...) {
     fputc('\n',logfile); fflush(logfile);
 }
 #define LOG(...) report(__VA_ARGS__)
+#include "backends/mouse_nc.c"
 #include "ui/overlay_fixed.c"
 #include "core/patch.c"
 static const uint8_t* site_expected(uintptr_t addr,size_t n) {
@@ -113,7 +115,7 @@ static void set_rate(void) {
    during replay playback the input word comes from the file rather than the device, and a
    failed draw guard already means the frame structure is not understood. */
 static int subtick_active(void) {
-    return subtick && rate > 60 && player_factor && !guard_failed;
+    return subtick && !(mouse_supported && mouse_enabled) && rate > 60 && player_factor && !guard_failed;
 }
 /* One slice of the current frame's player motion, using input polled at this instant. */
 static void subtick_move(double tau) {
@@ -203,6 +205,7 @@ static uintptr_t update_first(void* result) {
         subtick_move((double)ticks+phase);
         return (unsigned char)r; /* AH=0 is the post-update relay's normal path. */
     }
+    mouse_present_move();
     projectiles_slice((double)ticks+phase);
     subtick_move((double)ticks+phase);
     return 0x100; /* AL=0 (normal), AH=1 (skip native audio/fast-forward bookkeeping). */
@@ -346,7 +349,7 @@ static uint32_t dim_fade_colour(uint32_t colour,int percent,int klass) {
 }
 static uintptr_t sprite(SpriteFn original,void* manager,void* vm,uintptr_t flags) {
     ++sprite_calls;
-    if (depth || !vm || !interpolate || guard_failed || rate==60) {
+    if (depth || !vm || !interpolate || guard_failed || rate==60 || mouse_live_sprite(vm)) {
         ++sprite_skipped_off;
         return original(manager,vm,flags);
     }
@@ -739,6 +742,11 @@ __declspec(dllexport) DWORD WINAPI hfr_start(void* unused) {
     interpolate=GetPrivateProfileIntA("fixed60","interpolate",1,ini)!=0;
     subtick=GetPrivateProfileIntA("fixed60","subtick",0,ini)!=0;
     substep=GetPrivateProfileIntA("fixed60","substep",0,ini)!=0;
+    mouse_supported=game==&th06nc_0914_game;
+    mouse_enabled=GetPrivateProfileIntA("mouse","enabled",0,ini)!=0;
+    mouse_direct=GetPrivateProfileIntA("mouse","direct",1,ini)!=0;
+    mouse_speed_limit=GetPrivateProfileIntA("mouse","speed_limit",0,ini)!=0;
+    mouse_bomb_button=GetPrivateProfileIntA("mouse","bomb_button",1,ini)==2?2:1;
     for (int i=0;i<DIM_COUNT;++i) {
         char key[32]; snprintf(key,sizeof key,"dim_%s",DIM_NAMES[i]);
         int v=GetPrivateProfileIntA("video",key,0,ini);
@@ -766,11 +774,13 @@ __declspec(dllexport) DWORD WINAPI hfr_start(void* unused) {
          MH_CreateHook((void*)(base+game->sprite_draw_menu),menu_draw,(void**)&menu_sprite_original)!=MH_OK) ||
         MH_CreateHook((void*)(base+game->vm_start[0]),vm_start_0,(void**)&vm_start_original[0])!=MH_OK ||
         MH_CreateHook((void*)(base+game->vm_start[1]),vm_start_1,(void**)&vm_start_original[1])!=MH_OK ||
+        (mouse_supported && MH_CreateHook((void*)(base+game->input_poll),mouse_poll,(void**)&mouse_poll_original)!=MH_OK) ||
         MH_QueueEnableHook(MH_ALL_HOOKS)!=MH_OK || MH_ApplyQueued()!=MH_OK) {
         LOG("Sprite hook installation failed");MH_Uninitialize();return 0;
     }
     if (!patch_commit()) {LOG("Code patch commit failed");MH_Uninitialize();return 0;}
     hook_keyboard_import();
+    LOG("Mouse controller: available=%d enabled=%d bomb_button=%d direct=%d speed_limit=%d; unrestricted movement at presentation rate, limited movement/buttons on native 60 Hz updates",mouse_supported,mouse_enabled,mouse_bomb_button,mouse_direct,mouse_speed_limit);
     LOG("Installed at image=%p relay=%p; original executable unchanged",(void*)base,relay_page);
     return 1;
 }

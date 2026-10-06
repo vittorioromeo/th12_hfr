@@ -28,6 +28,10 @@ $CC -std=gnu11 -O2 -Wall -Wextra -Wno-unused-function -Wno-unused-parameter -sta
     tools/test_fixed.c build/obj64/buffer.o build/obj64/hook.o build/obj64/trampoline.o \
     build/obj64/hde64.o -lbcrypt -o build/tests/test_fixed.exe
 $RUN ./build/tests/test_fixed.exe build/tests/fixed-plan.json
+$CC -std=gnu11 -O2 -Wall -Wextra -Wno-unused-function -Wno-unused-parameter -static-libgcc \
+    tools/test_mouse.c build/obj64/buffer.o build/obj64/hook.o build/obj64/trampoline.o \
+    build/obj64/hde64.o -lbcrypt -o build/tests/test_mouse.exe
+$RUN ./build/tests/test_mouse.exe "$1"
 python3 tools/test_fixed_stubs.py build/tests/fixed-plan.json
 # The dxgi proxy against the system's real dxgi.dll: every export reachable, the factory
 # call answering exactly as the real library does, and inert in a process that is not the game.

@@ -2,6 +2,14 @@
 static int pending_rate, menu_key_code=VK_F11;
 int hfr_ui_get(int id) {
     switch (id) {
+    case UI_MOUSE_AVAILABLE: return mouse_supported;
+    case UI_MOUSE_DIRECT: return mouse_direct;
+    case UI_MOUSE_SPEED_LIMIT: return mouse_speed_limit;
+    case UI_MOUSE_ENABLED: return mouse_supported && mouse_enabled;
+    case UI_MOUSE_BOMB_BUTTON: return mouse_bomb_button;
+    case UI_MOUSE_ACTIVE: return mouse_active && mouse_window_handle && GetForegroundWindow()==mouse_window_handle;
+    case UI_MOUSE_TARGET_X: return (int)(mouse_target_fraction[0]*1000000.0f);
+    case UI_MOUSE_TARGET_Y: return (int)(mouse_target_fraction[1]*1000000.0f);
     case UI_FIXED_LOGIC: return 1;
     case UI_SOFTWARE_CURSOR: return 1;
     case UI_FPS: return fps;
@@ -38,6 +46,10 @@ int hfr_ui_get(int id) {
 }
 void hfr_ui_set(int id,int value) {
     switch (id) {
+    case UI_MOUSE_ENABLED: mouse_set_enabled(value);break;
+    case UI_MOUSE_DIRECT: mouse_direct=!!value;mouse_anchor_ready=0;memset(history,0,sizeof history);break;
+    case UI_MOUSE_SPEED_LIMIT: mouse_speed_limit=!!value;mouse_anchor_ready=0;break;
+    case UI_MOUSE_BOMB_BUTTON: mouse_bomb_button=value==2?2:1;mouse_buttons.blocked=7;break;
     case UI_FPS: fps=value<=0?0:(value<60?60:(value>1000?1000:value));pending_rate=1;break;
     case UI_VSYNC: vsync=!!value;break;
     case UI_ENEMY_INTERP: interpolate=!!value;memset(history,0,sizeof history);break;
@@ -62,6 +74,7 @@ static void save_int(const char* section,const char* key,int value) {
     if (!WritePrivateProfileStringA(section,key,text,ini)) LOG("Could not save %s.%s (error %lu)",section,key,GetLastError());
 }
 void hfr_ui_save(void) {
+    if (mouse_supported) { save_int("mouse","enabled",mouse_enabled);save_int("mouse","bomb_button",mouse_bomb_button);save_int("mouse","direct",mouse_direct);save_int("mouse","speed_limit",mouse_speed_limit); }
     save_int("hfr","fps",fps);save_int("hfr","debug",debug);
     save_int("fixed60","vsync",vsync);save_int("fixed60","interpolate",interpolate);
     save_int("fixed60","subtick",subtick);save_int("fixed60","substep",substep);
